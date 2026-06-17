@@ -273,6 +273,38 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
       ${metaItems}
     </div>
 
+    <h2>Report Files</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 50%;">FILE</th>
+          <th style="width: 50%;">NAME</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="page-name">📊 &nbsp;HTML Report</td>
+          <td><a href="PPV_Report.html" style="color: #2563eb; text-decoration: underline;">PPV_Report.html</a></td>
+        </tr>
+        <tr>
+          <td class="page-name">📄 &nbsp;PDF Report</td>
+          <td><a href="PPV_Report.pdf" target="_blank" style="color: #2563eb; text-decoration: underline;">PPV_Report.pdf</a></td>
+        </tr>
+        ${meta.excelPath ? `
+        <tr>
+          <td class="page-name">🗒️ &nbsp;Excel Results</td>
+          <td><a href="PPV_Results.xlsx" download style="color: #2563eb; text-decoration: underline;">PPV_Results.xlsx</a></td>
+        </tr>
+        ` : ''}
+        ${meta.videoPath ? `
+        <tr>
+          <td class="page-name">🎥 &nbsp;Video Recording</td>
+          <td><a href="PPV_Video${path.extname(meta.videoPath)}" target="_blank" style="color: #2563eb; text-decoration: underline;">PPV_Video${path.extname(meta.videoPath)}</a></td>
+        </tr>
+        ` : ''}
+      </tbody>
+    </table>
+
     <h2>Per-Page Results</h2>
     <table>
       <thead><tr><th>Page</th><th class="num">Pass</th><th class="num">Fail</th><th class="num">Total</th><th>Progress</th><th class="num">Pass %</th></tr></thead>

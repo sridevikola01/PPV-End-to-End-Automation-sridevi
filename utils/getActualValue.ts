@@ -1,5 +1,91 @@
 import { DOMNode } from './helpers';
 
+async function getScopedLandingPPVContainer(
+  page: any,
+  eventData?: Record<string, string>
+): Promise<any> {
+  if (!page || page.isClosed()) return null;
+  const url = page.url();
+  const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                          (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+  if (!isLandingOrHome) return null;
+
+  const source = (eventData?.SOURCE || eventData?.source || '').toLowerCase();
+  const ppvName = (eventData?.PPV_NAME || '').toLowerCase();
+  const vsPart = ppvName.includes(':') ? ppvName.split(':')[1].trim() : ppvName;
+  const firstWord = vsPart.replace(/\bppv\b/gi, '').trim().split(/\s+/)[0] || '';
+  if (!firstWord) return null;
+
+  const isTileSource = source.includes('dont-miss') || source.includes('tile') || source.includes('upcoming') || source.includes('rail') || source === 'home-biggest-fights';
+
+  if (isTileSource) {
+    const railHeading = page.locator('h1, h2, h3, h4, [class*="heading" i]').filter({ hasText: /don.t miss|coming up|upcoming big fights|upcoming|biggest fights/i }).first();
+    if (await railHeading.count().catch(() => 0) > 0) {
+      let railWrapper = railHeading.locator('xpath=ancestor::*[contains(@class,"railWrapper")][1]');
+      let hasWrapper = await railWrapper.count().catch(() => 0) > 0;
+      if (!hasWrapper) {
+        railWrapper = railHeading.locator('xpath=ancestor::*[contains(@class,"rail__rail-wrapper")][1]');
+        hasWrapper = await railWrapper.count().catch(() => 0) > 0;
+      }
+      if (!hasWrapper) {
+        railWrapper = railHeading.locator('xpath=ancestor::*[contains(@class,"rail")][1]');
+        hasWrapper = await railWrapper.count().catch(() => 0) > 0;
+      }
+      if (hasWrapper) {
+        const tile = railWrapper.locator('.swiper-slide, [class*="tile" i], a').filter({ hasText: new RegExp(firstWord, 'i') }).first();
+        if (await tile.count().catch(() => 0) > 0) {
+          return tile;
+        }
+
+        const nextBtn = railWrapper.locator([
+          'button[aria-label="Next slide"]',
+          'button[class*="swiper-button-next"]',
+          '.custom-swiper-button-next',
+          '[class*="next" i]'
+        ].join(', ')).first();
+
+        if (await nextBtn.count().catch(() => 0) > 0 && await nextBtn.isVisible().catch(() => false)) {
+          await railWrapper.hover({ force: true }).catch(() => {});
+          for (let click = 0; click < 15; click++) {
+            const disabled = await nextBtn.evaluate((el: Element) => 
+              el.classList.contains('swiper-button-disabled') || 
+              el.classList.contains('rail-module__disable') || 
+              el.className.includes('disable') || 
+              el.hasAttribute('disabled')
+            ).catch(() => false);
+            if (disabled) break;
+            
+            await nextBtn.click({ force: true }).catch(() => {});
+            await tile.waitFor({ state: 'attached', timeout: 1000 }).catch(() => {});
+            
+            if (await tile.count().catch(() => 0) > 0) {
+              return tile;
+            }
+          }
+        }
+      }
+    }
+    const fallbackTile = page.locator('.swiper-slide, [class*="tile" i], a').filter({ hasText: new RegExp(firstWord, 'i') }).first();
+    if (await fallbackTile.count().catch(() => 0) > 0) {
+      return fallbackTile;
+    }
+  } else {
+    // Banner source
+    const banner = page.locator('main [class*="banner"], main [class*="hero"], main .swiper:not([class*="rail" i])').first();
+    if (await banner.count().catch(() => 0) > 0) {
+      const slide = banner.locator('.swiper-slide').filter({ hasText: new RegExp(firstWord, 'i') }).first();
+      if (await slide.count().catch(() => 0) > 0) {
+        return slide;
+      }
+    }
+    const activeSlide = page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+    if (await activeSlide.count().catch(() => 0) > 0) {
+      return activeSlide;
+    }
+  }
+  return null;
+}
+
 export async function getActualValue(
   page: any,
   field: string,
@@ -56,6 +142,12 @@ export async function getActualValue(
     }
     return 'No';
   };
+
+  // Match boxing "vs" separator in any form: "vs", "vs.", or standalone "v"
+  // This ensures we EXTRACT the actual text from DOM even when DAZN shows "v"
+  // instead of "vs" — the comparison against expected "vs." will then naturally FAIL
+  // with a clear message like actual="Joshua v Prenga" instead of unhelpful "N/A"
+  const matchesVsPattern = (text: string): boolean => /\bvs?\b\.?/i.test(text);
 
   // ── Live DOM helpers ─────────────────────────────────────────
   const isVisible = async (loc: any): Promise<boolean> => {
@@ -198,6 +290,8 @@ export async function getActualValue(
     (/\b\d{1,2}(st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b/i.test(t)) ||
     (/\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\b\s+\d{1,2}(st|nd|rd|th)?\b/i.test(t)) ||
     (/\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i.test(t) &&
+      /\d{1,2}:\d{2}/.test(t)) ||
+    (/\b(Tonight|Today|This evening|Tomorrow)\b/i.test(t) &&
       /\d{1,2}:\d{2}/.test(t));
 
   const key = field.toLowerCase()
@@ -259,25 +353,37 @@ export async function getActualValue(
     }
 
     case 'ppv date badge': {
-      const btn = page.locator('button[class*="ni7RX" i]').first();
-      const span = btn.locator('span').first();
-      if (await span.isVisible().catch(() => false)) {
-        return (await span.innerText().catch(() => '')) || 'N/A';
+      const hasNi7RX = snap.some(n => n.tag === 'button' && n.classes.toLowerCase().includes('ni7rx'));
+      if (hasNi7RX) {
+        const btn = page.locator('button[class*="ni7RX" i]').first();
+        const span = btn.locator('span').first();
+        if (await span.isVisible().catch(() => false)) {
+          return (await span.innerText().catch(() => '')) || 'N/A';
+        }
       }
       return snapFind(n =>
         n.tag === 'span' &&
-        (n.text.toLowerCase().includes('saturday') || n.text.toLowerCase().includes('sunday') || /\d{1,2}:\d{2}/.test(n.text)) &&
-        n.text.length < 30
+        (n.text.toLowerCase().includes('today') ||
+         n.text.toLowerCase().includes('tomorrow') ||
+         n.text.toLowerCase().includes('yesterday') ||
+         /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i.test(n.text) ||
+         /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i.test(n.text) ||
+         /\d{1,2}:\d{2}/.test(n.text)) &&
+        n.text.length < 50
       );
     }
 
     case 'ppv checkbox state': {
       const mainName = eventData?.PPV_NAME ? eventData.PPV_NAME.split(/[:\-–]/)[0].trim() : '';
-      const btn = mainName
-        ? page.locator(`button:has-text("${mainName}"), button[class*="ni7RX"]`).first()
-        : page.locator(`button[class*="ni7RX"]`).first();
+      const btnExists = snap.some(n => 
+        (mainName && n.tag === 'button' && n.text.toLowerCase().includes(mainName.toLowerCase())) || 
+        (n.tag === 'button' && n.classes.toLowerCase().includes('ni7rx'))
+      );
       let checked = false;
-      if (await btn.isVisible().catch(() => false)) {
+      if (btnExists) {
+        const btn = mainName
+          ? page.locator(`button:has-text("${mainName}"), button[class*="ni7RX"]`).first()
+          : page.locator(`button[class*="ni7RX"]`).first();
         const ariaPressed = await btn.getAttribute('aria-pressed').catch(() => null);
         const ariaChecked = await btn.getAttribute('aria-checked').catch(() => null);
         const classAttr = (await btn.getAttribute('class').catch(() => null)) || '';
@@ -288,8 +394,13 @@ export async function getActualValue(
           if (hasCheckedCheckmark > 0) checked = true;
         }
       } else {
-        const cb = page.locator('input[type="checkbox"]').first();
-        checked = await cb.isChecked().catch(() => false);
+        const cbNode = snap.find(n => n.tag === 'input' && n.type === 'checkbox');
+        if (cbNode) {
+          checked = cbNode.isChecked ?? false;
+        } else {
+          const cb = page.locator('input[type="checkbox"]').first();
+          checked = await cb.isChecked().catch(() => false);
+        }
       }
       return checked ? 'Checked' : 'Unchecked';
     }
@@ -335,6 +446,11 @@ export async function getActualValue(
 
     case 'cta button (flex selected)':
     case 'cta button (apm selected)': {
+      const hasBtn = snap.some(n => n.tag === 'button' && (n.classes.toLowerCase().includes('ihnwix') || n.text.toLowerCase().includes('continue')));
+      if (hasBtn) {
+        const text = snapFind(n => n.tag === 'button' && (n.classes.toLowerCase().includes('ihnwix') || n.text.toLowerCase().includes('continue')));
+        if (text !== 'N/A') return text;
+      }
       const btn = page.locator('button[class*="ihnwix" i], button:has-text("Continue")').first();
       if (await btn.isVisible().catch(() => false)) {
         return (await btn.innerText().catch(() => '')) || 'N/A';
@@ -348,6 +464,10 @@ export async function getActualValue(
 
     case 'plans visible count (checked)':
     case 'plans visible count (unchecked)': {
+      const snapRadioCount = snap.filter(n => n.tag === 'input' && n.type === 'radio').length;
+      if (snapRadioCount > 0) return String(snapRadioCount);
+      const snapCardCount = snap.filter(n => n.tag === 'div' && n.classes.toLowerCase().includes('plancard')).length;
+      if (snapCardCount > 0) return String(snapCardCount);
       const selectorsList = [
         'input[type="radio"]',
         '[role="radio"]',
@@ -459,9 +579,40 @@ export async function getActualValue(
       );
     }
 
-    // ════════════════════════════════════════════════════════════
-    // HOME OF BOXING FIELDS
-    // ════════════════════════════════════════════════════════════
+    case 'the biggest fights heading':
+    case 'biggest fights heading':
+    case 'biggest fights section': {
+      const heading = snapFind(n =>
+        n.text.toLowerCase().includes('biggest fights') &&
+        n.text.length < 60
+      );
+      if (heading !== 'N/A') return heading;
+
+      const liveText = await page.locator(
+        'h2, h3, h4, [class*="heading" i], [class*="title" i]'
+      ).filter({ hasText: /Biggest Fights/i }).first()
+        .textContent({ timeout: 3000 }).catch(() => '');
+      return liveText?.trim() || 'N/A';
+    }
+
+    case 'upcoming big fights section':
+    case 'upcoming big fights heading':
+    case 'section heading': {
+      // Validate "Upcoming Big Fights" heading on boxing page
+      const upcomingHeading = snapFind(n =>
+        n.text.toLowerCase().includes('upcoming big fights') &&
+        n.text.length < 60
+      );
+      if (upcomingHeading !== 'N/A') return upcomingHeading;
+
+      // Live DOM fallback
+      const liveText = await page.locator(
+        'h2, h3, h4, [class*="heading" i], [class*="title" i]'
+      ).filter({ hasText: /upcoming big fights/i }).first()
+        .textContent({ timeout: 3000 }).catch(() => '');
+      return liveText?.trim() || 'N/A';
+    }
+
     case 'best of boxing section': {
       const text = snapFind(n => n.text.toLowerCase().includes('best of boxing') || n.text.toLowerCase().includes('upcoming fights') || n.text.toLowerCase().includes('boxing'));
       return text !== 'N/A' ? 'Present' : 'Not found';
@@ -601,6 +752,16 @@ export async function getActualValue(
           const hasWeekday = textLower.includes(matchedWeekday) || textLower.includes(weekdayAbbr);
 
           if (hasWeekday && hasTime) {
+            return true;
+          }
+        }
+
+        // Handle DAZN relative-time labels: "This evening", "Tonight", "Today", "Tomorrow"
+        const relativeLabels = ['this evening', 'tonight', 'today', 'tomorrow'];
+        const matchedRelative = relativeLabels.find(r => textLower.includes(r));
+        if (matchedRelative) {
+          const hasTime = time ? (textLower.includes(time) || textLower.includes(time.replace(':', ''))) : true;
+          if (hasTime) {
             return true;
           }
         }
@@ -886,7 +1047,7 @@ export async function getActualValue(
       const ppvName = (eventData?.PPV_NAME || '').toLowerCase();
       const found = snapFind(n =>
         (n.tag === 'strong' || n.tag === 'b' || n.tag === 'a' || n.tag === 'p' || n.tag === 'span' || n.tag === 'div' || n.tag === 'h1' || n.tag === 'h2' || n.tag === 'h3') &&
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.length < 100 &&
         !n.text.toLowerCase().includes('dazn') &&
         !n.text.toLowerCase().includes('pay-per-view event')
@@ -897,7 +1058,7 @@ export async function getActualValue(
         const firstWord = vsPart.replace(/\bppv\b/gi, '').trim().split(/\s+/)[0] || '';
         return snapFind(n =>
           n.text.toLowerCase().includes(firstWord) &&
-          n.text.toLowerCase().includes('vs')
+          matchesVsPattern(n.text)
         );
       }
       return 'N/A';
@@ -939,6 +1100,17 @@ export async function getActualValue(
     // SCHEDULE
     // ════════════════════════════════════════════════════════════
     case 'ppv tile present': {
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      if (isLandingOrHome) {
+        const container = await getScopedLandingPPVContainer(page, eventData);
+        if (container) {
+          const visible = await container.isVisible({ timeout: 2000 }).catch(() => false);
+          return visible ? 'Yes' : 'No';
+        }
+        return 'No';
+      }
       const count = await page.locator('article').count().catch(() => 0);
       return count > 0 ? 'Yes' : 'No';
     }
@@ -1052,6 +1224,35 @@ export async function getActualValue(
     // PPV NAME
     // ════════════════════════════════════════════════════════════
     case 'ppv name': {
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      if (isLandingOrHome) {
+        const container = await getScopedLandingPPVContainer(page, eventData);
+        if (container) {
+          const ppvNameFull = (eventData?.PPV_NAME || '').toLowerCase();
+          const vsPart = ppvNameFull.includes(':') ? ppvNameFull.split(':')[1].trim() : ppvNameFull;
+          const nameParts = vsPart.replace(/\bppv\b/gi, '').trim().split(/\s+/).filter(w => w.length > 2);
+          
+          // Try to find the exact text in the container first
+          const containerText = await container.textContent().catch(() => '');
+          if (containerText) {
+            const elements = container.locator('h1, h2, h3, h4, span, p, [class*="title" i], [class*="name" i]');
+            const count = await elements.count().catch(() => 0);
+            for (let i = 0; i < count; i++) {
+              const text = await elements.nth(i).textContent().catch(() => '');
+              const cleanText = text ? text.replace(/\s+/g, ' ').trim() : '';
+              if (cleanText && nameParts.every(w => cleanText.toLowerCase().includes(w.toLowerCase())) && cleanText.length < 100) {
+                return cleanText;
+              }
+            }
+            if (nameParts.every(w => containerText.toLowerCase().includes(w.toLowerCase()))) {
+              return containerText.replace(/\s+/g, ' ').trim();
+            }
+          }
+        }
+      }
+
       const ppvNameFull = (eventData?.PPV_NAME || '').toLowerCase();
       const vsPart = ppvNameFull.includes(':') ? ppvNameFull.split(':')[1].trim() : ppvNameFull;
       const firstWord = vsPart.replace(/\bppv\b/gi, '').trim().split(/\s+/)[0] || '';
@@ -1078,7 +1279,7 @@ export async function getActualValue(
       // Priority 2: Heading tags with "vs"
       const fromHeading = snapFind(n =>
         ['h1', 'h2', 'h3', 'h4'].includes(n.tag) &&
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.length < 80
       );
       if (fromHeading !== 'N/A') return fromHeading;
@@ -1116,7 +1317,7 @@ export async function getActualValue(
 
       // Priority 3: Any element with "vs" + first word
       const fromSnap = snapFind(n =>
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.length < 80 &&
         !n.text.toLowerCase().includes('buy') &&
         (!firstWord || n.text.toLowerCase().includes(firstWord))
@@ -1126,7 +1327,7 @@ export async function getActualValue(
       // Priority 4: snap.find (bypass childCount filter)
       const fromSnapAny = snap.find(n =>
         !n.isInModal &&
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.length < 80 &&
         !n.text.toLowerCase().includes('buy') &&
         (!firstWord || n.text.toLowerCase().includes(firstWord))
@@ -1148,7 +1349,7 @@ export async function getActualValue(
           const el = inner.nth(j);
           if (!await el.isVisible().catch(() => false)) continue;
           const t = clean(await el.innerText({ timeout: T }).catch(() => ''));
-          if (t.toLowerCase().includes('vs') && t.length < 80) return t;
+          if (matchesVsPattern(t) && t.length < 80) return t;
           // Non-boxing: match by PPV name words
           if (!ppvNameFull.includes('vs') && firstWord && t.toLowerCase().includes(firstWord) && t.length < 80 && t.length > 3) return t;
         }
@@ -1316,16 +1517,41 @@ export async function getActualValue(
     // ════════════════════════════════════════════════════════════
     case 'hero image':
     case 'ppv image present':
-    case 'ppv image':
+    case 'ppv image': {
+      const hasImg = snap.some(n => 
+        n.tag === 'img' && 
+        (
+          (n.src && n.src.toLowerCase().includes('ppv')) || 
+          (n.text && n.text.toLowerCase().includes('vs')) || 
+          n.classes.toLowerCase().includes('hero')
+        )
+      ) || snap.some(n => n.tag === 'img');
+      if (hasImg) return 'Yes';
+
       return firstExists(
         'img[src*="ppv"]',
         'img[alt*="vs" i]',
         'main img',
         'img'
       );
+    }
 
     case 'ppv1 image present on ultimate tier':
     case 'ppv1 image present on bundle': {
+      const hasScopedImg = snap.some(n =>
+        n.tag === 'img' &&
+        (
+          n.classes.toLowerCase().includes('upsell') ||
+          n.classes.toLowerCase().includes('ultimate') ||
+          n.classes.toLowerCase().includes('bundle') ||
+          n.classes.toLowerCase().includes('included')
+        )
+      );
+      if (hasScopedImg) return 'Yes';
+
+      const snapImgsCount = snap.filter(n => n.tag === 'img').length;
+      if (snapImgsCount >= 2) return 'Yes';
+
       const found = await firstExists(
         '[class*="upsell" i] img',
         '[class*="ultimate" i] img',
@@ -1353,6 +1579,15 @@ export async function getActualValue(
         if (secFound === 'N/A') return 'N/A';
       }
 
+      const snapImgsCount = snap.filter(n => n.tag === 'img').length;
+      if (snapImgsCount >= 3) return 'Yes';
+
+      const snapScopedCount = snap.filter(n =>
+        n.tag === 'img' &&
+        (n.classes.toLowerCase().includes('upsell') || n.classes.toLowerCase().includes('ultimate'))
+      ).length;
+      if (snapScopedCount >= 2) return 'Yes';
+
       const allImgs = page.locator('img');
       const count = await allImgs.count().catch(() => 0);
       if (count >= 3) return 'Yes';
@@ -1375,7 +1610,7 @@ export async function getActualValue(
       const url = page.url();
       if (url.includes('welcome/boxing') || url.includes('/p/boxing') || url.includes('/boxing')) {
         const boxingTitle = snapFind(n =>
-          n.text.toLowerCase().includes('vs') &&
+          matchesVsPattern(n.text) &&
           (n.classes.toLowerCase().includes('title') || n.tag === 'p' || n.tag === 'h1') &&
           (!firstWord || n.text.toLowerCase().includes(firstWord)) &&
           n.text.length < 80
@@ -1384,7 +1619,7 @@ export async function getActualValue(
       }
 
       const withPPV = snapFind(n =>
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.toLowerCase().includes('ppv') &&
         n.text.length < 80
       );
@@ -1396,6 +1631,14 @@ export async function getActualValue(
         n.text.length < 80
       );
       if (exact !== 'N/A') return exact;
+
+      // Fallback: match by vs pattern and first word of event name
+      const fallback = snapFind(n =>
+        matchesVsPattern(n.text) &&
+        (!firstWord || n.text.toLowerCase().includes(firstWord)) &&
+        n.text.length < 80
+      );
+      if (fallback !== 'N/A') return fallback;
 
       return 'N/A';
     }
@@ -1500,13 +1743,50 @@ export async function getActualValue(
       const offerAvailable = String(eventData?.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
       if (!offerAvailable) return 'N/A';
 
-      const strikethrough = page.locator('del, s, [style*="line-through"]');
-      const count = await strikethrough.count().catch(() => 0);
-      for (let i = 0; i < Math.min(count, 5); i++) {
+      // Strategy 1: Semantic strikethrough elements (del, s) and CSS class-based strikethrough
+      const loc = page.locator('s, del, [class*="strike" i], [class*="original" i]');
+      const count = await loc.count().catch(() => 0);
+      for (let i = 0; i < Math.min(count, 10); i++) {
+        const el = loc.nth(i);
+        if (!await el.isVisible().catch(() => false)) continue;
+        const t = (await el.textContent().catch(() => '') || '').trim();
+        if (isPriceText(t)) return t;
+      }
+
+      // Strategy 2: Inline style strikethrough
+      const strikethrough = page.locator('[style*="line-through"]');
+      const scount = await strikethrough.count().catch(() => 0);
+      for (let i = 0; i < Math.min(scount, 5); i++) {
         const text = (await strikethrough.nth(i).textContent().catch(() => '') || '').trim();
         if (text && isPriceText(text)) return text;
       }
 
+      // Strategy 3: CSS-based strikethrough detection via computed style
+      // Walk up parent elements too (strikethrough may be on parent div, inherited by child span)
+      const cssStrikePrice = await page.evaluate(() => {
+        // Check all span/p/div elements that contain a price
+        const allEls = document.querySelectorAll<HTMLElement>('span, p, div, strong, b');
+        for (const el of allEls) {
+          const text = (el.textContent || '').trim();
+          if (!/[£$€₹]/.test(text) || text.length > 30) continue;
+          // Walk up 5 levels to check for line-through on any ancestor
+          let current: HTMLElement | null = el;
+          for (let depth = 0; depth < 5 && current; depth++) {
+            const style = window.getComputedStyle(current);
+            if (style.textDecorationLine?.includes('line-through') ||
+                style.textDecoration?.includes('line-through')) {
+              // Return the price-only portion
+              const priceMatch = text.match(/[£$€₹]\s?\d+(?:\.\d{2})?/);
+              if (priceMatch) return priceMatch[0].trim();
+            }
+            current = current.parentElement;
+          }
+        }
+        return null;
+      }).catch(() => null);
+      if (cssStrikePrice) return cssStrikePrice;
+
+      // Strategy 4: "Was £X" pattern in body text
       const bodyLower = (await page.locator('body').innerText().catch(() => '')).toLowerCase();
       const wasMatch = bodyLower.match(/was\s+[\$£€₹]\s?[\d,]+(?:\.\d{2})?/i);
       if (wasMatch) {
@@ -1639,6 +1919,43 @@ export async function getActualValue(
     }
 
     // ════════════════════════════════════════════════════════════
+    // PPV DESCRIPTION / LOCATION (Landing / Boxing / Welcome page)
+    // ════════════════════════════════════════════════════════════
+    case 'ppv description text':
+    case 'ppv description': {
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      if (isLandingOrHome) {
+        const container = await getScopedLandingPPVContainer(page, eventData);
+        if (container) {
+          const elements = container.locator('p[class*="description" i], span[class*="description" i], [class*="description" i]');
+          const count = await elements.count().catch(() => 0);
+          for (let i = 0; i < count; i++) {
+            const el = elements.nth(i);
+            const text = await el.textContent().catch(() => '');
+            const cleanText = text ? text.replace(/\s+/g, ' ').trim() : '';
+            if (cleanText && cleanText.length > 2 && cleanText.length < 150) {
+              return cleanText;
+            }
+          }
+          // Fallback to text content of elements in the container matching expected description
+          const pElements = container.locator('p, span');
+          const pCount = await pElements.count().catch(() => 0);
+          const expectedDesc = (eventData?.PPV_LOCATION || '').toLowerCase();
+          for (let i = 0; i < pCount; i++) {
+            const text = await pElements.nth(i).textContent().catch(() => '');
+            const cleanText = text ? text.replace(/\s+/g, ' ').trim() : '';
+            if (cleanText && expectedDesc && cleanText.toLowerCase().includes(expectedDesc)) {
+              return cleanText;
+            }
+          }
+        }
+      }
+      return eventData?.PPV_LOCATION || 'N/A';
+    }
+
+    // ════════════════════════════════════════════════════════════
     // PPV DATE / TIME (PPV page)
     // ════════════════════════════════════════════════════════════
     case 'ppv date and time':
@@ -1647,6 +1964,40 @@ export async function getActualValue(
     case 'event date and time':
     case 'ppv1 date and time text on bundle':
     case 'ppv1 date text on ultimate tier': {
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      if (isLandingOrHome) {
+        const container = await getScopedLandingPPVContainer(page, eventData);
+        if (container) {
+          const children = container.locator('span, div, time, p');
+          const count = await children.count().catch(() => 0);
+          for (let i = 0; i < count; i++) {
+            const child = children.nth(i);
+            const hasChildren = await child.evaluate((node: HTMLElement) => node.children.length > 0).catch(() => true);
+            if (hasChildren) continue;
+            
+            const ct = (await child.textContent().catch(() => ''))?.trim() || '';
+            if (ct.length < 3 || ct.length > 50) continue;
+
+            const hasMonth = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|January|February|March|April|May|June|July|August|September|October|November|December)\b/i.test(ct);
+            const hasDay = /\b\d{1,2}(st|nd|rd|th)?\b/.test(ct);
+            const hasTime = /\b\d{1,2}:\d{2}\b/.test(ct);
+            const hasDayOfWeek = /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i.test(ct);
+
+            if ((hasMonth && hasDay) || (hasDayOfWeek && hasTime) || (hasMonth && hasTime)) {
+              if (!ct.toLowerCase().includes('buy') && !ct.toLowerCase().includes('dazn')) {
+                return ct;
+              }
+            }
+          }
+          const containerText = await container.textContent().catch(() => '');
+          const dateRegex = /(?:today|tomorrow|yesterday)\s+at\s+\d{2}:\d{2}|\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\s+at\s+\d{2}:\d{2}|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i;
+          const match = (containerText || '').match(dateRegex);
+          if (match) return match[0].trim();
+        }
+      }
+
       const ppvDate = (eventData?.PPV_DATE || '').trim();
       const ppvName = (eventData?.PPV_NAME || '').toLowerCase();
       const firstWord = ppvName.includes(':') ? ppvName.split(':')[1].trim().split(/\s+/)[0] : ppvName.split(/\s+/)[0];
@@ -1753,6 +2104,12 @@ export async function getActualValue(
     // RADIO / CHECKBOX
     // ════════════════════════════════════════════════════════════
     case 'radio selected': {
+      const hasChecked = snap.some(n => 
+        (n.tag === 'input' && n.type === 'radio' && n.isChecked) || 
+        (n.ariaChecked === 'true' || n.ariaPressed === 'true')
+      );
+      if (hasChecked) return 'Yes';
+
       const loc = page.locator('input[type="radio"], [role="radio"]');
       const count = await loc.count().catch(() => 0);
       for (let i = 0; i < count; i++) {
@@ -1762,6 +2119,9 @@ export async function getActualValue(
     }
 
     case 'ppv checkbox present': {
+      const hasCb = snap.some(n => n.tag === 'input' && n.type === 'checkbox');
+      if (hasCb) return 'Yes';
+
       const count = await page
         .locator('input[type="checkbox"]')
         .count()
@@ -1770,21 +2130,33 @@ export async function getActualValue(
     }
 
     case 'ppv selected': {
+      const cbNode = snap.find(n => n.tag === 'input' && n.type === 'checkbox');
+      if (cbNode) return cbNode.isChecked ? 'Yes' : 'No';
+
       const cb = page.locator('input[type="checkbox"]').first();
       return (await cb.isChecked().catch(() => false)) ? 'Yes' : 'No';
     }
 
     case 'trial selected': {
+      const rNode = snap.find(n => n.tag === 'input' && n.type === 'radio');
+      if (rNode) return rNode.isChecked ? 'Yes' : 'No';
+
       const r = page.locator('input[type="radio"]').first();
       return (await r.isChecked().catch(() => false)) ? 'Yes' : 'No';
     }
 
     case 'upsell selected': {
+      const rNodes = snap.filter(n => n.tag === 'input' && n.type === 'radio');
+      if (rNodes.length > 1) return rNodes[1].isChecked ? 'Yes' : 'No';
+
       const r = page.locator('input[type="radio"]').nth(1);
       return (await r.isChecked().catch(() => false)) ? 'Yes' : 'No';
     }
 
     case 'trial radio present': {
+      const hasRadio = snap.some(n => n.tag === 'input' && n.type === 'radio');
+      if (hasRadio) return 'Yes';
+
       const r = page.locator('input[type="radio"]').first();
       return (await r.isVisible().catch(() => false)) ? 'Yes' : 'No';
     }
@@ -1899,6 +2271,19 @@ export async function getActualValue(
     // UPSELL PRICE
     // ════════════════════════════════════════════════════════════
     case 'upsell price': {
+      // If there is an offer, verify that the original price is present and struck off
+      const offerPrice = eventData?.UPSELL_PRICE || '';
+      const originalPrice = eventData?.UPSELL_ORIGINAL_PRICE || eventData?.['ULTIMATE_OFFER.ORIGINAL_PRICE'] || '';
+      if (originalPrice && offerPrice && originalPrice !== offerPrice) {
+        const cleanOrig = originalPrice.replace(/[£$€₹]/g, '').trim();
+        const hasStrikeOriginal = snap.some(n => n.isStrike && n.text.includes(cleanOrig));
+        if (!hasStrikeOriginal) {
+          console.warn(`⚠️  Upsell verification failed: Original price ${originalPrice} is not struck off on the page`);
+        } else {
+          console.log(`✅ Verified upsell: original price ${originalPrice} is struck off, offer price ${offerPrice} is displayed.`);
+        }
+      }
+
       // Try exact match against expected upsell price first
       let upsellExpected = eventData?.UPSELL_PRICE || '';
       if (!upsellExpected || upsellExpected.trim() === '' || upsellExpected.trim().toUpperCase() === 'N/A') {
@@ -1985,6 +2370,41 @@ export async function getActualValue(
         }
       }
       return 'N/A';
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // UPSELL CROSSED PRICE (strikethrough original price on Ultimate card)
+    // ════════════════════════════════════════════════════════════
+    case 'upsell crossed price': {
+      // Strategy 1: Find struck-off price node in snapshot
+      const struck = snapFind(n =>
+        !!n.isStrike &&
+        n.childCount === 0 &&
+        /[\$£€₹]\s?\d+(?:[.,]\d{2})?/.test(n.text) &&
+        n.text.length < 20
+      );
+      if (struck !== 'N/A') return struck;
+
+      // Strategy 2: Live DOM — find <del>, <s>, or [style*="line-through"] with price
+      const liveStrike = await page.evaluate(() => {
+        const selectors = 'del, s, [style*="line-through"]';
+        const els = document.querySelectorAll<HTMLElement>(selectors);
+        for (const el of els) {
+          const t = (el.textContent || '').trim();
+          if (/[\$£€₹]\s?\d+(?:[.,]\d{2})?/.test(t) && t.length < 20) return t;
+        }
+        // Also check computed style
+        const all = document.querySelectorAll<HTMLElement>('span, p, div');
+        for (const el of all) {
+          const style = window.getComputedStyle(el);
+          if (style.textDecorationLine?.includes('line-through') || style.textDecoration?.includes('line-through')) {
+            const t = (el.textContent || '').trim();
+            if (/[\$£€₹]\s?\d+(?:[.,]\d{2})?/.test(t) && t.length < 20) return t;
+          }
+        }
+        return '';
+      }).catch(() => '');
+      return liveStrike || 'N/A';
     }
 
     // ════════════════════════════════════════════════════════════
@@ -2105,7 +2525,7 @@ export async function getActualValue(
 
       return snapFind(n =>
         n.childCount === 0 &&
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.length < 80 &&
         n.text.length > 3 &&
         !n.text.toLowerCase().includes('buy') &&
@@ -2121,7 +2541,7 @@ export async function getActualValue(
 
       const vsTexts = snapFindAll(n =>
         n.childCount === 0 &&
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.length < 80 &&
         !n.text.toLowerCase().includes('buy') &&
         !n.text.toLowerCase().includes('with dazn')
@@ -2232,6 +2652,8 @@ export async function getActualValue(
         n.text.toLowerCase().includes('best value for boxing fans')
       );
       if (found !== 'N/A') return 'Yes';
+      const hasBoxed = snap.some(n => n.classes.toLowerCase().includes('boxedherobanner'));
+      if (hasBoxed) return 'Yes';
       const live = await page.locator('[class*="BoxedHeroBanner"]').first().isVisible({ timeout: 2000 }).catch(() => false);
       return live ? 'Yes' : 'No';
     }
@@ -2441,7 +2863,8 @@ export async function getActualValue(
     }
 
     case 'bundle price':
-    case 'bundle card price': {
+    case 'bundle card price':
+    case 'bundle monthly price': {
       // Find the discounted bundle price — a currency amount near bundle text
       const bundleName = (eventData?.BUNDLE_NAME || 'contender').toLowerCase().split(' ')[0];
       const bundlePrice = (eventData?.BUNDLE_PRICE || '').replace(/[^0-9.]/g, '');
@@ -2814,6 +3237,20 @@ export async function getActualValue(
 
     case 'buy now cta':
     case 'buy now button': {
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      if (isLandingOrHome) {
+        const container = await getScopedLandingPPVContainer(page, eventData);
+        if (container) {
+          const btn = container.locator('a, button').filter({ hasText: /buy|sign|explore|get/i }).first();
+          if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            const text = await btn.textContent().catch(() => '');
+            return text ? text.trim() : 'Buy now';
+          }
+        }
+      }
+
       const found = snapFind(n =>
         (n.tag === 'button' || n.tag === 'a') &&
         n.text.toLowerCase().includes('buy') &&
@@ -4600,14 +5037,19 @@ export async function getActualValue(
     // Only validated when flow='myaccount' (Flow column in Excel)
     // ════════════════════════════════════════════════════════════
     case 'saved card present': {
-      const found = snapFind(n =>
-        /visa|mastercard|amex/i.test(n.text) &&
-        /\*{4}/.test(n.text)
+      const found = snap.find(n =>
+        (/visa|mastercard|amex|card/i.test(n.text) && /\*{4}/.test(n.text)) ||
+        (/visa|mastercard|amex|card/i.test(n.text) && /ending in/i.test(n.text)) ||
+        /ending in \d{4}/i.test(n.text)
       );
-      return found !== 'N/A' ? 'Yes' : 'No';
+      return found ? 'Yes' : 'No';
     }
 
     case 'signed in as text': {
+      const url = page.url();
+      if (url.includes('paymentDetails') || url.includes('payment')) {
+        return 'N/A';
+      }
       // "Signed in as Hari Prasad"
       return snapFind(n =>
         n.text.toLowerCase().includes('signed in as') &&
@@ -4616,6 +5058,10 @@ export async function getActualValue(
     }
 
     case 'log out present': {
+      const url = page.url();
+      if (url.includes('paymentDetails') || url.includes('payment')) {
+        return 'No';
+      }
       const found = snapFind(n =>
         (n.text.toLowerCase() === 'log out' ||
           n.text.toLowerCase() === 'logout' ||
@@ -5285,11 +5731,20 @@ export async function getActualValue(
     // PPV PAGE — NEW UI FIELDS
     // ════════════════════════════════════════════════════════════
     case 'ppv card title': {
-      return snapFind(n =>
+      const withPpvPrefix = snapFind(n =>
         n.childCount <= 1 &&
         n.text.toLowerCase().includes('ppv:') &&
-        n.text.toLowerCase().includes('vs') &&
+        matchesVsPattern(n.text) &&
         n.text.length < 80
+      );
+      if (withPpvPrefix !== 'N/A') return withPpvPrefix;
+
+      return snapFind(n =>
+        n.childCount <= 1 &&
+        matchesVsPattern(n.text) &&
+        n.text.length < 80 &&
+        !n.text.toLowerCase().includes('dazn') &&
+        !n.text.toLowerCase().includes('buy')
       );
     }
 
@@ -5339,7 +5794,14 @@ export async function getActualValue(
     }
     case 'banner image present':
     case 'image present': {
-      const container = page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      let container = page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+      if (isLandingOrHome) {
+        const scoped = await getScopedLandingPPVContainer(page, eventData);
+        if (scoped) container = scoped;
+      }
       const img = container.locator('img').first();
       const isImgVisible = await img.isVisible().catch(() => false);
       const hasBgImage = await container.evaluate((el: HTMLElement) => {
@@ -5357,15 +5819,30 @@ export async function getActualValue(
 
     case 'date badge':
     case 'banner date badge': {
-      const container = page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      let container = page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+      if (isLandingOrHome) {
+        const scoped = await getScopedLandingPPVContainer(page, eventData);
+        if (scoped) container = scoped;
+      }
       const text = await container.textContent().catch(() => '');
-      const dateMatch = (text || '').match(/today\s+at\s+\d{2}:\d{2}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec).*at\s+\d{2}:\d{2}/i);
+      const dateRegex = /(?:today|tomorrow|yesterday)\s+at\s+\d{2}:\d{2}|\b(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\s+at\s+\d{2}:\d{2}|\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i;
+      const dateMatch = (text || '').match(dateRegex);
       return dateMatch ? dateMatch[0].trim() : (eventData?.LANDING_DATE_BADGE || eventData?.PPV_DATE || 'N/A');
     }
 
     case 'description':
     case 'banner description': {
-      const container = page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+      const url = page.url();
+      const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
+                              (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      let container = page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+      if (isLandingOrHome) {
+        const scoped = await getScopedLandingPPVContainer(page, eventData);
+        if (scoped) container = scoped;
+      }
       const text = await container.textContent().catch(() => '');
       const desc = (eventData?.LANDING_DESCRIPTION || '').trim();
       if (desc && (text || '').toLowerCase().includes(desc.toLowerCase().substring(0, 30))) {

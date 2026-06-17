@@ -25,9 +25,23 @@ function matchCandidates(result: any): string[] {
     if (s.includes('|')) s = s.split('|')[0].trim();
     if (NON_TEXT.has(s.toLowerCase())) return;
     if (s.length < 2) return;
-    // Long strings rarely match verbatim — cap to a distinctive leading slice
-    if (s.length > 60) s = s.slice(0, 60).trim();
+
     if (!out.includes(s)) out.push(s);
+
+    // If it contains newlines or punctuation, try pushing parts
+    const parts = s.split(/[\n\r\-–—:•]+/).map(p => p.trim()).filter(p => p.length >= 4);
+    for (const part of parts) {
+      if (!out.includes(part)) out.push(part);
+    }
+
+    // Try first 4 words for long strings
+    const words = s.split(/\s+/).filter(Boolean);
+    if (words.length > 4) {
+      const shortPhrase = words.slice(0, 4).join(' ');
+      if (!out.includes(shortPhrase) && shortPhrase.length >= 4) {
+        out.push(shortPhrase);
+      }
+    }
   };
   // Prefer the ACTUAL rendered value (it is what's on the page), then expected
   push(result.actual);
@@ -42,10 +56,13 @@ function safeName(s: string): string {
 async function findTarget(page: any, candidates: string[]): Promise<any | null> {
   for (const text of candidates) {
     try {
-      const loc = page.getByText(text, { exact: false }).first();
-      if ((await loc.count().catch(() => 0)) > 0 &&
-          (await loc.isVisible().catch(() => false))) {
-        return loc;
+      const locator = page.getByText(text, { exact: false });
+      const count = await locator.count().catch(() => 0);
+      for (let i = 0; i < count; i++) {
+        const item = locator.nth(i);
+        if (await item.isVisible().catch(() => false)) {
+          return item;
+        }
       }
     } catch { /* try next candidate */ }
   }
@@ -79,7 +96,8 @@ export async function captureFailures(
       const target = await findTarget(page, matchCandidates(r));
 
       if (target) {
-        await target.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+        console.log(`🎯 [Fail Shot] Highlight target found for field "${field}": "${(await target.textContent().catch(() => '')).trim().substring(0, 50)}"`);
+        await target.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => { });
         handle = await target.elementHandle().catch(() => null);
         if (handle) {
           // Draw a red highlight box around the failing element
@@ -87,11 +105,13 @@ export async function captureFailures(
             (el as any).__prevOutline = el.style.outline;
             (el as any).__prevShadow = el.style.boxShadow;
             (el as any).__prevOffset = el.style.outlineOffset;
-            el.style.outline = '4px solid #ff1744';
-            el.style.outlineOffset = '2px';
-            el.style.boxShadow = '0 0 0 4px rgba(255,23,68,0.35)';
+            (el as any).__prevBackground = el.style.backgroundColor;
+            el.style.setProperty('outline', '4px solid #ff1744', 'important');
+            el.style.setProperty('outline-offset', '2px', 'important');
+            el.style.setProperty('box-shadow', '0 0 0 4px rgba(255,23,68,0.35)', 'important');
+            el.style.setProperty('background-color', 'rgba(255, 23, 68, 0.2)', 'important');
             el.scrollIntoView({ block: 'center', inline: 'center' });
-          }, handle).catch(() => {});
+          }, handle).catch(() => { });
           await page.waitForTimeout(150);
         }
       }
@@ -100,10 +120,10 @@ export async function captureFailures(
       await page.evaluate(() => {
         document.documentElement.style.overflow = '';
         document.body.style.overflow = '';
-      }).catch(() => {});
+      }).catch(() => { });
       await page.waitForTimeout(100);
       // Viewport screenshot (element is centered & boxed when found)
-      await page.screenshot({ path: file, fullPage: false }).catch(() => {});
+      await page.screenshot({ path: file, fullPage: false }).catch(() => { });
       if (fs.existsSync(file)) {
         r.screenshot = file;
         console.log(`📸 [Fail Shot] ${pageName} · ${field} → ${file}`);
@@ -117,7 +137,8 @@ export async function captureFailures(
           el.style.outline = (el as any).__prevOutline || '';
           el.style.boxShadow = (el as any).__prevShadow || '';
           el.style.outlineOffset = (el as any).__prevOffset || '';
-        }, handle).catch(() => {});
+          el.style.backgroundColor = (el as any).__prevBackground || '';
+        }, handle).catch(() => { });
       }
     }
   }

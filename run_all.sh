@@ -2,7 +2,7 @@
 
 REGION="${DAZN_REGION:-IN}"
 ENV="${DAZN_ENV:-prod}"
-SPEC="tests/new_user/ppv.spec.ts"
+SPEC="tests/new_user/newuser.ppv.spec.ts"
 CONFIG_DIR="config/$ENV"
 
 echo "🚀 Discovering all PPV configs in: $CONFIG_DIR"

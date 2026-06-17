@@ -24,6 +24,12 @@ const boxingLandingData = [
   { Field: 'Buy Fight CTA', Expected: 'Buy this fight for {{PPV_PRICE}}', Flow: 'boxing' },
   { Field: 'Get Included CTA', Expected: 'Get included in DAZN Ultimate', Flow: 'boxing' },
   { Field: 'Best Value Badge', Expected: 'Best value for boxing fans', Flow: 'boxing' },
+  { Field: 'Upcoming Big Fights Heading', Expected: 'Upcoming Big Fights', Flow: 'boxing-upcoming' },
+  { Field: 'PPV Name', Expected: '{{PPV_NAME}}', Flow: 'boxing-upcoming' },
+  { Field: 'PPV Date and Time Text', Expected: '{{PPV_DATE}}', Flow: 'boxing-upcoming' },
+  { Field: 'PPV Description Text', Expected: '{{PPV_LOCATION}}', Flow: 'boxing-upcoming' },
+  { Field: 'PPV Image Present', Expected: 'Yes', Flow: 'boxing-upcoming' },
+  { Field: 'Buy Now CTA', Expected: 'Buy now', Flow: 'boxing-upcoming' },
   // ── Bundle section on /boxing page ───────────────────────
   { Field: 'Bundle Section Present', Expected: 'Yes', Flow: 'boxing-bundle' },
   { Field: 'Bundle Section Title', Expected: '{{BUNDLE_SECTION_TITLE}}', Flow: 'boxing-bundle' },

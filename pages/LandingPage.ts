@@ -14,12 +14,13 @@ export class LandingPage extends BasePage {
     const url = `${baseUrl}/welcome`;
     console.log(`🌍 Navigating to: ${url}`);
     await this.page.goto(url, { waitUntil: 'domcontentloaded' });
-    await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
     await this.dismissConsentIfPresent();
-    await this.page.waitForSelector(
-      'a:has-text("Buy now"), button:has-text("Buy now")',
-      { state: 'visible', timeout: 8000 }
-    ).catch(() => { });
+
+    // Wait for the page structure (main content or banner or explore button) to render
+    const pageLoadedIndicator = this.page.locator('main [class*="banner"], main .swiper, a:has-text("Buy now"), button:has-text("Buy now"), button:has-text("Explore"), a:has-text("Explore")').first();
+    await pageLoadedIndicator.waitFor({ state: 'visible', timeout: 8000 }).catch(() => { });
+
     console.log(`✅ Landed on: ${this.page.url()}`);
   }
 
@@ -27,19 +28,20 @@ export class LandingPage extends BasePage {
   // DISMISS CONSENT
   // ─────────────────────────────
   async dismissConsentIfPresent(): Promise<void> {
-    await this.page.waitForTimeout(500); // Brief pause for async cookie banner to render
-    await this.waitForConsentAndDismiss(15000);
+    // Cookie banner is now dismissed via UI click in handleCookies()
+    const { handleCookies } = await import('../utils/helpers.js');
+    await handleCookies(this.page);
   }
 
   // ─────────────────────────────
   // FIND BANNER CAROUSEL CONTAINER (resilient selector)
   // ─────────────────────────────
   protected bannerCarousel(): import('@playwright/test').Locator {
-    // Use a broad selector to find the hero banner carousel
+    // Use a broad selector to find the hero banner carousel, excluding rail swipers
     return this.page.locator([
       'main [class*="banner"]',
       'main [class*="hero"]',
-      'main .swiper',
+      'main .swiper:not([class*="rail" i]):not([class*="tiles" i])',
       'section[class*="banner"]',
       '[class*="heroBanner"]',
       '[class*="hero-banner"]',
@@ -50,8 +52,9 @@ export class LandingPage extends BasePage {
   // ─────────────────────────────
   // GET ALL BANNER SLIDES (resilient selector)
   // ─────────────────────────────
-  protected bannerSlides(): import('@playwright/test').Locator {
-    return this.page.locator('.swiper-slide:not(.swiper-slide-duplicate)');
+  protected bannerSlides(carousel?: import('@playwright/test').Locator): import('@playwright/test').Locator {
+    const parent = carousel || this.bannerCarousel();
+    return parent.locator('.swiper-slide:not(.swiper-slide-duplicate)');
   }
 
   // ─────────────────────────────
@@ -138,15 +141,15 @@ export class LandingPage extends BasePage {
     // Stop auto-slide
     await this.stopCarouselAutoSlide();
 
-    // Check if carousel exists
+    // Check if carousel exists (wait for it to become visible)
     const carousel = this.bannerCarousel();
-    if (!await carousel.isVisible({ timeout: 1500 }).catch(() => false)) {
+    if (!await carousel.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false)) {
       console.log('⚠️  [Banner] No banner carousel found on page');
       return null;
     }
 
     // Check active slide first — try selectors.json path, then fallback to carousel content
-    const activeSlide = this.page.locator(selectors.banner.activeSlide).filter({ visible: true }).first();
+    const activeSlide = this.page.locator(selectors.banner.activeSlide).locator(':visible').first();
     let activeText = '';
     if (await activeSlide.isVisible({ timeout: 1000 }).catch(() => false)) {
       activeText = (await activeSlide.textContent().catch(() => ''))?.trim() || '';
@@ -182,9 +185,9 @@ export class LandingPage extends BasePage {
         await this.stopCarouselAutoSlide();
 
         let currentText = '';
-        let current = carousel.locator(selectors.banner.activeSlide).filter({ visible: true }).first();
+        let current = carousel.locator(selectors.banner.activeSlide).locator(':visible').first();
         if (!await current.isVisible().catch(() => false)) {
-          current = this.page.locator(selectors.banner.activeSlide).filter({ visible: true }).first();
+          current = this.page.locator(selectors.banner.activeSlide).locator(':visible').first();
         }
 
         if (await current.isVisible({ timeout: 1000 }).catch(() => false)) {
@@ -212,15 +215,31 @@ export class LandingPage extends BasePage {
 
         console.log(`  slide ${attempt + 1}: "${currentText.substring(0, 50)}..." — clicking next`);
 
+        const prevText = currentText;
         if (await nextBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
           await nextBtn.click({ force: true }).catch(() => { });
-          await this.page.waitForTimeout(500);
+
+          // Wait up to 3 seconds for slide text to change
+          await this.page.waitForFunction((args) => {
+            const activeEl = document.querySelector(args.activeSelector);
+            const text = activeEl?.textContent?.trim() || '';
+            return text !== args.prevText;
+          }, { activeSelector: selectors.banner.activeSlide, prevText }, { timeout: 3000 }).catch(() => { });
+
+          await this.page.waitForTimeout(800); // Wait a brief moment for swiper to fully settle
           await this.stopCarouselAutoSlide();
         } else {
           // Try clicking carousel area to trigger slide change
           console.log('⚠️  Next button not visible — trying carousel click');
           await carousel.click({ force: true }).catch(() => { });
-          await this.page.waitForTimeout(500);
+
+          await this.page.waitForFunction((args) => {
+            const activeEl = document.querySelector(args.activeSelector);
+            const text = activeEl?.textContent?.trim() || '';
+            return text !== args.prevText;
+          }, { activeSelector: selectors.banner.activeSlide, prevText }, { timeout: 3000 }).catch(() => { });
+
+          await this.page.waitForTimeout(800);
           await this.stopCarouselAutoSlide();
 
           if (attempt > 3) {
@@ -235,7 +254,7 @@ export class LandingPage extends BasePage {
 
     // Check all slides directly using the resilient selector
     console.log('🔍 [Banner] Checking all slides (resilient selector)...');
-    const allSlides = this.bannerSlides();
+    const allSlides = this.bannerSlides(carousel);
     const slideCount = await allSlides.count().catch(() => 0);
 
     for (let i = 0; i < slideCount; i++) {
@@ -365,7 +384,7 @@ export class LandingPage extends BasePage {
     console.log('✅ [Tile] Rail wrapper container found');
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PHASE 2.5: Build image selector for PPV tile (same approach as SportsLandingPage)
+    // PHASE 2.5: Build image selector for PPV tile (same approach as BoxingHomePage)
     // ─────────────────────────────────────────────────────────────────────────
     // Build an exclusion selector to avoid matching ancillary content
     const exclusions = [
@@ -387,23 +406,65 @@ export class LandingPage extends BasePage {
     const ppvImg = railWrapper.locator(imgSelector).first();
     const ppvTileLink = ppvImg.locator('xpath=ancestor::a[1]');
 
+    const textTileLocator = railWrapper.locator('.swiper-slide, [class*="tile" i], article, li').filter({
+      hasText: fighter1 && fighter2 ? new RegExp(`${fighter1}|${fighter2}`, 'i') : ppvName
+    }).first();
+
     // Helper: check if the PPV tile is currently in view (with retry for transient detachments)
     const isTileInView = async (): Promise<any> => {
       for (let retry = 0; retry < 2; retry++) {
-        const imgCount = await ppvImg.count().catch(() => 0);
-        if (imgCount === 0) {
-          if (retry === 0) {
-            // Swiper may be animating — wait briefly and retry
-            await this.page.waitForTimeout(400);
-            continue;
+        // Strategy A: Find by Text Content
+        const candidates = railWrapper.locator('.swiper-slide, [class*="tile" i], article, li');
+        const count = await candidates.count().catch(() => 0);
+        for (let i = 0; i < count; i++) {
+          const el = candidates.nth(i);
+          if (await el.isVisible().catch(() => false)) {
+            const text = (await el.textContent().catch(() => '')) || '';
+            const match = matchesPPV(text) ||
+              (fighter1 && text.toLowerCase().includes(fighter1.toLowerCase())) ||
+              (fighter2 && text.toLowerCase().includes(fighter2.toLowerCase()));
+            
+            if (match) {
+              const inView = await el.evaluate((node: HTMLElement) => {
+                const r = node.getBoundingClientRect();
+                return r.width > 0 && r.right > 0 && r.left < window.innerWidth;
+              }).catch(() => false);
+              
+              if (inView) {
+                const buyNowBtn = el.locator('button:has-text("Buy now"), button:has-text("Buy"), a:has-text("Buy now"), a:has-text("Buy")').first();
+                if (await buyNowBtn.isVisible().catch(() => false)) {
+                  console.log('✅ Found matching tile and its Buy Now button in view');
+                  return buyNowBtn;
+                }
+                const anchor = el.locator('xpath=self::a | ancestor-or-self::a').first();
+                if (await anchor.count().catch(() => 0) > 0) {
+                  console.log('✅ Found matching tile anchor in view');
+                  return anchor;
+                }
+                console.log('✅ Found matching tile element in view');
+                return el;
+              }
+            }
           }
-          return null;
         }
-        const inView = await ppvImg.evaluate((el: HTMLElement) => {
-          const r = el.getBoundingClientRect();
-          return r.width > 0 && r.right > 0 && r.left < window.innerWidth;
-        }).catch(() => false);
-        return inView ? ppvTileLink : null;
+
+        // Strategy B: Fallback to original image alt-text search
+        const imgCount = await ppvImg.count().catch(() => 0);
+        if (imgCount > 0) {
+          const inView = await ppvImg.evaluate((el: HTMLElement) => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.right > 0 && r.left < window.innerWidth;
+          }).catch(() => false);
+          if (inView) {
+            console.log('✅ Found matching tile via image alt-text in view');
+            return ppvTileLink;
+          }
+        }
+
+        if (retry === 0) {
+          await this.page.waitForTimeout(400);
+          continue;
+        }
       }
       return null;
     };
@@ -426,7 +487,7 @@ export class LandingPage extends BasePage {
     await this.page.waitForTimeout(500);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PHASE 3: Navigate the swiper rail — click > until PPV tile is found (same as SportsLandingPage)
+    // PHASE 3: Navigate the swiper rail — click > until PPV tile is found (same as BoxingHomePage)
     // ─────────────────────────────────────────────────────────────────────────
     let clicks = 0;
     const maxClicks = 30;
@@ -474,9 +535,11 @@ export class LandingPage extends BasePage {
     console.log(`✅ [Tile] Swiper "Next" clicks performed: ${clicks}`);
 
     // Fallback: if tile exists in DOM but not in viewport, scroll it into view
-    if (!found && (await ppvImg.count()) > 0) {
+    const hasTextTile = await textTileLocator.count().catch(() => 0) > 0;
+    if (!found && (hasTextTile || (await ppvImg.count()) > 0)) {
       console.log('🔍 [Tile] Tile in DOM but not visible — scrolling into view');
-      await ppvImg.scrollIntoViewIfNeeded().catch(() => { });
+      const scrollTarget = hasTextTile ? textTileLocator : ppvImg;
+      await scrollTarget.scrollIntoViewIfNeeded().catch(() => { });
       await this.page.waitForTimeout(500);
       found = await isTileInView();
     }
@@ -620,7 +683,7 @@ export class LandingPage extends BasePage {
     return ppvTile;
   }
 
-async findPPVContainer(eventData: Record<string, string>, source?: string): Promise<any> {
+  async findPPVContainer(eventData: Record<string, string>, source?: string): Promise<any> {
     const src = (source || '').toLowerCase();
 
     if (src === 'welcome-rail') {
@@ -635,14 +698,12 @@ async findPPVContainer(eventData: Record<string, string>, source?: string): Prom
       return this.findPPVInTileSection(eventData);
     }
 
-    // Default landing behavior is banner-only. Do not fall back to the
-    // Don't Miss rail here; tile/rail flows must opt in via source.
-    const bannerResult = await this.findPPVInBanner(eventData);
-    if (bannerResult) return bannerResult;
-
-    console.log(`⚠️ [Landing] PPV banner not found for "${eventData.PPV_NAME || ''}". Ending banner flow.`);
-    return null;
-}
+    // Strict source validation — no cross-source fallback
+    throw new Error(
+      `❌ PPV not found in expected source: "${source || 'unknown'}". ` +
+      `No fallback search will be attempted. Valid sources: landing-page-banner, landing-page-dont-miss-live, welcome-rail.`
+    );
+  }
 
   async clickBuyNow(container: any, source?: string): Promise<void> {
     if (!container) {
@@ -781,25 +842,22 @@ async findPPVContainer(eventData: Record<string, string>, source?: string): Prom
         // The container might BE the Buy Now link (e.g., <a> with "Buy now" text)
         if (/buy now/i.test(containerText)) {
           buyNowBtn = targetContainer;
-        } else if (src.includes('banner')) {
-          // If it's a banner slide, find any visible link or button inside the slide
-          const anyBtn = targetContainer.locator('a, button, [role="button"]').filter({ visible: true }).first();
-          if (await anyBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-            console.log('✅ Found custom CTA button inside banner slide');
-            buyNowBtn = anyBtn;
-          } else {
-            console.log('⚠️ No CTA button inside banner slide — clicking slide container itself');
-            buyNowBtn = targetContainer;
-          }
+        } else if (src.includes('banner') || src.includes('tile') || src.includes('dont-miss')) {
+          // Strict: for banner/tile sources, do NOT fall back to clicking random buttons
+          throw new Error(
+            `❌ [${src.includes('banner') ? 'Banner' : 'Tile'}] "Buy Now" button not found inside PPV container. ` +
+            `Container text: "${containerText.substring(0, 100)}". ` +
+            `Will not click arbitrary buttons — the PPV may not have a Buy Now CTA in this source.`
+          );
         } else {
-          buyNowBtn = null; // Force fallback
+          buyNowBtn = null; // Force fallback for other sources
         }
       }
     }
 
     // Fallback: container is empty/stale — search page-level for visible Buy Now
     if (!buyNowBtn || containerText.length === 0) {
-      if (src.includes('tile')) {
+      if (src.includes('tile') || src.includes('dont-miss')) {
         throw new Error(`❌ [Tile] Buy Now button not found or stale inside PPV tile container.`);
       }
       if (src.includes('banner')) {
@@ -867,7 +925,10 @@ async findPPVContainer(eventData: Record<string, string>, source?: string): Prom
       if (handle) {
         await this.page.evaluate((el: any) => el.click(), handle);
       } else {
-        // Last resort: click any visible Buy Now via page.evaluate
+        // Last resort: for constrained sources, do NOT search entire page
+        if (src.includes('banner') || src.includes('tile') || src.includes('dont-miss')) {
+          throw new Error(`❌ [${src}] elementHandle failed — cannot click Buy Now. Will not search entire page.`);
+        }
         console.log('⚠️  elementHandle failed — trying page.evaluate click');
         await this.page.evaluate(() => {
           const btns = document.querySelectorAll('a, button');

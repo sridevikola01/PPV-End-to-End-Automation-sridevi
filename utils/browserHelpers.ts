@@ -88,8 +88,8 @@ const isVisible = await locator.isVisible().catch(() => false);
 if (!isVisible) {
   console.log(`📜 Scrolling ${label} into viewport...`);
   await locator.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(300);
-} await scrollIntoViewSmart(page, locator, label);
+}
+await scrollIntoViewSmart(page, locator, label);
 
       // ✅ CLICK + NAVIGATION (CORRECT WAY)
       if (waitForNav) {
@@ -125,35 +125,3 @@ if (!isVisible) {
   return false;
 }
 
-/**
- * Removes all overlay elements (cookie banners, modals, backdrops)
- * Only removes elements with high z-index or fixed positioning
- * @param page - Playwright page object
- */
-export async function removeOverlays(page: any): Promise<void> {
-  await page.evaluate(() => {
-    const overlaySelectors = [
-      '[id*="onetrust"]',
-      '[class*="onetrust"]',
-      '[class*="cookie"]',
-      '[class*="consent"]',
-      '[class*="dark-filter"]',
-      '[class*="backdrop"]',
-      '[class*="overlay"]',
-
-    ];
-    
-    overlaySelectors.forEach(selector => {
-      document.querySelectorAll(selector).forEach(el => {
-        const element = el as HTMLElement;
-        const style = window.getComputedStyle(element);
-        if (style.position === 'fixed' || parseInt(style.zIndex || '0') > 100) {
-          element.remove();
-        }
-      });
-    });
-    
-    document.body.style.overflow = 'auto';
-    document.documentElement.style.overflow = 'auto';
-  }).catch(() => {});
-}

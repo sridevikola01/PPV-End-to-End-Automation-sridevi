@@ -1,6 +1,5 @@
 import { Page, Locator, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
-import { handleCookies, stabilisePage } from '../utils/helpers';
 
 export class SearchPage extends BasePage {
   constructor(page: Page) {
@@ -13,11 +12,8 @@ export class SearchPage extends BasePage {
     console.log(`🔍 Navigating to: ${url}`);
     await this.page.goto(url);
     await this.page.waitForLoadState('domcontentloaded');
+    await this.waitForConsentAndDismiss();
     await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
-
-    // Accept cookies immediately
-    await handleCookies(this.page);
-    await stabilisePage(this.page);
 
     console.log('✅ Search page loaded');
   }
@@ -236,16 +232,13 @@ export class SearchPage extends BasePage {
         await exploreBtn.click({ force: true });
         await this.page.waitForLoadState('domcontentloaded');
         await this.page.waitForTimeout(2000);
-        await handleCookies(this.page, 5000);
-        await stabilisePage(this.page);
+
         console.log(`📍 After Explore click, URL: ${this.page.url()}`);
       } else {
         console.log('⚠️  "Explore" button not found — navigating to home page directly');
         const baseUrl = landingPageUrl.match(/https:\/\/[^\/]+\/en-[A-Z]+/i)?.[0] || 'https://www.dazn.com/en-GB';
         await this.page.goto(`${baseUrl}/home`, { waitUntil: 'domcontentloaded' });
         await this.page.waitForTimeout(2000);
-        await handleCookies(this.page, 5000);
-        await stabilisePage(this.page);
       }
 
       await this.page.screenshot({ path: 'test-results/devmode-02-after-explore-home.png', fullPage: false }).catch(() => { });
@@ -256,8 +249,7 @@ export class SearchPage extends BasePage {
       const baseUrl = this.page.url().match(/https:\/\/[^\/]+\/en-[A-Z]+/i)?.[0] || 'https://www.dazn.com/en-GB';
 
       // Ensure cookies are dismissed before clicking search link
-      await handleCookies(this.page, 3000);
-      await stabilisePage(this.page);
+
 
       const searchLink = this.page.locator('header a[href*="/search"]').first();
       const searchVisible = await searchLink.isVisible({ timeout: 5000 }).catch(() => false);
@@ -269,15 +261,13 @@ export class SearchPage extends BasePage {
           searchLink.click({ force: true })
         ]);
         await this.page.waitForTimeout(2000);
-        await handleCookies(this.page, 3000);
-        await stabilisePage(this.page);
+
       } else {
         console.log('⚠️  Search link not found, navigating directly');
         for (let retries = 0; retries < 3; retries++) {
           await this.page.goto(`${baseUrl}/search`, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => { });
           await this.page.waitForTimeout(2000);
-          await handleCookies(this.page, 5000);
-          await stabilisePage(this.page);
+
           if (this.page.url().includes('/search')) {
             console.log('✅ Successfully landed on search page');
             break;

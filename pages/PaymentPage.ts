@@ -1,8 +1,13 @@
-import { Page } from '@playwright/test';
+import { Page, Frame } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { resolveExpected } from '../utils/resolveExpected';
 import { compare } from '../utils/compare';
 import { captureFailures } from '../utils/failureCapture';
+
+const CARD_NUMBER_FRAME = 'Secure card number input frame';
+const EXPIRY_DATE_FRAME = 'Secure card expiration date input frame';
+const CVV_FRAME = 'Secure card security code input frame';
+const CARD_HOLDER_FRAME = 'Secure text input frame';
 
 export class PaymentPage extends BasePage {
   constructor(page: Page) {
@@ -49,17 +54,35 @@ export class PaymentPage extends BasePage {
       return;
     }
 
+    eventData.CURRENT_PAGE = 'payment';
+    eventData['CURRENT_PAGE'] = 'payment';
+
     console.log(`\n🧾 Validating Payment page — ${data.length} fields`);
 
-    // Wait for payment page to load
+    // Wait for payment page to fully load — single smart wait, max 4s total
     await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+    await this.page.waitForFunction(() => {
+      const body = document.body.innerText.toLowerCase();
+      return (
+        body.includes('choose how to pay') ||
+        body.includes('payment method') ||
+        body.includes('purchase summary') ||
+        body.includes('today you pay')
+      );
+    }, { timeout: 4000 }).catch(() => {});
 
-    // Wait for the credit card section to be visible (payment method options loaded)
-    await this.page.locator('section[id="Credit & Debit Card"]')
-      .waitFor({ state: 'visible', timeout: 15000 })
-      .catch(() => {
-        console.log('⚠️ Credit & Debit Card section not found within timeout — continuing');
-      });
+    // Wait for payment options to load (wait for "Credit" or "PayPal" or "Google Pay" text to become visible)
+    console.log('⏳ Waiting for payment methods (Credit, PayPal, Google Pay) to load...');
+    await this.page.locator('section[id*="Card" i], section[id*="Pay" i], .accordion-cta-refined___3csKv, button:has-text("Credit"), button:has-text("Pay")')
+      .first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+    
+    // Also wait until the loading skeleton overlay disappears and the text is populated
+    await this.page.waitForFunction(() => {
+      const body = document.body.innerText.toLowerCase();
+      return body.includes('credit') || body.includes('paypal') || body.includes('google pay');
+    }, { timeout: 10000 }).catch(() => {
+      console.log('⚠️ Warning: payment options text did not appear within 10s');
+    });
 
     // Dynamically extract name from page — fast targeted selector
     let signedInText = '';
@@ -312,55 +335,51 @@ export class PaymentPage extends BasePage {
     }
 
     // ── Header ─────────────────────────────────────────────────
-    if (fieldLower === 'header' || fieldLower === 'page header' || fieldLower === 'subheader') {
-      const headerLines = bodyText.split('\n').map(l => l.trim()).filter(l => l.length > 20 && l.length < 200);
+    if (fieldLower === 'header' || fieldLower === 'page header') {
+      // The payment page header is the sticky top bar text
+      // e.g. "Choose how to pay after your free trial" or "Choose how to pay"
       
-      const knownHeaders = [
-        'payment is encrypted',
-        'change how you pay',
-        '81% off',
-        '20% off',
-        'first month free'
+      // Strategy 1: Look for the known header text patterns directly in body
+      const headerPatterns = [
+        /choose how to pay after your free trial/i,
+        /choose how to pay/i,
+        /add to your subscription/i,
       ];
-      if (eventData.PAYMENT_HEADER) {
-        knownHeaders.push(eventData.PAYMENT_HEADER.toLowerCase());
-      }
-
-      for (const line of headerLines) {
-        const lowerLine = line.toLowerCase();
-        for (const kh of knownHeaders) {
-          if (lowerLine.includes(kh)) return line;
-        }
-      }
-
-      for (const line of headerLines) {
-        if (/payment\s+is\s+encrypted/i.test(line)) return line;
-        if (/secure/i.test(line) && /pay/i.test(line)) return line;
-      }
-      // Try live DOM search via locator for encrypted text (which might be hidden/collapsed)
-      const liveEncrypted = await this.page.locator('p, span, div')
-        .filter({ hasText: /encrypted/i })
-        .first()
-        .textContent()
-        .then((t: string | null) => (t || '').trim())
-        .catch(() => '');
-      if (liveEncrypted && liveEncrypted.toLowerCase().includes('encrypted')) {
-        return liveEncrypted;
+      for (const pattern of headerPatterns) {
+        const match = bodyText.match(pattern);
+        if (match) return match[0].trim();
       }
       
-      // Fallback only to non-cancellation lines
-      if (headerLines.length > 1) {
-        const line = headerLines[1];
-        const lowerLine = line.toLowerCase();
-        if (
-          !lowerLine.includes('cancel') &&
-          !lowerLine.includes('charged') &&
-          !lowerLine.includes('billed') &&
-          !lowerLine.includes('minimum term')
-        ) {
-          return line;
+      // Strategy 2: Live DOM — find sticky header / nav bar element
+      const stickySelectors = [
+        'header',
+        '[class*="sticky" i]',
+        '[class*="topbar" i]',
+        '[class*="header" i]',
+        'nav',
+        '[role="banner"]',
+      ];
+      for (const sel of stickySelectors) {
+        try {
+          const el = this.page.locator(sel).first();
+          if (await el.isVisible({ timeout: 1000 }).catch(() => false)) {
+            const text = ((await el.textContent().catch(() => '')) || '').trim();
+            if (text && /choose how to pay/i.test(text) && text.length < 100) {
+              return text;
+            }
+          }
+        } catch { }
+      }
+      
+      // Strategy 3: Use PAYMENT_PAGE_TITLE from eventData (already resolved correctly)
+      const paymentTitle = eventData.PAYMENT_PAGE_TITLE || '';
+      if (paymentTitle && paymentTitle !== 'N/A') {
+        // Verify it actually appears on the page
+        if (bodyText.toLowerCase().includes(paymentTitle.toLowerCase().substring(0, 20))) {
+          return paymentTitle;
         }
       }
+      
       return 'N/A';
     }
 
@@ -432,6 +451,34 @@ export class PaymentPage extends BasePage {
       const match = bodyText.match(regex);
       if (match) return match[0].trim();
 
+      // Fallback: match by fighter names (handles "v" vs "vs." mismatch)
+      // Extract distinct name parts (words > 3 chars, excluding separators)
+      const nameParts = ppvName
+        .split(/\bvs?\b\.?|\s*[-–—:]\s*/i)
+        .map(p => p.trim())
+        .filter(p => p.length > 2);
+      if (nameParts.length >= 2) {
+        const first = nameParts[0].toLowerCase();
+        const last = nameParts[nameParts.length - 1].toLowerCase();
+        for (const line of lines) {
+          const lowerLine = line.toLowerCase();
+          if (lowerLine.includes(first) && lowerLine.includes(last) && /\bvs?\b\.?/i.test(line) && line.length < 100) {
+            return line;
+          }
+        }
+        // Also try bodyText substring approach
+        const firstIdx = lower.indexOf(first);
+        const lastIdx = lower.indexOf(last);
+        if (firstIdx >= 0 && lastIdx >= 0) {
+          const start = Math.min(firstIdx, lastIdx);
+          const end = Math.max(firstIdx, lastIdx) + last.length + 5;
+          const snippet = bodyText.substring(start, Math.min(end, bodyText.length)).trim();
+          if (snippet.length < 100 && /\bvs?\b\.?/i.test(snippet)) {
+            return snippet;
+          }
+        }
+      }
+
       // Look for a line containing "PPV:"
       for (const line of lines) {
         if (/^PPV:/i.test(line)) {
@@ -445,7 +492,7 @@ export class PaymentPage extends BasePage {
         if (lowerLine.includes('flex') || lowerLine.includes('annual') || lowerLine.includes('monthly') || lowerLine.includes('subscribe') || lowerLine.includes('payment') || lowerLine.includes('pay') || lowerLine.includes('change')) {
           continue;
         }
-        const vsM = line.match(/([A-Za-z\s.]+\s+(?:vs\.?|–|-)\s+[A-Za-z\s.]+?)/i);
+        const vsM = line.match(/([A-Za-z\s.]+\s+(?:vs?\.?|–|-)\s+[A-Za-z\s.]+?)/i);
         if (vsM) return vsM[0].trim();
       }
 
@@ -1040,5 +1087,237 @@ export class PaymentPage extends BasePage {
     }
 
     return methods;
+  }
+
+  /**
+   * STEP 1: Select Credit & Debit Card payment method
+   */
+  async selectCreditCard(): Promise<void> {
+    console.log('💳 Locating Credit & Debit Card payment section...');
+    const creditCardSection = this.page.locator("section[id='Credit & Debit Card']");
+    const creditCardRadioBtn = this.page.locator("section[id='Credit & Debit Card'] span svg").first();
+
+    await creditCardSection.waitFor({ state: 'visible', timeout: 15000 });
+    await creditCardSection.scrollIntoViewIfNeeded();
+    await creditCardRadioBtn.click({ force: true });
+    console.log('✅ Clicked Credit & Debit Card radio button.');
+
+    // Wait for all VGS iframes to load
+    const iframeTitles = [CARD_NUMBER_FRAME, EXPIRY_DATE_FRAME, CVV_FRAME, CARD_HOLDER_FRAME];
+    console.log('⏳ Waiting for VGS input iframes to load...');
+    for (const title of iframeTitles) {
+      await this.page.locator(`iframe[title='${title}']`).waitFor({ state: 'visible', timeout: 30000 });
+    }
+    console.log('✅ All VGS iframes are visible.');
+  }
+
+  /**
+   * STEP 2: Get VGS Frame with retry (iframes take time to initialize)
+   */
+  async getVGSFrame(iframeTitle: string): Promise<Frame> {
+    const maxRetries = 5;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const iframeLocator = this.page.locator(`iframe[title='${iframeTitle}']`);
+      const elementHandle = await iframeLocator.elementHandle();
+      if (!elementHandle) {
+        console.log(`⚠️ Attempt ${attempt}/${maxRetries}: Iframe element handle not found for "${iframeTitle}". Retrying...`);
+        await this.page.waitForTimeout(2000);
+        continue;
+      }
+
+      const frame = await elementHandle.contentFrame();
+      if (!frame) {
+        console.log(`⚠️ Attempt ${attempt}/${maxRetries}: Content frame not found for "${iframeTitle}". Retrying...`);
+        await this.page.waitForTimeout(2000);
+        continue;
+      }
+
+      await frame.waitForLoadState('domcontentloaded').catch(() => { });
+      const inputCount = await frame.locator('input').count().catch(() => 0);
+      if (inputCount > 0) return frame;
+
+      console.log(`⚠️ Attempt ${attempt}/${maxRetries}: Input not found inside iframe "${iframeTitle}". Retrying...`);
+      await this.page.waitForTimeout(2000);
+    }
+    throw new Error(`Failed to get VGS frame after ${maxRetries} attempts: ${iframeTitle}`);
+  }
+
+  /**
+   * STEP 3: Type into VGS iframe input (character by character with delay)
+   */
+  async typeInIframe(iframeTitle: string, value: string): Promise<void> {
+    console.log(`typing: typing into VGS frame "${iframeTitle}"...`);
+    const frame = await this.getVGSFrame(iframeTitle);
+    const input = frame.locator("input:not([type='hidden'])").first();
+
+    await input.click({ force: true });
+    await input.press('Meta+A').catch(() => input.press('Control+A'));
+    await input.press('Backspace');
+
+    // Must type char by char — VGS auto-formats (spaces in card number, "/" in expiry)
+    for (const char of value) {
+      await this.page.keyboard.type(char, { delay: 150 });
+    }
+    console.log(`✅ Completed typing into "${iframeTitle}".`);
+  }
+
+  /**
+   * STEP 4: Fill all card details
+   */
+  async fillCardDetails(
+    cardNumber: string,
+    expiryDate: string,
+    cvv: string,
+    cardHolderName: string
+  ): Promise<void> {
+    console.log('📝 Filling credit card details...');
+    await this.typeInIframe(CARD_NUMBER_FRAME, cardNumber);
+    await this.typeInIframe(EXPIRY_DATE_FRAME, expiryDate);
+    await this.typeInIframe(CVV_FRAME, cvv);
+    await this.typeInIframe(CARD_HOLDER_FRAME, cardHolderName);
+    console.log('✅ Finished filling card details.');
+  }
+
+  /**
+   * STEP 5: Click save card checkbox (optional)
+   */
+  async clickSaveCard(): Promise<void> {
+    console.log('💾 Checking for save card checkbox...');
+    const checkbox = this.page.locator("label[role='switch']").first();
+    if (await checkbox.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await checkbox.click({ force: true });
+      console.log('✅ Clicked Save Card checkbox (toggled off/on).');
+    } else {
+      console.log('ℹ️ Save Card checkbox not found/visible.');
+    }
+  }
+
+  /**
+   * STEP 6: Click submit button with multiple fallbacks
+   */
+  async clickSubmit(): Promise<void> {
+    console.log('🖱️ Locating payment submit button...');
+    const submitSelectors = [
+      '.sc-hmdnzv.mksuv',
+      'button[type="submit"]',
+      'button:has-text("Pay")',
+      'button:has-text("Subscribe")',
+      'button:has-text("Start subscription")',
+      'button:has-text("Submit")'
+    ];
+
+    let clicked = false;
+    for (const selector of submitSelectors) {
+      const btn = this.page.locator(selector).first();
+      if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
+        console.log(`🖱️ Clicking submit button using selector: ${selector}`);
+        await btn.scrollIntoViewIfNeeded();
+        await btn.click({ force: true });
+        clicked = true;
+        break;
+      }
+    }
+
+    if (!clicked) {
+      // Last resort: click any submit button on the page
+      const lastResortBtn = this.page.locator('button[type="submit"]').first();
+      if (await lastResortBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        console.log('🖱️ Clicking last resort button[type="submit"]');
+        await lastResortBtn.click({ force: true });
+      } else {
+        throw new Error('❌ Failed to locate payment submit button.');
+      }
+    }
+  }
+
+  /**
+   * Verify success message / redirect after submit
+   */
+  async verifyPaymentSuccess(): Promise<void> {
+    console.log('⏳ Waiting for payment success/welcome screen...');
+    const successSelectors = [
+      'text=/Success/i',
+      'text=/Welcome/i',
+      'text=/Thank you/i',
+      'text=/Start watching/i',
+      'text=/Confirmation/i',
+      'h1:has-text("Welcome")',
+      'h1:has-text("Success")',
+      'h1:has-text("Thank you")'
+    ];
+
+    let foundSuccess = false;
+    // Wait up to 30 seconds for success indicators or url change
+    for (let attempt = 0; attempt < 15; attempt++) {
+      if (this.page.isClosed()) throw new Error('Page closed during payment processing');
+
+      const currentUrl = this.page.url();
+      if (
+        currentUrl.includes('success') ||
+        currentUrl.includes('welcome') ||
+        currentUrl.includes('home') ||
+        currentUrl.includes('watching')
+      ) {
+        console.log(`✅ Success page detected via URL: ${currentUrl}`);
+        foundSuccess = true;
+        break;
+      }
+
+      for (const sel of successSelectors) {
+        if (await this.page.locator(sel).first().isVisible({ timeout: 500 }).catch(() => false)) {
+          console.log(`✅ Success page detected via selector: ${sel}`);
+          foundSuccess = true;
+          break;
+        }
+      }
+
+      if (foundSuccess) break;
+      await this.page.waitForTimeout(2000);
+    }
+
+    if (!foundSuccess) {
+      // Check if we have error messages on the page
+      const errorMsg = await this.page.locator('[class*="error" i], [role="alert"]').first().textContent().catch(() => '');
+      if (errorMsg && errorMsg.trim()) {
+        throw new Error(`Payment failed. Error on page: ${errorMsg.trim()}`);
+      }
+      throw new Error('Timeout waiting for payment success page/confirmation');
+    }
+  }
+
+  /**
+   * Click Continue on success page
+   */
+  async clickSuccessContinue(): Promise<void> {
+    console.log('🖱️ Clicking Continue on success page...');
+    const continueBtn = this.page.locator(
+      'button:has-text("Continue"), ' +
+      'button:has-text("Start watching"), ' +
+      'button:has-text("Go to home"), ' +
+      'a:has-text("Continue"), ' +
+      'a:has-text("Start watching")'
+    ).first();
+
+    if (await continueBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await continueBtn.click({ force: true }).catch(() => { });
+      console.log('✅ Clicked success CTA');
+    } else {
+      console.log('ℹ️ No explicit Continue button found on success page (or auto-redirected)');
+    }
+  }
+
+  /**
+   * Complete flow orchestrator
+   */
+  async fillPaymentAndSubmit(
+    cardNumber = '4111111111111111',
+    expiryDate = '03/30',
+    cvv = '737',
+    cardHolderName = 'Test User'
+  ): Promise<void> {
+    await this.selectCreditCard();
+    await this.fillCardDetails(cardNumber, expiryDate, cvv, cardHolderName);
+    await this.clickSaveCard();
+    await this.clickSubmit();
   }
 }

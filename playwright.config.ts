@@ -39,6 +39,8 @@ export default defineConfig({
         '--no-sandbox',
         '--disable-dev-shm-usage',
         '--disable-blink-features=AutomationControlled',
+        '--password-store=basic',
+        '--use-mock-keychain',
       ],
     },
 
@@ -55,13 +57,13 @@ export default defineConfig({
   },
 
   projects: [
+    // ── Desktop Chrome ───────────────────────────────────────────────────────
     {
       name: 'chromium',
       use: {
         channel:  'chrome',
         headless: process.env.HEADLESS === 'true',
         viewport: null,
-
         launchOptions: {
           args: [
             '--start-maximized',
@@ -69,8 +71,44 @@ export default defineConfig({
             '--no-sandbox',
             '--disable-dev-shm-usage',
             '--disable-blink-features=AutomationControlled',
+            '--password-store=basic',
+            '--use-mock-keychain',
           ],
         },
+      },
+    },
+
+    // ── Mobile: Android Chrome (Pixel 7) ─────────────────────────────────────
+    // Used for the mobile handoff flow:
+    //   Appium navigates app → user reaches paywall → copies URL → Chrome opens it
+    //   Playwright opens the same URL in Android Chrome emulation for validation.
+    {
+      name: 'mobile-android',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: {
+        ...require('@playwright/test').devices['Pixel 7'],
+        channel: 'chrome',
+        headless: process.env.HEADLESS === 'true',
+        launchOptions: {
+          args: [
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+          ],
+        },
+      },
+    },
+
+    // ── Mobile: iOS Safari (iPhone 14) ────────────────────────────────────────
+    // Used for the mobile handoff flow:
+    //   Appium navigates app → user accepts Apple consent → Safari opens checkout URL
+    //   Playwright opens the same URL in iPhone Safari emulation for validation.
+    {
+      name: 'mobile-ios',
+      testMatch: '**/mobile/**/*.spec.ts',
+      use: {
+        ...require('@playwright/test').devices['iPhone 14'],
+        headless: process.env.HEADLESS === 'true',
       },
     },
   ],

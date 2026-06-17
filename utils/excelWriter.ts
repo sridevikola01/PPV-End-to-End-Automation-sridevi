@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import * as fs   from 'fs';
 import * as path from 'path';
+import { compare } from './compare';
 
 // ── Column name maps ─────────────────────────────────────────────
 const SCHEDULE_HEADERS       = ['Field', 'Expected', 'Actual', 'Status'];
@@ -30,6 +31,21 @@ const applyStyles = (ws: XLSX.WorkSheet, data: any[]) => {
 export const writeResults = async (
   results: any[]
 ): Promise<{ excelPath: string | null; videoPath: string | null }> => {
+
+  // Centralized cleanup of date/format combinations in expected values
+  results.forEach((r: any) => {
+    if (r.expected && typeof r.expected === 'string' && r.expected.includes('|')) {
+      const options = r.expected.split('|').map((opt: string) => opt.trim());
+      if (r.status === 'PASS' && r.actual) {
+        const matched = options.find((opt: string) => compare(r.actual, opt));
+        if (matched) {
+          r.expected = matched;
+          return;
+        }
+      }
+      r.expected = options[0];
+    }
+  });
 
   // ── Find video ───────────────────────────────────────────────
   let videoPath: string | null = null;

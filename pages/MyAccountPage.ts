@@ -1,5 +1,5 @@
 import { Page, Locator } from '@playwright/test';
-import { handleCookies, stabilisePage } from '../utils/helpers';
+
 
 export class MyAccountPage {
   constructor(private page: Page) { }
@@ -20,8 +20,22 @@ export class MyAccountPage {
   // DISMISS CONSENT OVERLAY
   // ─────────────────────────────
   private async dismissConsentIfPresent(): Promise<void> {
-    await handleCookies(this.page, 4000);
-    await stabilisePage(this.page);
+    // Cookie banner is now dismissed via UI click in handleCookies()
+    const { handleCookies } = await import('../utils/helpers.js');
+    await handleCookies(this.page);
+  }
+
+  private isOnMyAccountPage(): boolean {
+    const url = this.page.url().toLowerCase();
+    return (
+      url.includes('/myaccount') ||
+      (url.includes('/account') &&
+        !url.includes('/signup') &&
+        !url.includes('/signin') &&
+        !url.includes('/personaldetails') &&
+        !url.includes('/emaildetails') &&
+        !url.includes('/content/'))
+    );
   }
 
   // ─────────────────────────────
@@ -35,14 +49,21 @@ export class MyAccountPage {
     }
 
     // FIX: Only scroll on My Account page — not home page
-    const currentUrl = this.page.url();
-    if (!currentUrl.includes('/myaccount')) {
-      console.log(`⚠️  Not on My Account page (${currentUrl}) — skipping scroll`);
+    if (!this.isOnMyAccountPage()) {
+      console.log(`⚠️  Not on My Account page (${this.page.url()}) — skipping scroll`);
       this._ppvScrollDone = true;
       return;
     }
 
     console.log('📺 Scrolling to Pay-Per-View section...');
+
+    // Wait up to 5 seconds for the PPV heading to be attached to the DOM
+    const headingLocator = this.page.locator('h1, h2, h3, h4, h5, span, div')
+      .filter({ hasText: /pay-per-view|pay per view|available to buy/i })
+      .first();
+    await headingLocator.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {
+      console.log('⚠️ Timeout waiting for PPV section heading to attach to DOM');
+    });
 
     const targetScrollY = await this.page.evaluate(() => {
       const allEls = Array.from(
@@ -203,6 +224,20 @@ export class MyAccountPage {
   private async findPPVRow(ppvName: string): Promise<Locator | null> {
     console.log(`🔍 Searching for PPV: "${ppvName}"...`);
 
+    // Wait for the My Account page sections/cards to load
+    if (this.isOnMyAccountPage()) {
+      console.log('⏳ Waiting for PPV section, cards, or Explore button to be attached to DOM...');
+      const exploreSelector = 'a[href*="/ppv"], a[href*="/pay-per-view"], text=/explore.*ppv/i, text=/explore.*pay-per-view/i';
+      const cardSelector = '[id*="ppv-card"], [class*="ppv-card"], article, [class*="card" i]';
+      const headingSelector = 'h1, h2, h3, h4, h5, span, div';
+      const combinedSelector = `${exploreSelector}, ${cardSelector}, ${headingSelector}`;
+
+      await this.page.waitForSelector(combinedSelector, { state: 'attached', timeout: 8000 }).catch(() => {
+        console.log('⚠️ Timeout waiting for PPV related elements to attach to DOM');
+      });
+      await this.page.waitForTimeout(1000);
+    }
+
     // 1. Search in current DOM (My Account PPV section or Listing Page if already navigated)
     let row = await this.searchPPVInCurrentDOM(ppvName);
     if (row) {
@@ -211,8 +246,7 @@ export class MyAccountPage {
     }
 
     // 2. If not found, check if we are on My Account page
-    const currentUrl = this.page.url();
-    if (currentUrl.includes('/myaccount')) {
+    if (this.isOnMyAccountPage()) {
       console.log(`ℹ️  PPV not found in My Account page — looking for "Explore more PPV events" link...`);
 
       let exploreBtn = this.page.getByText(/explore.*ppv/i).first();
@@ -641,10 +675,13 @@ export class MyAccountPage {
 
     console.log('✅ Clicked SEE DAZN PLANS');
 
-    // Wait for navigation away from myaccount
+    // Wait for navigation away from myaccount / account
     await Promise.race([
       this.page.waitForURL(
-        url => !url.toString().includes('myaccount'),
+        url => {
+          const u = url.toString().toLowerCase();
+          return !u.includes('myaccount') && !u.includes('/account');
+        },
         { timeout: 10000 }
       ),
       this.page.waitForURL(

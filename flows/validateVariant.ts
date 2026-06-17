@@ -2,6 +2,7 @@ import { resolveExpected }          from '../utils/resolveExpected';
 import { getActualValue }           from '../utils/getActualValue';
 import { compare }                  from '../utils/compare';
 import { getPageSnapshot, DOMNode } from '../utils/helpers';
+import { captureFailures }          from '../utils/failureCapture';
 
 export const validateVariant = async (
   page:      any,
@@ -14,6 +15,10 @@ export const validateVariant = async (
 ) => {
   console.log(`🔍 validateVariant entry: pageName = "${pageName}", variant = "${variant}", hasEventData = ${!!eventData}, typeof eventData = ${typeof eventData}, keys = ${eventData ? Object.keys(eventData).join(', ') : 'none'}`);
   if (!eventData) throw new Error('❌ eventData is missing');
+
+  // Set page context dynamically so resolveExpected can apply page-specific overrides
+  eventData.CURRENT_PAGE = pageName;
+  eventData['CURRENT_PAGE'] = pageName;
 
   const normalizedVariant = variant.trim().toLowerCase();
   const normalizedFlow    = (flow || '').trim().toLowerCase();
@@ -57,10 +62,13 @@ export const validateVariant = async (
   // ── Scroll to trigger lazy load before snapshot ───────────────
   // Only scroll on pages that need lazy loading
   const url = page.url();
+  const source = (eventData.SOURCE || eventData.source || '').toLowerCase();
   const needsScroll =
     url.includes('/schedule') ||
     url.includes('/addon/purchase') ||     // Choose How To Buy
-    (url.includes('page=PlanDetails') && !url.includes('upsellTierShown=true'));      // DAZN Plan page (exclude PPV)
+    (url.includes('page=PlanDetails') && !url.includes('upsellTierShown=true')) ||
+    ((url.includes('/welcome') || url.includes('/home') || pageName.toLowerCase().includes('landing') || pageName.toLowerCase().includes('home')) &&
+     (source.includes('dont-miss') || source.includes('tile') || source.includes('upcoming') || source.includes('rail')));
 
   if (needsScroll) {
     // Multiple scroll passes to trigger all lazy-loaded content
@@ -207,4 +215,7 @@ export const validateVariant = async (
       status,
     });
   }
+
+  // ── Capture red-boxed screenshots for any failed fields ──────────
+  await captureFailures(page, results, pageName);
 };

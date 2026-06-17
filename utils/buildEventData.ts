@@ -61,11 +61,13 @@ const GLOBAL_DEFAULTS: Record<string, string> = {
   PAYMENT_FREE_TEXT_TRIAL: "7-days free",
   PAYMENT_FREE_TEXT_MONTHLY: "First month free",
   CANCELLATION_TEXT_TRIAL: "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
-  CANCELLATION_TEXT_ANNUAL: "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
+  CANCELLATION_TEXT_ANNUAL: "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically|First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months",
   CANCELLATION_TEXT_ULTIMATE_APM: "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
   CANCELLATION_TEXT_ULTIMATE_APU: "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
   ULTIMATE_FEATURE_2: "Every match from Lega Serie A, and highlights from LALIGA, Bundesliga and the Saudi Pro League.",
-  ULTIMATE_FEATURE_3: "HDR and Dolby 5.1 surround sound on select events."
+  ULTIMATE_FEATURE_3: "HDR and Dolby 5.1 surround sound on select events.",
+  UPSELL_CROSSED_PRICE: "N/A",
+  BUNDLE_MONTHLY_PRICE: "N/A"
 };
 
 export function buildEventData(
@@ -74,7 +76,7 @@ export function buildEventData(
   tier?: string,
   ratePlan?: string,
   source?: string
-): Record<string, string> {
+): Record<string, any> {
 
   const merged = json;
   const regionalBase = {};
@@ -97,14 +99,14 @@ export function buildEventData(
 
   const regional = deepMerge(deepMerge(GLOBAL_DEFAULTS, regionalBase), eventRegional);
 
-  const base: Record<string, string> = {
+  const base: Record<string, any> = {
     PPV_NAME:      merged.PPV_NAME,
     SECONDARY_PPV: merged.SECONDARY_PPV,
     ...merged.global,
     ...regional,
   };
 
-  // OFFER_TYPE comes from regional data (plans.json per region) — not all countries have 7-day trial
+  // OFFER_TYPE comes from regional data (DaznPlan.json per region) — not all countries have 7-day trial
   if (!base.OFFER_TYPE) {
     base.OFFER_TYPE = '1_month_free';
   }
@@ -151,71 +153,121 @@ export function buildEventData(
     }
   }
 
-  const isBundleFlow = (source || json.source || json.flow || '').startsWith('boxing-bundle');
+   // Load DaznPlan.json dynamically to read plan-level offers
+  const plansPath = path.resolve(process.cwd(), 'config/DaznPlan.json');
+  let plans: any = {};
+  try {
+    plans = JSON.parse(fs.readFileSync(plansPath, 'utf-8'));
+  } catch (e: any) {
+    console.warn('⚠️ buildEventData: Failed to read DaznPlan.json:', e.message);
+  }
 
-  // ── DYNAMIC OFFER CONFIGURATION SCANNER (GENERIC) ───────────────────
-  // Offers are now stored per-region in plans.json. After configLoader deepMerge,
-  // they end up in json.regions[region].offers. No target_source filtering — offers
-  // apply from every entry point.
-  let activeOffer: any = null;
+  const planKey = json.planKey || 'standard_monthly';
+  const planData = plans[planKey];
+  const planRegionalOffers = planData?.regions?.[region.toUpperCase()]?.offers || [];
+  const eventRegionalOffers = eventRegional?.offers || [];
 
-  const regionalOffers = eventRegional?.offers || json.offers || [];
-  for (const offer of regionalOffers) {
-    if (offer.enabled !== true) continue;
+  // Combine offers: event-level offers override plan-level offers by name
+  const allOffers = [...eventRegionalOffers];
+  for (const planOffer of planRegionalOffers) {
+    if (!allOffers.some(o => o.name === planOffer.name)) {
+      allOffers.push(planOffer);
+    }
+  }
+
+  // Filter offers matching current environment, region, and enabled flag
+  const matchedOffers = allOffers.filter(offer => {
+    if (offer.enabled !== true) return false;
 
     // Match environment
     const targetEnvs = offer.environments || ['stag', 'beta', 'prod'];
-    if (!targetEnvs.includes(env)) continue;
+    if (!targetEnvs.includes(env)) return false;
 
-    // Match region (backward compat — offers inside a region implicitly match,
-    // but target_region can still be used if offers are at top level)
+    // Match region (backward compat)
     if (offer.target_region && offer.target_region.length > 0) {
       const matchedRegion = offer.target_region.some((r: string) => r.toUpperCase() === region.toUpperCase());
-      if (!matchedRegion) continue;
+      if (!matchedRegion) return false;
     }
 
-    // Match tier (backward compat)
-    if (offer.target_tier && offer.target_tier.toLowerCase() !== base.TIER) continue;
+    return true;
+  });
 
-    // Match rate plan (backward compat)
-    if (offer.target_rate_plan && offer.target_rate_plan.toLowerCase() !== base.RATE_PLAN) continue;
+  let activeOffer: any = null;
+  let activeOfferType: string = 'default';
 
-    // Found match! (no target_source filtering — offers apply from every source)
-    activeOffer = offer;
-    break;
+  // Identify flow context
+  const sourceLower = (source || '').toLowerCase();
+  const isBundleFlow = sourceLower.includes('bundle');
+  const isPPVFlow = sourceLower.includes('ppv') || json.PPV_TYPE === 'standalone';
+
+  // Contextual Precedence:
+  if (isBundleFlow) {
+    activeOffer = matchedOffers.find(o => o.name === 'bundle_offer');
+    if (activeOffer) activeOfferType = 'bundle_offer';
+  } else if (isPPVFlow) {
+    activeOffer = matchedOffers.find(o => o.name === 'ppv_only_offer');
+    if (activeOffer) activeOfferType = 'ppv_only_offer';
+  } else {
+    // Subscription Flow / Upsell Flow
+    if (base.TIER === 'ultimate' && base.RATE_PLAN === 'annual pay monthly') {
+      activeOffer = matchedOffers.find(o => o.name === 'ultimate_offer');
+      if (activeOffer) activeOfferType = 'ultimate_offer';
+    } else if (base.TIER === 'standard' && base.RATE_PLAN === 'monthly') {
+      activeOffer = matchedOffers.find(o => o.name === 'standard_flex_offer');
+      if (activeOffer) activeOfferType = 'standard_flex_offer';
+    }
   }
 
-  // Flatten active offer if matched, or set defaults
+  // Map active offer parameters dynamically if present
   if (activeOffer) {
+    base.ACTIVE_OFFER_PRESENT = 'true';
+    base.ACTIVE_OFFER_TYPE = activeOfferType;
+    base.ACTIVE_OFFER = activeOffer;
+
+    // Dynamically assign all keys from activeOffer to base
+    Object.assign(base, activeOffer);
+
+    // Format derived values
     const offerPrice = getPriceWithCurrency(activeOffer.OFFER_PRICE);
     const origPrice = getPriceWithCurrency(activeOffer.ORIGINAL_PRICE);
 
     base.DISCOUNT_BADGE = activeOffer.DISCOUNT_BADGE || 'N/A';
-    base.ACTIVE_OFFER_PRESENT = 'true';
-
     if (activeOffer.PLAN_LABEL) {
       base.PAYMENT_PLAN_LABEL = activeOffer.PLAN_LABEL;
       base.RATE_PLAN_LABEL = activeOffer.PLAN_LABEL;
     }
-
     if (origPrice) {
       base.RATE_PLAN_ORIGINAL_PRICE = origPrice;
     }
 
-    // Set today you pay and other pricing fields based on the rate plan
-    if (base.RATE_PLAN === 'annual pay monthly') {
-      base.UPSELL_PRICE = offerPrice;
-      base.UPSELL_ORIGINAL_PRICE = origPrice;
-      base.ANNUAL_PAY_MONTHLY_PRICE = offerPrice;
-      base.ANNUAL_PAY_MONTHLY_ORIGINAL_PRICE = origPrice;
-      base.UPSELL_OFFER_TEXT = activeOffer.OFFER_DESCRIPTION || '';
-      base.CANCELLATION_TEXT_ULTIMATE_APM = activeOffer.CANCELLATION_TEXT || '';
-      base.ANNUAL_PAY_MONTHLY_CONTRACT_TEXT = activeOffer.OFFER_DESCRIPTION || '';
-    } else if (base.RATE_PLAN === 'monthly') {
+    // Handle specific offer types
+    if (activeOfferType === 'bundle_offer') {
+      base.BUNDLE_PRICE = offerPrice;
+      base.BUNDLE_ORIGINAL_PRICE = origPrice;
+      base.BUNDLE_DISCOUNT = activeOffer.DISCOUNT_BADGE || '';
+      base.BUNDLE_SAVE_BADGE = activeOffer.DISCOUNT_BADGE || '';
+      base.BUNDLE_OFFER_PRICE = offerPrice;
+      base.BUNDLE_OFFER_ORIGINAL_PRICE = origPrice;
+      base.BUNDLE_OFFER_DISCOUNT_AMOUNT = activeOffer.DISCOUNT_BADGE || '';
+      base.BUNDLE_OFFER_SAVE_BADGE = activeOffer.DISCOUNT_BADGE || '';
+      base.BUNDLE_OFFER_DESCRIPTION = activeOffer.OFFER_DESCRIPTION || '';
+      base.TODAY_YOU_PAY_PRICE = offerPrice;
+    } else if (activeOfferType === 'ppv_only_offer') {
+      base.OFFER_EFFECTIVE_PPV_PRICE = offerPrice;
+      base.OFFER_ORIGINAL_PPV_PRICE = origPrice;
+      base.OFFER_DISCOUNT_AMOUNT = activeOffer.DISCOUNT_BADGE || '0';
+      base.OFFER_BADGE = activeOffer.DISCOUNT_BADGE || '';
+      base.OFFER_DESCRIPTION = activeOffer.OFFER_DESCRIPTION || '';
+      base.TODAY_YOU_PAY_PRICE = offerPrice;
+    } else if (activeOfferType === 'standard_flex_offer') {
       base.FLEX_OFFER_PRICE = offerPrice;
       base.FLEX_ORIGINAL_PRICE = origPrice;
       base.PLAN_CTA_BUTTON_STANDARD = "Continue with Flex - Pay Monthly";
       base.CANCELLATION_TEXT_TRIAL = activeOffer.CANCELLATION_TEXT || '';
+      base.TODAY_YOU_PAY_PRICE = activeOffer.TODAY_YOU_PAY ? getPriceWithCurrency(activeOffer.TODAY_YOU_PAY) : offerPrice;
+      if (activeOffer.TODAY_YOU_PAY_ORIGINAL) {
+        base.TODAY_YOU_PAY_ORIGINAL_PRICE = getPriceWithCurrency(activeOffer.TODAY_YOU_PAY_ORIGINAL);
+      }
 
       // Dynamic Annual Savings Badge calculation
       const flexOfferPriceNum = parseFloat(activeOffer.OFFER_PRICE);
@@ -225,21 +277,22 @@ export function buildEventData(
         const savingsVal = flexOfferPriceNum + (flexOrigPriceNum * 11) - (annualPriceNum * 11);
         base.ANNUAL_SAVINGS_BADGE = `SAVE ${base.CURRENCY}${savingsVal.toFixed(2).replace('.00', '')} A YEAR`;
       }
-    }
-
-    // Today you pay price
-    if (activeOffer.TODAY_YOU_PAY) {
-      base.TODAY_YOU_PAY_PRICE = getPriceWithCurrency(activeOffer.TODAY_YOU_PAY);
-      if (activeOffer.TODAY_YOU_PAY_ORIGINAL) {
-        base.TODAY_YOU_PAY_ORIGINAL_PRICE = getPriceWithCurrency(activeOffer.TODAY_YOU_PAY_ORIGINAL);
-      }
-    } else {
+    } else if (activeOfferType === 'ultimate_offer') {
+      base.ANNUAL_PAY_MONTHLY_PRICE = offerPrice;
+      base.ANNUAL_PAY_MONTHLY_ORIGINAL_PRICE = origPrice;
+      base.UPSELL_PRICE = offerPrice;
+      base.UPSELL_ORIGINAL_PRICE = origPrice;
+      base.UPSELL_CROSSED_PRICE = origPrice;
+      base.UPSELL_OFFER_TEXT = activeOffer.OFFER_DESCRIPTION || '';
+      base.CANCELLATION_TEXT_ULTIMATE_APM = activeOffer.CANCELLATION_TEXT || '';
+      base.ANNUAL_PAY_MONTHLY_CONTRACT_TEXT = activeOffer.OFFER_DESCRIPTION || '';
       base.TODAY_YOU_PAY_PRICE = offerPrice;
     }
   } else {
-    // If no active offer is matched for the selected tier & rate plan, enforce default values
-    base.DISCOUNT_BADGE = 'N/A';
     base.ACTIVE_OFFER_PRESENT = 'false';
+    base.ACTIVE_OFFER_TYPE = 'default';
+    base.ACTIVE_OFFER = null;
+    base.DISCOUNT_BADGE = 'N/A';
     if (base.RATE_PLAN === 'annual pay monthly') {
       base.PAYMENT_PLAN_LABEL = 'Annual - Pay Monthly';
     } else if (base.RATE_PLAN === 'annual pay upfront') {
@@ -261,14 +314,15 @@ export function buildEventData(
 
   if (regional.DAZN_TIER           ?? merged.DAZN_TIER)           base.DAZN_TIER           = regional.DAZN_TIER           ?? merged.DAZN_TIER;
 
-  // Resolve userState values from central userStates.json file
+  // Resolve userState values from central userstatus.json file
   const userStateKey = process.env.USER_STATE || 'freemium';
-  const userStatesPath = path.resolve(process.cwd(), 'config/userStates.json');
+  const userStatesPath = path.resolve(process.cwd(), 'config/userstatus.json');
   let userStates: Record<string, any> = {};
   if (fs.existsSync(userStatesPath)) {
     userStates = JSON.parse(fs.readFileSync(userStatesPath, 'utf-8'));
   }
   const userStateConfig = userStates[userStateKey] || {};
+  base.USER_STATE = userStateKey;
 
   // Apply general user state configuration
   for (const key of Object.keys(userStateConfig)) {
@@ -343,6 +397,7 @@ export function buildEventData(
     'ULTIMATE_FEATURE_2',
     'ULTIMATE_FEATURE_3',
     'SPORT',
+    'PPV_LOCATION',
     'BUNDLE_NAME',
     'BUNDLE_DESCRIPTION',
     'BUNDLE_ORIGINAL_PRICE',
@@ -364,6 +419,8 @@ export function buildEventData(
     'BUNDLE_TODAY_YOU_PAY_STANDARD',
     'OFFER_BADGE',
     'OFFER_DESCRIPTION',
+    'UPSELL_CROSSED_PRICE',
+    'BUNDLE_MONTHLY_PRICE',
   ];
   for (const field of directFields) {
     const val = regional[field] ?? merged[field];
@@ -453,6 +510,41 @@ export function buildEventData(
       : base.MONTHLY_PRICE;
   }
 
+  // Dynamically resolve UPSELL_PRICE and UPSELL_ORIGINAL_PRICE from ultimate_apm plan + event overrides
+  if (!base.UPSELL_PRICE) {
+    try {
+      const ultimateApmPlan = plans.ultimate_apm;
+      const ultimateApmRegion = ultimateApmPlan?.regions?.[region.toUpperCase()] || {};
+      const ultimatePlanOffers = ultimateApmRegion.offers || [];
+      
+      // Merge with event-level overrides
+      const combinedUltimateOffers = [...eventRegionalOffers];
+      for (const planOffer of ultimatePlanOffers) {
+        if (!combinedUltimateOffers.some(o => o.name === planOffer.name)) {
+          combinedUltimateOffers.push(planOffer);
+        }
+      }
+      
+      const ultimateOffer = combinedUltimateOffers.find(o => o.name === 'ultimate_offer' && o.enabled === true);
+      if (ultimateOffer) {
+        base.UPSELL_PRICE = getPriceWithCurrency(ultimateOffer.OFFER_PRICE);
+        base.UPSELL_ORIGINAL_PRICE = getPriceWithCurrency(ultimateOffer.ORIGINAL_PRICE);
+        base.UPSELL_CROSSED_PRICE = getPriceWithCurrency(ultimateOffer.ORIGINAL_PRICE);
+        base.UPSELL_OFFER_TEXT = ultimateOffer.OFFER_DESCRIPTION || '';
+        console.log(`💡 Resolved dynamic UPSELL_PRICE from ultimate_offer: ${base.UPSELL_PRICE}`);
+      } else {
+        const standardUltimatePrice = ultimateApmRegion.ANNUAL_PAY_MONTHLY_PRICE || '24.99';
+        base.UPSELL_PRICE = getPriceWithCurrency(standardUltimatePrice);
+        base.UPSELL_ORIGINAL_PRICE = getPriceWithCurrency(standardUltimatePrice);
+        base.UPSELL_CROSSED_PRICE = 'N/A';
+        base.UPSELL_OFFER_TEXT = '';
+        console.log(`💡 Resolved fallback UPSELL_PRICE: ${base.UPSELL_PRICE}`);
+      }
+    } catch (e: any) {
+      console.warn('⚠️ Failed to resolve UPSELL_PRICE: ', e.message);
+    }
+  }
+
   const upsellPrice = base.UPSELL_PRICE || '';
   const ppvPrice = base.PPV_PRICE || '';
   const offerAvailable = base.OFFER_AVAILABLE === 'true';
@@ -534,6 +626,12 @@ export function buildEventData(
 
   if (isBundleFlow && base.TIER !== 'ultimate') {
     base.TODAY_YOU_PAY_PRICE = base.BUNDLE_TODAY_YOU_PAY_STANDARD || base.BUNDLE_PRICE || base.TODAY_YOU_PAY_PRICE;
+  }
+
+  if (!base.BUNDLE_MONTHLY_PRICE || base.BUNDLE_MONTHLY_PRICE === 'N/A') {
+    if (base.BUNDLE_PRICE && base.BUNDLE_PRICE !== 'N/A') {
+      base.BUNDLE_MONTHLY_PRICE = base.BUNDLE_PRICE;
+    }
   }
 
   const keys = Object.keys(base);

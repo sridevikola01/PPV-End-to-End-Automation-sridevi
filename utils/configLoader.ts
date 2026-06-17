@@ -19,16 +19,6 @@ function deepMerge(base: any, override: any): any {
   return result;
 }
 
-function resolveEventKey(input?: string): string {
-  if (!input) return process.env.PPV_EVENT || 'beauty_and_beast';
-  const name = path.basename(input, '.json').toLowerCase();
-  if (name.includes('beauty') || name.includes('bnb')) return 'beauty_and_beast';
-  if (name.includes('standalone') || name.includes('collision')) return 'standalone_collision';
-  if (name.includes('upsell')) return 'upsell_flow';
-  if (name.includes('joshua') || name.includes('prenga') || name.includes('aj_')) return 'aj_joshua_prenga';
-  return name;
-}
-
 function alignRegions(data: any) {
   if (!data || !data.regions) return;
   const gb = data.regions.GB;
@@ -43,67 +33,87 @@ function alignRegions(data: any) {
   }
 }
 
-export function loadEventConfig(eventConfigOrKey?: string, planKeyOverride?: string): Record<string, any> {
-  // Prioritize environment variables over spec file default arguments:
-  // 1. PPV_CONFIG (explicit config file path)
-  // 2. PPV_EVENT (explicit event name)
-  // 3. Fallback to argument passed by the spec file (eventConfigOrKey)
-  // 4. Ultimate fallback to 'beauty_and_beast'
-  const configSource = process.env.PPV_CONFIG || process.env.PPV_EVENT || eventConfigOrKey;
-  const eventKey = resolveEventKey(configSource);
-  const planKey = planKeyOverride || process.env.PLAN || 'standard_monthly';
+function findConfig(dir: string, filename: string): string | null {
+  if (!fs.existsSync(dir)) return null;
 
-  const configDir = path.resolve(process.cwd(), 'config');
-  const eventsPath = path.join(configDir, 'events.json');
-  const plansPath = path.join(configDir, 'plans.json');
-
-  if (!fs.existsSync(eventsPath)) throw new Error(`events.json not found in ${configDir}`);
-  if (!fs.existsSync(plansPath)) throw new Error(`plans.json not found in ${configDir}`);
-
-  const events = JSON.parse(fs.readFileSync(eventsPath, 'utf-8'));
-  const plans = JSON.parse(fs.readFileSync(plansPath, 'utf-8'));
-
-  const eventData = events[eventKey];
-  const planData = plans[planKey];
-
-  if (!eventData) throw new Error(`Event "${eventKey}" not found in events.json`);
-  if (!planData) throw new Error(`Plan "${planKey}" not found in plans.json`);
-
-  // Try to load direct file override if exists
-  let fileData: any = {};
-  const fileSource = process.env.PPV_CONFIG || (!process.env.PPV_EVENT ? eventConfigOrKey : undefined);
-  if (fileSource) {
-    let filePath = '';
-    if (fs.existsSync(fileSource)) {
-      filePath = fileSource;
-    } else {
-      const relPath = path.resolve(process.cwd(), 'config', fileSource);
-      if (fs.existsSync(relPath)) {
-        filePath = relPath;
-      }
-    }
-    if (filePath) {
-      try {
-        fileData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        console.log(`📄 Loaded custom configuration file override: ${filePath}`);
-      } catch (err: any) {
-        console.warn(`⚠️  Failed to parse custom config file ${filePath}:`, err.message);
-      }
+  // 1. Check config/events/filename first if dir is config/
+  const eventsDir = path.join(dir, 'events');
+  if (fs.existsSync(eventsDir)) {
+    const eventsPath = path.join(eventsDir, filename);
+    if (fs.existsSync(eventsPath) && fs.statSync(eventsPath).isFile()) {
+      return eventsPath;
     }
   }
 
-  // Align UK/GB regions across all layers before merging to prevent standard plan's regions
-  // from overriding event-specific/file-specific custom overrides (e.g. GB vs UK mismatch)
+  // 2. Check config/filename
+  const directPath = path.join(dir, filename);
+  if (fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
+    return directPath;
+  }
+
+  // 3. Recursively search other directories
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name !== 'events') {
+      const found = findConfig(path.join(dir, entry.name), filename);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+export function loadEventConfig(eventConfigOrKey?: string, planKeyOverride?: string): Record<string, any> {
+  const configSource = process.env.PPV_CONFIG || process.env.PPV_EVENT || eventConfigOrKey || 'aj_joshua_prenga.json';
+  
+  let filePath: string | null = null;
+  
+  // If it's a direct path that exists, use it
+  if (fs.existsSync(configSource) && fs.statSync(configSource).isFile()) {
+    filePath = configSource;
+  } else {
+    // Determine the filename to search recursively under config/
+    let filename = path.basename(configSource);
+    if (!filename.toLowerCase().endsWith('.json')) {
+      filename += '.json';
+    }
+    const configDir = path.resolve(process.cwd(), 'config');
+    filePath = findConfig(configDir, filename);
+  }
+
+  if (!filePath) {
+    throw new Error(`❌ Configuration file "${configSource}" not found recursively under config/`);
+  }
+
+  // Load and parse event configuration directly
+  let eventData: any = {};
+  try {
+    eventData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    console.log(`📄 Loaded event configuration file: ${filePath}`);
+  } catch (err: any) {
+    throw new Error(`❌ Failed to parse event config file ${filePath}: ${err.message}`);
+  }
+
+  // Load plan data if needed
+  const planKey = planKeyOverride || process.env.PLAN || 'standard_monthly';
+  const configDir = path.resolve(process.cwd(), 'config');
+  const plansPath = path.join(configDir, 'DaznPlan.json');
+  let planData: any = {};
+
+  if (fs.existsSync(plansPath)) {
+    try {
+      const plans = JSON.parse(fs.readFileSync(plansPath, 'utf-8'));
+      planData = plans[planKey] || {};
+    } catch (err: any) {
+      console.warn(`⚠️ Failed to parse DaznPlan.json:`, err.message);
+    }
+  }
+
   alignRegions(planData);
   alignRegions(eventData);
-  alignRegions(fileData);
 
   let merged = deepMerge(planData, eventData);
-  merged = deepMerge(merged, fileData);
-
-  merged.eventKey = eventKey;
+  merged.eventKey = path.basename(filePath, '.json');
   merged.planKey = planKey;
 
   return merged;
 }
-

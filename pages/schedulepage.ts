@@ -1,5 +1,6 @@
 import { Page, Locator, expect } from '@playwright/test';
-import { handleCookies, stabilisePage } from '../utils/helpers';
+import { handleCookies } from '../utils/helpers';
+
 
 export class SchedulePage {
   constructor(private page: Page) {}
@@ -10,13 +11,12 @@ export class SchedulePage {
     console.log(`📅 Navigating to: ${url}`);
     await this.page.goto(url);
     await expect(this.page).toHaveURL(/schedule/);
-    await this.page.waitForLoadState('domcontentloaded');
     await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
+    // Wait for networkidle so OneTrust's async cookie script has time to load
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    // Use longer timeout to wait for cookie banner to appear and dismiss it
+    await handleCookies(this.page, 8000);
     await this.page.waitForSelector('body', { timeout: 15000 });
-
-    // Accept cookies immediately after page load
-    await handleCookies(this.page);
-    await stabilisePage(this.page);
 
     console.log('✅ Schedule page loaded');
   }
@@ -27,6 +27,7 @@ export class SchedulePage {
       throw new Error('❌ selectSport() called with undefined — check config has SPORT field');
     }
     console.log(`🥊 Selecting ${sport}...`);
+    await handleCookies(this.page);
 
     const filterContainer = this.page.locator('#schedule-filter-container');
     await expect(filterContainer).toBeVisible({ timeout: 10000 });
@@ -48,6 +49,7 @@ export class SchedulePage {
   // ── FIND EVENT ────────────────────────────────────────────────
   async findEvent(eventName: string): Promise<Locator> {
     console.log(`🔍 Searching for event: ${eventName}`);
+    await handleCookies(this.page);
 
     const regex = new RegExp(
       eventName.replace(/\s+/g, '.*'),
@@ -101,24 +103,25 @@ export class SchedulePage {
   // ── CLICK EVENT (open modal) ──────────────────────────────────
   async clickEvent(event: Locator) {
     console.log('🖱️ Clicking event...');
+    await handleCookies(this.page);
 
     // Save scroll position BEFORE any scrolling
     const scrollY = await this.page.evaluate(() => window.scrollY);
 
-    // Scroll into view only if not already visible
-    const box0 = await event.boundingBox();
-    if (!box0 || box0.y < 0 || box0.y > 700) {
+    // Click using Playwright's built-in click
+    try {
+      await event.click({ timeout: 5000 });
+    } catch (err: any) {
+      console.warn(`⚠️ Standard click failed: ${err.message}. Falling back to manual scroll and mouse click...`);
       await event.scrollIntoViewIfNeeded();
-      await this.page.waitForTimeout(300);
+      await this.page.waitForTimeout(500);
+      const box = await event.boundingBox();
+      if (!box) throw new Error('❌ Event not clickable — no bounding box');
+      await this.page.mouse.click(
+        box.x + box.width  / 2,
+        box.y + box.height / 2
+      );
     }
-
-    const box = await event.boundingBox();
-    if (!box) throw new Error('❌ Event not clickable — no bounding box');
-
-    await this.page.mouse.click(
-      box.x + box.width  / 2,
-      box.y + box.height / 2
-    );
 
     const buyNowButton = this.page.locator(
       'a:has-text("Buy now"), '      +
@@ -143,6 +146,7 @@ export class SchedulePage {
   // ── CLICK BUY NOW ─────────────────────────────────────────────
   async clickBuyNow(): Promise<void> {
     console.log('💳 Clicking Buy Now CTA...');
+    await handleCookies(this.page);
     const buyNow = this.page.locator(
       'a:has-text("Buy now"), '      +
       'button:has-text("Buy now"), ' +
