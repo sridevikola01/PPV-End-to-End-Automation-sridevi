@@ -6,7 +6,8 @@
     "test:setup": "playwright test --grep @setup",
     "test:report": "playwright show-report",
     "test:headed": "playwright test --headed",
-    "test:debug": "playwright test --debug"
+    "test:debug": "playwright test --debug",
+    "test:shard": "ts-node scripts/run_sharded_tests.ts"
   },
   "devDependencies": {
     "@playwright/mcp": "^0.0.70",

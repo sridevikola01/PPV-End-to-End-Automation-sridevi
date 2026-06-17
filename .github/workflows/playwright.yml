@@ -1,0 +1,77 @@
+name: Playwright Tests CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - feature/sridevi-changes
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      dazn_env:
+        description: 'Environment (prod / stag)'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - stag
+      dazn_region:
+        description: 'Region (GB, IN, US, AE, etc.)'
+        required: true
+        default: 'GB'
+      ppv_event:
+        description: 'PPV Event'
+        required: true
+        default: 'aj_joshua_prenga'
+      spec:
+        description: 'Test spec path to run'
+        required: true
+        default: 'tests/new_user/newuser.ppv.spec.ts'
+
+jobs:
+  playwright-tests:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Define 4 parallel shards
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Google Chrome and System Dependencies
+        run: npx playwright install --with-deps chrome
+
+      - name: Run Playwright tests (Sharded & Parallel)
+        env:
+          DAZN_ENV: ${{ github.event.inputs.dazn_env || 'prod' }}
+          DAZN_REGION: ${{ github.event.inputs.dazn_region || 'GB' }}
+          PPV_EVENT: ${{ github.event.inputs.ppv_event || 'aj_joshua_prenga' }}
+          SPEC: ${{ github.event.inputs.spec || 'tests/new_user/newuser.ppv.spec.ts' }}
+          SHARD: ${{ matrix.shard }}/4
+        run: npm run test:shard -- --concurrency=2
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-shard-${{ matrix.shard }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
