@@ -2,56 +2,39 @@ import fs from 'fs';
 import path from 'path';
 import { chromium } from '@playwright/test';
 
-// ─────────────────────────────────────────────────────────────────
 // HTML + PDF RUN REPORT GENERATOR
-// Produces an easy-to-read run report showing:
-//   • which country / surfacing point / rate plan was used
-//   • per-page pass & fail counts
-//   • total pass & fail
-// Styled to be understandable at a glance for everyone.
-// ─────────────────────────────────────────────────────────────────
-
 export interface ReportResult {
   page: string;
   field: string;
   expected: unknown;
   actual: unknown;
   status: 'PASS' | 'FAIL';
-  screenshot?: string; // absolute path to a red-boxed failure screenshot
+  screenshot?: string;
 }
 
 export interface ReportMeta {
-  event: string;        // e.g. "Beauty and The Beast: Fury vs. Hall"
-  region: string;       // country, e.g. "GB"
-  source: string;       // surfacing point, e.g. "landing-page-banner"
-  ratePlan: string;     // rate plan clicked, e.g. "monthly"
-  tier: string;         // e.g. "standard"
-  env: string;          // e.g. "prod"
-  flowName: string;     // e.g. "Landing Page Banner → Standard → Flex Monthly"
+  event: string;
+  region: string;
+  source: string;
+  ratePlan: string;
+  tier: string;
+  env: string;
+  flowName: string;
   startTime?: Date;
   endTime?: Date;
   videoPath?: string | null;
   excelPath?: string | null;
-}
-
-function inlineImage(p?: string): string | null {
-  try {
-    if (!p || !fs.existsSync(p)) return null;
-    const b64 = fs.readFileSync(p).toString('base64');
-    return `data:image/png;base64,${b64}`;
-  } catch {
-    return null;
-  }
+  userType?: 'new-user' | 'existing-user';
+  userStatus?: string;
+  paymentMethod?: string;
 }
 
 function esc(v: unknown): string {
   return String(v ?? '')
-    .replace(/&amp;/g, '&')   // unescape already-escaped
-    .replace(/&apos;/g, "'")  // unescape apostrophes
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"');
 }
 
 function pageIcon(page: string): string {
@@ -75,18 +58,24 @@ function prettySource(src: string): string {
     .join(' ');
 }
 
-function prettyPlan(ratePlan: string, tier: string): string {
+function prettyPlan(ratePlan: string): string {
   const rp = (ratePlan || '').toLowerCase();
-  const t = tier ? tier.charAt(0).toUpperCase() + tier.slice(1) : '';
-  let plan = ratePlan || '';
-  if (rp === 'monthly') plan = 'Flex – Pay Monthly';
-  else if (rp.includes('upfront')) plan = 'Annual – Pay Upfront';
-  else if (rp.includes('annual')) plan = 'Annual – Pay Monthly';
-  return t ? `${t} · ${plan}` : plan;
+  if (rp === 'monthly') return 'Flex \u2013 Pay Monthly';
+  if (rp.includes('upfront')) return 'Annual \u2013 Pay Upfront';
+  if (rp.includes('annual')) return 'Annual \u2013 Pay Monthly';
+  return ratePlan || '';
+}
+
+function prettyTier(tier: string): string {
+  const t = (tier || '').toLowerCase();
+  if (t === 'standard') return 'DAZN Standard';
+  if (t === 'ultimate') return 'DAZN Ultimate';
+  if (t === 'freemium') return 'DAZN Free';
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
 function fmtDuration(ms: number): string {
-  if (!ms || ms < 0) return '—';
+  if (!ms || ms < 0) return '\u2014';
   const s = Math.round(ms / 1000);
   const m = Math.floor(s / 60);
   const r = s % 60;
@@ -99,19 +88,14 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
   const totalFail = results.filter(r => r.status === 'FAIL').length;
   const total = results.length;
   const passPct = total ? Math.round((totalPass / total) * 100) : 0;
-
   const now = meta.endTime || new Date();
   const dur = meta.startTime ? now.getTime() - meta.startTime.getTime() : 0;
-
-  // Donut: conic-gradient with pass(green)/fail(red)
   const passDeg = total ? (totalPass / total) * 360 : 0;
   const donut = `conic-gradient(#16a34a 0deg ${passDeg}deg, #dc2626 ${passDeg}deg 360deg)`;
-
   const overallBadge = totalFail === 0
-    ? `<span class="pill pill-pass">ALL PASSED</span>`
+    ? '<span class="pill pill-pass">ALL PASSED</span>'
     : `<span class="pill pill-fail">${totalFail} FAILED</span>`;
 
-  // ── Per-page summary rows with stacked bar ──
   const pageRows = pages.map(p => {
     const pr = results.filter(r => r.page === p);
     const pass = pr.filter(r => r.status === 'PASS').length;
@@ -125,37 +109,35 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
         <td class="num pass-txt">${pass}</td>
         <td class="num fail-txt">${fail}</td>
         <td class="num">${tot}</td>
-        <td>
-          <div class="bar">
-            <div class="bar-pass" style="width:${pPct}%"></div>
-            <div class="bar-fail" style="width:${fPct}%"></div>
-          </div>
-        </td>
+        <td><div class="bar"><div class="bar-pass" style="width:${pPct}%"></div><div class="bar-fail" style="width:${fPct}%"></div></div></td>
         <td class="num">${tot ? Math.round(pPct) : 0}%</td>
       </tr>`;
   }).join('');
 
-  // ── Detailed results grouped by page ──
   const detailBlocks = pages.map(p => {
     const pr = results.filter(r => r.page === p);
     const rows = pr.map(r => {
       const cls = r.status === 'PASS' ? 'st-pass' : 'st-fail';
-      const showVals = r.status === 'FAIL';
-      const img = r.status === 'FAIL' ? inlineImage(r.screenshot) : null;
-      const shotRow = img
-        ? `
+      const hasExpected = r.expected !== undefined && r.expected !== null && String(r.expected) !== '';
+      const hasActual = r.actual !== undefined && r.actual !== null && String(r.actual) !== '';
+      const showVals = hasExpected || hasActual;
+      let shotRow = '';
+      if (r.status === 'FAIL' && r.screenshot && fs.existsSync(r.screenshot)) {
+        const b64 = fs.readFileSync(r.screenshot).toString('base64');
+        const img = `data:image/png;base64,${b64}`;
+        shotRow = `
         <tr class="shot-row">
           <td colspan="4">
-            <div class="shot-label">📸 Failing field highlighted in red:</div>
+            <div class="shot-label">Screenshot:</div>
             <img class="shot" src="${img}" alt="Screenshot for ${esc(r.field)}"/>
           </td>
-        </tr>`
-        : '';
+        </tr>`;
+      }
       return `
         <tr class="${r.status === 'FAIL' ? 'row-fail' : ''}">
           <td>${esc(r.field)}</td>
-          <td class="vcell">${showVals ? esc(r.expected) : '<span class="muted">—</span>'}</td>
-          <td class="vcell">${showVals ? esc(r.actual) : '<span class="muted">—</span>'}</td>
+          <td class="vcell">${showVals ? esc(r.expected) : '<span class="muted">\u2014</span>'}</td>
+          <td class="vcell">${showVals ? esc(r.actual) : '<span class="muted">\u2014</span>'}</td>
           <td><span class="status ${cls}">${r.status}</span></td>
         </tr>${shotRow}`;
     }).join('');
@@ -166,8 +148,8 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
         <div class="page-block-head">
           ${pageIcon(p)}&nbsp; <span>${esc(p)}</span>
           <span class="page-block-counts">
-            <span class="pass-txt">✓ ${pass}</span>
-            <span class="fail-txt">✕ ${fail}</span>
+            <span class="pass-txt">\u2713 ${pass}</span>
+            <span class="fail-txt">\u2715 ${fail}</span>
           </span>
         </div>
         <table class="detail">
@@ -177,7 +159,23 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
       </div>`;
   }).join('');
 
-  const fmtTime = (d?: Date) => d ? d.toLocaleString('en-GB') : '—';
+  const fmtTime = (d?: Date) => d ? d.toLocaleString('en-GB') : '\u2014';
+
+  const userStatus = meta.userStatus || (meta.userType === 'existing-user' ? 'Existing User' : 'New User');
+
+  // Build a relative folder path for display (without server prefix)
+  const folderName = buildFolderName(meta);
+
+  // Meta grid items in desired order — only show User Status for existing users
+  const metaItems = `
+      <div class="meta-item"><div class="k">PPV Name</div><div class="v">🥊 ${esc(meta.event)}</div></div>
+      <div class="meta-item"><div class="k">Environment</div><div class="v">🧭 ${esc((meta.env || '').toUpperCase())}</div></div>
+      <div class="meta-item"><div class="k">Country / Region</div><div class="v">🌍 ${esc(meta.region)}</div></div>
+      ${meta.userType === 'existing-user' ? `<div class="meta-item"><div class="k">User Status</div><div class="v">👤 ${esc(userStatus)}</div></div>` : ''}
+      <div class="meta-item"><div class="k">Surfacing Point</div><div class="v">📍 ${esc(prettySource(meta.source))}</div></div>
+      <div class="meta-item"><div class="k">Tier & Rate Plan</div><div class="v">💎 ${esc(prettyTier(meta.tier))} &middot; 💳 ${esc(prettyPlan(meta.ratePlan))}</div></div>
+      ${(meta.env || '').toLowerCase() === 'stag' ? `<div class="meta-item"><div class="k">Payment Method</div><div class="v">💳 ${esc(meta.paymentMethod || 'N/A')}</div></div>` : ''}
+      <div class="meta-item"><div class="k">Flow</div><div class="v">🔀 ${esc(meta.flowName)}</div></div>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -201,7 +199,6 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
   h1 { font-size: 22px; margin: 0 0 4px; color: #0b1f3a; }
   .sub { color: #64748b; font-size: 12px; margin-bottom: 22px; }
   h2 { font-size: 15px; margin: 28px 0 12px; color: #0b1f3a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
-
   .top { display: flex; gap: 24px; align-items: flex-start; flex-wrap: nowrap; }
   .donut { width: 132px; height: 132px; border-radius: 50%; background: ${donut};
            display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
@@ -209,17 +206,14 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
                  display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .donut .hole .big { font-size: 26px; font-weight: 700; color: #0b1f3a; line-height: 1; }
   .donut .hole .lbl { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
-
   .cards { display: flex; gap: 12px; flex-wrap: nowrap; align-items: stretch; }
   .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; min-width: 80px; max-width: 110px; text-align: center;
           box-shadow: 0 1px 2px rgba(0,0,0,.04); flex: 1; }
   .card .v { font-size: 24px; font-weight: 700; line-height: 1; }
   .card .k { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .6px; margin-top: 6px; }
   .card.pass .v { color: #16a34a; } .card.fail .v { color: #dc2626; } .card.pct .v { color: #2563eb; }
-
   .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .4px; }
   .pill-pass { background: #dcfce7; color: #15803d; } .pill-fail { background: #fee2e2; color: #b91c1c; }
-
   table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden;
           box-shadow: 0 1px 2px rgba(0,0,0,.04); }
   th { background: #0b1f3a; color: #fff; text-align: left; padding: 9px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
@@ -232,15 +226,12 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
   .num { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
   .pass-txt { color: #16a34a; } .fail-txt { color: #dc2626; }
   .page-name { font-weight: 600; }
-
   .bar { height: 10px; border-radius: 5px; background: #e2e8f0; overflow: hidden; display: flex; min-width: 160px; }
   .bar-pass { background: #16a34a; height: 100%; } .bar-fail { background: #dc2626; height: 100%; }
-
-  .meta-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .meta-item { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 11px 14px; }
   .meta-item .k { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: .6px; }
   .meta-item .v { font-size: 13px; font-weight: 600; margin-top: 3px; color: #0b1f3a; word-break: break-word; white-space: normal; }
-
   .page-block { margin-bottom: 18px; }
   .page-block-head { background: #e8eef6; color: #0b1f3a; font-weight: 700; padding: 8px 12px; border-radius: 8px 8px 0 0;
                      display: flex; align-items: center; font-size: 13px; }
@@ -254,13 +245,13 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
   .foot { margin-top: 30px; color: #94a3b8; font-size: 11px; text-align: center; }
   .shot-row td { padding: 4px 12px 12px; background: #fff7f7; }
   .shot-label { font-size: 11px; color: #dc2626; font-weight: 600; margin-bottom: 6px; }
-  .shot { max-width: 100%; width: auto; max-height: 480px; object-fit: contain; border-radius: 6px; 
+  .shot { max-width: 100%; width: auto; max-height: 480px; object-fit: contain; border-radius: 6px;
           margin-top: 4px; border: 2px solid #fca5a5; display: block; }
 </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>DAZN PPV New-User Run Report</h1>
+    <h1>DAZN PPV ${(meta.userType === 'existing-user') ? 'Existing-User' : 'New-User'} Run Report</h1>
     <div class="sub">
       Generated: ${fmtTime(now)} &nbsp;|&nbsp; Start: ${fmtTime(meta.startTime)} &nbsp;|&nbsp; Duration: ${fmtDuration(dur)} &nbsp;|&nbsp; ${overallBadge}
     </div>
@@ -279,12 +270,7 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
 
     <h2>Run Configuration</h2>
     <div class="meta-grid">
-      <div class="meta-item"><div class="k">Country / Region</div><div class="v">🌍 ${esc(meta.region)}</div></div>
-      <div class="meta-item"><div class="k">Surfacing Point</div><div class="v">📍 ${esc(prettySource(meta.source))}</div></div>
-      <div class="meta-item"><div class="k">Rate Plan Clicked</div><div class="v">💳 ${esc(prettyPlan(meta.ratePlan, meta.tier))}</div></div>
-      <div class="meta-item"><div class="k">Event</div><div class="v">🥊 ${esc(meta.event)}</div></div>
-      <div class="meta-item"><div class="k">Environment</div><div class="v">🧭 ${esc((meta.env || '').toUpperCase())}</div></div>
-      <div class="meta-item"><div class="k">Flow</div><div class="v">${esc(meta.flowName)}</div></div>
+      ${metaItems}
     </div>
 
     <h2>Per-Page Results</h2>
@@ -293,7 +279,7 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
       <tbody>
         ${pageRows}
         <tr style="background:#f8fafc; font-weight:700;">
-          <td class="page-name">Σ&nbsp; TOTAL</td>
+          <td class="page-name">&Sigma;&nbsp; TOTAL</td>
           <td class="num pass-txt">${totalPass}</td>
           <td class="num fail-txt">${totalFail}</td>
           <td class="num">${total}</td>
@@ -306,10 +292,21 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
     <h2>Detailed Results</h2>
     ${detailBlocks}
 
-    <div class="foot">DAZN automated PPV test • ${esc(meta.flowName)} • ${fmtTime(now)}</div>
+    <div class="foot">DAZN automated PPV test &bull; ${esc(meta.flowName)} &bull; ${fmtTime(now)}</div>
   </div>
 </body>
 </html>`;
+}
+
+/**
+ * Build a folder name for a run report, e.g.:
+ *   GB_Landing-Page-Banner_Standard-Monthly_2026-06-16_23-30-00
+ */
+function buildFolderName(meta: ReportMeta): string {
+  const src = prettySource(meta.source).replace(/\s+/g, '-');
+  const tierPlan = `${prettyTier(meta.tier).replace(/\s+/g, '-')}_${prettyPlan(meta.ratePlan).replace(/[\s–]/g, '-').replace(/-+/g, '-')}`;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  return `${meta.region}_${src}_${tierPlan}_${stamp}`;
 }
 
 export async function generateReports(
@@ -324,24 +321,25 @@ export async function generateReports(
   const reportsDir = path.resolve(process.cwd(), 'reports');
   if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true });
 
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const slug = `${meta.region}_${meta.source}_${meta.tier}_${meta.ratePlan}`
-    .replace(/[^a-zA-Z0-9_-]/g, '-');
-  const base = path.join(reportsDir, `PPV_${slug}_${stamp}`);
-  const htmlPath = `${base}.html`;
-  const pdfPath = `${base}.pdf`;
+  // Create a dedicated subfolder for this run
+  const folderName = buildFolderName(meta);
+  const runDir = path.join(reportsDir, folderName);
+  if (!fs.existsSync(runDir)) fs.mkdirSync(runDir, { recursive: true });
+
+  // Save HTML report
+  const htmlPath = path.join(runDir, 'PPV_Report.html');
+  const pdfPath = path.join(runDir, 'PPV_Report.pdf');
 
   const html = buildHtml(results, meta);
   fs.writeFileSync(htmlPath, html, 'utf-8');
-  console.log(`📝 [Report] HTML written: ${htmlPath}`);
 
-  // Render PDF via headless Chrome (channel:chrome avoids needing bundled chromium)
+  // Render PDF via headless Chrome
   let pdfOk = false;
   try {
     const browser = await chromium.launch({ channel: 'chrome', headless: true });
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
-    await page.goto('file://' + htmlPath, { waitUntil: 'networkidle' });
+    await page.goto('file://' + htmlPath, { waitUntil: 'load' });
     await page.pdf({
       path: pdfPath,
       format: 'A4',
@@ -351,9 +349,31 @@ export async function generateReports(
     });
     await browser.close();
     pdfOk = true;
-    console.log(`📄 [Report] PDF written:  ${pdfPath}`);
   } catch (e: any) {
-    console.warn(`⚠️  [Report] PDF generation failed (HTML still available): ${e.message}`);
+    // PDF generation failed silently
+  }
+
+  // Copy Excel file into the run folder if it exists
+  if (meta.excelPath && fs.existsSync(meta.excelPath)) {
+    try {
+      const destExcel = path.join(runDir, 'PPV_Results.xlsx');
+      fs.copyFileSync(meta.excelPath, destExcel);
+      console.log(`📄 Excel copied to: ${destExcel}`);
+    } catch (e: any) {
+      console.warn(`⚠️ Could not copy Excel: ${e.message}`);
+    }
+  }
+
+  // Copy video into the run folder if it exists
+  if (meta.videoPath && fs.existsSync(meta.videoPath)) {
+    try {
+      const ext = path.extname(meta.videoPath);
+      const destVideo = path.join(runDir, `PPV_Video${ext}`);
+      fs.copyFileSync(meta.videoPath, destVideo);
+      console.log(`🎥 Video copied to: ${destVideo}`);
+    } catch (e: any) {
+      console.warn(`⚠️ Could not copy video: ${e.message}`);
+    }
   }
 
   return { htmlPath, pdfPath: pdfOk ? pdfPath : null };
