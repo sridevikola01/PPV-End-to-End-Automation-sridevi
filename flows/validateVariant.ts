@@ -63,14 +63,18 @@ export const validateVariant = async (
   // Only scroll on pages that need lazy loading
   const url = page.url();
   const source = (eventData.SOURCE || eventData.source || '').toLowerCase();
+  const isModalOpen = await page.locator('[role="dialog"], [aria-modal="true"], [class*="modal" i]').first().isVisible().catch(() => false);
   const needsScroll =
-    url.includes('/schedule') ||
+    (url.includes('/schedule') && !isModalOpen) ||
     url.includes('/addon/purchase') ||     // Choose How To Buy
     (url.includes('page=PlanDetails') && !url.includes('upsellTierShown=true')) ||
     ((url.includes('/welcome') || url.includes('/home') || pageName.toLowerCase().includes('landing') || pageName.toLowerCase().includes('home')) &&
      (source.includes('dont-miss') || source.includes('tile') || source.includes('upcoming') || source.includes('rail')));
 
   if (needsScroll) {
+    // Save original scroll position
+    const originalScrollY = await page.evaluate(() => window.scrollY).catch(() => 0);
+
     // Multiple scroll passes to trigger all lazy-loaded content
     for (let pass = 0; pass < 3; pass++) {
       await page.evaluate(async () => {
@@ -93,8 +97,9 @@ export const validateVariant = async (
       await page.waitForTimeout(300);
     }
 
-    // Scroll back to top and stabilize
-    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+    // Restore original scroll position instead of scrolling back to top (0, 0)
+    // to prevent unwanted jumping/scrolling effects when clicking Buy Now.
+    await page.evaluate((y: number) => window.scrollTo(0, y), originalScrollY).catch(() => {});
     await page.waitForTimeout(500);
   }
 

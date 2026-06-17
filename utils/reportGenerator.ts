@@ -29,6 +29,16 @@ export interface ReportMeta {
   paymentMethod?: string;
 }
 
+function inlineImage(p?: string): string | null {
+  try {
+    if (!p || !fs.existsSync(p)) return null;
+    const b64 = fs.readFileSync(p).toString('base64');
+    return `data:image/png;base64,${b64}`;
+  } catch {
+    return null;
+  }
+}
+
 function esc(v: unknown): string {
   return String(v ?? '')
     .replace(/&/g, '&')
@@ -83,6 +93,13 @@ function fmtDuration(ms: number): string {
 }
 
 function buildHtml(results: ReportResult[], meta: ReportMeta): string {
+  // Filter out rows where both expected and actual are N/A — these are non-applicable fields
+  results = results.filter(r => {
+    const expNA = String(r.expected ?? '').trim().toUpperCase() === 'N/A';
+    const actNA = String(r.actual ?? '').trim().toUpperCase() === 'N/A';
+    return !(expNA && actNA);
+  });
+
   const pages = [...new Set(results.map(r => r.page))];
   const totalPass = results.filter(r => r.status === 'PASS').length;
   const totalFail = results.filter(r => r.status === 'FAIL').length;
@@ -121,18 +138,16 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
       const hasExpected = r.expected !== undefined && r.expected !== null && String(r.expected) !== '';
       const hasActual = r.actual !== undefined && r.actual !== null && String(r.actual) !== '';
       const showVals = hasExpected || hasActual;
-      let shotRow = '';
-      if (r.status === 'FAIL' && r.screenshot && fs.existsSync(r.screenshot)) {
-        const b64 = fs.readFileSync(r.screenshot).toString('base64');
-        const img = `data:image/png;base64,${b64}`;
-        shotRow = `
+      const img = r.status === 'FAIL' ? inlineImage(r.screenshot) : null;
+      const shotRow = img
+        ? `
         <tr class="shot-row">
           <td colspan="4">
             <div class="shot-label">Screenshot:</div>
             <img class="shot" src="${img}" alt="Screenshot for ${esc(r.field)}"/>
           </td>
-        </tr>`;
-      }
+        </tr>`
+        : '';
       return `
         <tr class="${r.status === 'FAIL' ? 'row-fail' : ''}">
           <td>${esc(r.field)}</td>

@@ -1,24 +1,5 @@
 import { defineConfig } from '@playwright/test';
 
-// Map DAZN region to browser timezone + locale so event times match the region
-const regionTimezoneMap: Record<string, { timezoneId: string; locale: string }> = {
-  GB:  { timezoneId: 'Europe/London',       locale: 'en-GB' },
-  IE:  { timezoneId: 'Europe/Dublin',       locale: 'en-IE' },
-  DE:  { timezoneId: 'Europe/Berlin',       locale: 'de-DE' },
-  IT:  { timezoneId: 'Europe/Rome',         locale: 'it-IT' },
-  ES:  { timezoneId: 'Europe/Madrid',       locale: 'es-ES' },
-  AT:  { timezoneId: 'Europe/Vienna',       locale: 'de-AT' },
-  CH:  { timezoneId: 'Europe/Zurich',       locale: 'de-CH' },
-  CA:  { timezoneId: 'America/Toronto',     locale: 'en-CA' },
-  US:  { timezoneId: 'America/New_York',    locale: 'en-US' },
-  AU:  { timezoneId: 'Australia/Sydney',    locale: 'en-AU' },
-  JP:  { timezoneId: 'Asia/Tokyo',          locale: 'ja-JP' },
-  BR:  { timezoneId: 'America/Sao_Paulo',   locale: 'pt-BR' },
-};
-
-const region = (process.env.DAZN_REGION || 'GB').toUpperCase();
-const { timezoneId, locale } = regionTimezoneMap[region] || regionTimezoneMap['GB'];
-
 export default defineConfig({
   testDir:   './tests',
   timeout:   300_000,
@@ -29,8 +10,8 @@ export default defineConfig({
   use: {
     headless:  process.env.HEADLESS === 'true',
     viewport:  null,
-    timezoneId,
-    locale,
+    timezoneId: 'Asia/Kolkata',
+    locale:    'en-IN',
 
     launchOptions: {
       args: [
@@ -38,9 +19,9 @@ export default defineConfig({
         '--disable-infobars',
         '--no-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-blink-features=AutomationControlled',
         '--password-store=basic',
         '--use-mock-keychain',
+        '--disable-popup-blocking',
       ],
     },
 
@@ -64,6 +45,9 @@ export default defineConfig({
         channel:  'chrome',
         headless: process.env.HEADLESS === 'true',
         viewport: null,
+        timezoneId: 'Asia/Kolkata',
+        locale:    'en-IN',
+
         launchOptions: {
           args: [
             '--start-maximized',
@@ -73,6 +57,7 @@ export default defineConfig({
             '--disable-blink-features=AutomationControlled',
             '--password-store=basic',
             '--use-mock-keychain',
+            '--disable-popup-blocking',
           ],
         },
       },

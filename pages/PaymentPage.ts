@@ -9,6 +9,10 @@ const EXPIRY_DATE_FRAME = 'Secure card expiration date input frame';
 const CVV_FRAME = 'Secure card security code input frame';
 const CARD_HOLDER_FRAME = 'Secure text input frame';
 
+// ── Google Pay credentials (stag test account) ─────────────
+const GPAY_EMAIL    = 'srdazntest@gmail.com';
+const GPAY_PASSWORD = 'Dazn@123';
+
 export class PaymentPage extends BasePage {
   constructor(page: Page) {
     super(page);
@@ -116,7 +120,6 @@ export class PaymentPage extends BasePage {
 
     // Get full page text once
     const bodyText = (await this.page.locator('body').innerText().catch(() => '')).replace(/\u200B/g, '');
-    // Debug log removed for performance
 
     // Normalise flow for filtering
     const normalizedFlow = (flow || '').trim().toLowerCase();
@@ -146,7 +149,8 @@ export class PaymentPage extends BasePage {
         console.warn(`⚠️  Error getting "${field}": ${e.message}`);
       }
 
-      const status = this.compareValues(actual, expected, field);
+      const rowType = (row['Type'] || '').trim().toLowerCase() || undefined;
+      const status = this.compareValues(actual, expected, field, rowType);
       const icon = status === 'PASS' ? '✅' : (status === 'SKIP' ? '⏭️' : '❌');
       console.log(`  ${icon} [${field}] expected="${expected}" actual="${actual}"`);
       results.push({ page: 'Payment', field, expected, actual, status });
@@ -286,34 +290,357 @@ export class PaymentPage extends BasePage {
         });
 
       } else if (planType === 'ultimate') {
-        // Label and price are displayed
+        // Label and price are displayed — use dynamic expected values
+        const expectedDateStr = eventData.NEXT_PAYMENT_DATE || '';
+        const expectedLabelText = expectedDateStr
+          ? `Next payment on ${expectedDateStr}`
+          : 'Next payment on <date>';
+
         const labelPresent = actualLabel !== 'N/A';
-        const labelExpected = 'Visible next payment label';
+        const labelValid = labelPresent && /next\s+(?:annual\s+)?payment\s+on/i.test(actualLabel);
         const labelActual = labelPresent ? actualLabel : 'Not visible';
-        const labelStatus = labelPresent ? 'PASS' : 'FAIL';
-        console.log(`  ${labelStatus === 'PASS' ? '✅' : '❌'} [Next Payment Label] expected="${labelExpected}" actual="${labelActual}"`);
+        const labelStatus = labelValid ? 'PASS' : 'FAIL';
+        console.log(`  ${labelStatus === 'PASS' ? '✅' : '❌'} [Next Payment Label] expected="${expectedLabelText}" actual="${labelActual}"`);
         results.push({
           page: 'Payment',
           field: 'Next Payment Label',
-          expected: labelExpected,
+          expected: expectedLabelText,
           actual: labelActual,
           status: labelStatus
         });
 
         const pricePresent = actualPrice !== 'N/A';
-        const priceExpected = 'Visible next payment price';
+        const ratePlan = (eventData.RATE_PLAN || '').toLowerCase();
+        const expectedPrice = ratePlan.includes('upfront')
+          ? (eventData.ANNUAL_UPFRONT_PRICE_DISPLAY || eventData.ANNUAL_UPFRONT_PRICE || '')
+          : (eventData.ANNUAL_PAY_MONTHLY_PRICE_DISPLAY || eventData.ANNUAL_PAY_MONTHLY_PRICE || '');
+        const priceValid = pricePresent && actualPrice.replace(/\s+/g, '') === expectedPrice.replace(/\s+/g, '');
         const priceActual = pricePresent ? actualPrice : 'Not visible';
-        const priceStatus = pricePresent ? 'PASS' : 'FAIL';
-        console.log(`  ${priceStatus === 'PASS' ? '✅' : '❌'} [Next Payment Price] expected="${priceExpected}" actual="${priceActual}"`);
+        const priceStatus = priceValid ? 'PASS' : 'FAIL';
+        console.log(`  ${priceStatus === 'PASS' ? '✅' : '❌'} [Next Payment Price] expected="${expectedPrice}" actual="${priceActual}"`);
         results.push({
           page: 'Payment',
           field: 'Next Payment Price',
-          expected: priceExpected,
+          expected: expectedPrice,
           actual: priceActual,
           status: priceStatus
         });
       }
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // METHOD 1: VALIDATE ULTIMATE UPSELL BANNER TEXT (before clicking)
+  // Called for standard tier monthly & APM plans on both prod and stag
+  // Always runs — validates banner is present and text is correct
+  // ─────────────────────────────────────────────────────────────────────────
+  async validateUltimateUpsellBannerText(
+    results: any[],
+    eventData: Record<string, string>
+  ): Promise<void> {
+    if (this.page.isClosed()) return;
+
+    console.log('\n🔍 [Ultimate Upsell] Validating banner text (before click)...');
+
+    // Find the green upsell banner using multiple selector strategies
+    const bannerSelectors = [
+      '[aria-label="Switch to ultimate tier"]',
+      '[aria-label*="Switch to ultimate" i]',
+      '[role="button"]:has-text("Switch to DAZN Ultimate")',
+      'a:has-text("Switch to DAZN Ultimate")',
+      'button:has-text("Switch to DAZN Ultimate")',
+    ];
+    const banner = this.page.locator(bannerSelectors.join(', ')).first();
+    const bannerVisible = await banner.isVisible({ timeout: 3000 }).catch(() => false);
+
+    // Validate 1: Banner presence
+    const presenceStatus = bannerVisible ? 'PASS' : 'FAIL';
+    console.log(`  ${presenceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Banner Present] expected="Yes" actual="${bannerVisible ? 'Yes' : 'No'}"`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Upsell Banner Present',
+      expected: 'Yes',
+      actual: bannerVisible ? 'Yes' : 'No',
+      status: presenceStatus,
+    });
+
+    if (!bannerVisible) {
+      console.log('⚠️ [Ultimate Upsell] Banner not found — skipping text validation');
+      return;
+    }
+
+    // Validate 2: Banner text (contains "Switch to DAZN Ultimate")
+    const bannerText = ((await banner.textContent().catch(() => '')) || '').trim().replace(/\s+/g, ' ');
+    const expectedBannerText = 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost';
+    const textStatus = compare(bannerText, expectedBannerText, 'contains') ? 'PASS' : 'FAIL';
+    console.log(`  ${textStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Text] expected="${expectedBannerText}" actual="${bannerText}"`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Upsell Text',
+      expected: expectedBannerText,
+      actual: bannerText,
+      status: textStatus,
+    });
+
+    // Validate 3: Ultimate price shown in banner (e.g. £24.99/month)
+    const ultimatePrice = eventData.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE || eventData.TODAY_YOU_PAY_ULTIMATE_APM || '';
+    if (ultimatePrice) {
+      const priceNumeric = ultimatePrice.replace(/[^\d.]/g, '');
+      const priceInBanner = bannerText.includes(priceNumeric);
+      const priceStatus = priceInBanner ? 'PASS' : 'FAIL';
+      console.log(`  ${priceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Price] expected="${ultimatePrice}" actual="${bannerText}"`);
+      results.push({
+        page: 'Payment',
+        field: 'Ultimate Upsell Price',
+        expected: ultimatePrice,
+        actual: bannerText,
+        status: priceStatus,
+      });
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // METHOD 2: CLICK ULTIMATE UPSELL ARROW & VALIDATE SWITCHED SUMMARY
+  // Returns true if switch was successful (page now shows DAZN Ultimate)
+  // Called only when SWITCH=true (stag) or always on prod
+  // ─────────────────────────────────────────────────────────────────────────
+  async clickUltimateUpsellAndValidate(
+    results: any[],
+    eventData: Record<string, string>
+  ): Promise<boolean> {
+    if (this.page.isClosed()) return false;
+
+    console.log('\n🖱️ [Ultimate Upsell] Clicking > arrow to switch to DAZN Ultimate...');
+
+    // Find the clickable arrow / banner element
+    const clickableSelectors = [
+      '[aria-label="Switch to ultimate tier"]',
+      '[aria-label*="Switch to ultimate" i]',
+      '[role="button"]:has-text("Switch to DAZN Ultimate")',
+      'a:has-text("Switch to DAZN Ultimate")',
+      'button:has-text("Switch to DAZN Ultimate")',
+    ];
+    const clickTarget = this.page.locator(clickableSelectors.join(', ')).first();
+    const clickVisible = await clickTarget.isVisible({ timeout: 3000 }).catch(() => false);
+
+    if (!clickVisible) {
+      console.log('⚠️ [Ultimate Upsell] Clickable arrow/banner not found — cannot switch');
+      results.push({
+        page: 'Payment',
+        field: 'Ultimate Switch - Click Success',
+        expected: 'Yes',
+        actual: 'No — arrow not found',
+        status: 'FAIL',
+      });
+      return false;
+    }
+
+    // Click the arrow with fallback strategies
+    try {
+      await clickTarget.scrollIntoViewIfNeeded().catch(() => {});
+      await clickTarget.click({ force: true, timeout: 5000 });
+      console.log('✅ [Ultimate Upsell] Clicked > arrow');
+    } catch (e: any) {
+      const handle = await clickTarget.elementHandle().catch(() => null);
+      if (handle) {
+        await this.page.evaluate((el: any) => el.click(), handle);
+        console.log('✅ [Ultimate Upsell] JS click on > arrow');
+      } else {
+        console.log(`⚠️ [Ultimate Upsell] Click failed: ${e.message}`);
+        results.push({
+          page: 'Payment',
+          field: 'Ultimate Switch - Click Success',
+          expected: 'Yes',
+          actual: `No — ${e.message}`,
+          status: 'FAIL',
+        });
+        return false;
+      }
+    }
+
+    // Give it a moment to navigate or update
+    await this.page.waitForTimeout(2000);
+
+    // If redirected to Phone Number collection page (common on prod or if dev mode is off), try to skip it
+    if (this.page.url().includes('PhoneNumberCollection')) {
+      console.log('📱 [Ultimate Upsell] Phone number collection page detected — attempting to skip...');
+      const skipBtn = this.page.locator(
+        'button:has-text("Skip"), ' +
+        'button:has-text("Not now"), ' +
+        'button:has-text("Continue"), ' +
+        '[role="button"]:has-text("Skip"), ' +
+        '[role="button"]:has-text("Not now")'
+      ).first();
+      
+      if (await skipBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        console.log('🖱️ [Ultimate Upsell] Clicking Skip/Not now on phone page...');
+        await skipBtn.click({ force: true }).catch(() => {});
+        await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+        await this.page.waitForTimeout(2000);
+      } else {
+        console.log('⚠️ [Ultimate Upsell] Skip button not visible on phone number page');
+      }
+    }
+
+    // Wait for Purchase Summary to update to DAZN Ultimate
+    const switched = await this.page.waitForFunction(() => {
+      const bodyText = document.body.innerText;
+      const isOnPaymentOrConfirm = bodyText.includes('Purchase summary') || bodyText.includes('Upgrade Confirmation') || bodyText.includes('Today you pay') || bodyText.includes('Welcome') || bodyText.includes('Choose how to pay');
+      const hasUltimateSummary = /\bDAZN Ultimate\b/i.test(bodyText) && !/\bDAZN Standard\b/i.test(bodyText);
+      const bannerGone = !bodyText.includes('Switch to DAZN Ultimate');
+      return isOnPaymentOrConfirm && (hasUltimateSummary || bannerGone);
+    }, { timeout: 10000 }).then(() => true).catch(() => false);
+
+    await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+
+    if (!switched) {
+      console.log('⚠️ [Ultimate Upsell] Purchase Summary did NOT update to DAZN Ultimate');
+      results.push({
+        page: 'Payment',
+        field: 'Ultimate Switch - Click Success',
+        expected: 'Yes',
+        actual: 'No — summary did not update',
+        status: 'FAIL',
+      });
+      return false;
+    }
+
+    console.log(`✅ [Ultimate Upsell] Switched to DAZN Ultimate. URL: ${this.page.url()}`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Switch - Click Success',
+      expected: 'Yes',
+      actual: 'Yes',
+      status: 'PASS',
+    });
+
+    // ── Validate DAZN Ultimate Purchase Summary AFTER switch ──────────────
+    console.log('\n📋 [Ultimate Upsell] Validating switched Purchase Summary...');
+    const bodyText = (await this.page.locator('body').innerText().catch(() => '')).replace(/\u200B/g, '');
+    const lower = bodyText.toLowerCase();
+
+    // Validate 1: DAZN Tier = DAZN Ultimate
+    const tierMatch = bodyText.match(/DAZN\s+(Standard|Ultimate|Premium)/i);
+    const actualTier = tierMatch ? tierMatch[0].trim() : 'N/A';
+    const tierStatus = actualTier.toLowerCase().includes('ultimate') ? 'PASS' : 'FAIL';
+    console.log(`  ${tierStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - DAZN Tier] expected="DAZN Ultimate" actual="${actualTier}"`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Switch - DAZN Tier',
+      expected: 'DAZN Ultimate',
+      actual: actualTier,
+      status: tierStatus,
+    });
+
+    // Validate 2: PPV Price = £0 / $0 / €0 (included in Ultimate — no extra cost)
+    const ppvName = eventData.PPV_NAME || '';
+    const vsMatch = ppvName.match(/(\w+)\s+vs\.?\s+(\w+)/i);
+    const fighter1 = vsMatch ? vsMatch[1].toLowerCase() : '';
+    const ppvIdx = fighter1 ? lower.indexOf(fighter1) : -1;
+    let actualPPVPrice = 'N/A';
+    if (ppvIdx >= 0) {
+      const nearText = bodyText.substring(ppvIdx, ppvIdx + 200);
+      const priceMatch = nearText.match(/[\$£€₹]\s?0(?:\.00)?/);
+      if (priceMatch) actualPPVPrice = priceMatch[0].trim();
+    }
+    const ppvPriceStatus = /^[£$€₹]\s?0/.test(actualPPVPrice) ? 'PASS' : 'FAIL';
+    console.log(`  ${ppvPriceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - PPV Price] expected="£0/$0/€0" actual="${actualPPVPrice}"`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Switch - PPV Price',
+      expected: '£0 / $0 / €0',
+      actual: actualPPVPrice,
+      status: ppvPriceStatus,
+    });
+
+    // Validate 3: Plan Name (Annual - Pay Monthly)
+    const planPatterns = [
+      /Annual\s*[–\-]\s*Pay\s*Monthly/i,
+      /Annual\s*[–\-]\s*Pay\s*Upfront/i,
+      /Flex\s*[–\-]\s*Pay\s*Monthly/i,
+    ];
+    let actualPlan = 'N/A';
+    for (const p of planPatterns) {
+      const m = bodyText.match(p);
+      if (m) { actualPlan = m[0].trim(); break; }
+    }
+    const planStatus = actualPlan !== 'N/A' ? 'PASS' : 'FAIL';
+    console.log(`  ${planStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - Plan Name] actual="${actualPlan}"`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Switch - Plan Name',
+      expected: 'Annual - Pay Monthly',
+      actual: actualPlan,
+      status: planStatus,
+    });
+
+    // Validate 4: Today You Pay (Ultimate price e.g. £24.99)
+    const todaySplit = bodyText.split(/today\s+you\s+pay/i);
+    let actualTodayPrice = 'N/A';
+    if (todaySplit.length > 1) {
+      const prices = todaySplit[1].match(/[\$£€₹]\s?\d+(?:\.\d{2})?/g) || [];
+      if (prices[0]) actualTodayPrice = prices[0].trim();
+    }
+    const expectedUltimatePrice = eventData.TODAY_YOU_PAY_ULTIMATE_APM || eventData.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE || '';
+    const todayStatus = expectedUltimatePrice &&
+      actualTodayPrice.replace(/[^\d.]/g, '') === expectedUltimatePrice.replace(/[^\d.]/g, '')
+      ? 'PASS' : 'FAIL';
+    console.log(`  ${todayStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - Today You Pay] expected="${expectedUltimatePrice}" actual="${actualTodayPrice}"`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Switch - Today You Pay',
+      expected: expectedUltimatePrice,
+      actual: actualTodayPrice,
+      status: todayStatus,
+    });
+
+    // Validate 5: Cancellation Text for Ultimate APM
+    const cancelLines = bodyText.split('\n')
+      .map((l: string) => l.trim())
+      .filter((l: string) =>
+        l.length > 30 && l.length < 600 &&
+        !/terms of use|privacy policy|cookie notice/i.test(l)
+      );
+    let actualCancelText = 'N/A';
+    for (const line of cancelLines) {
+      const ll = line.toLowerCase();
+      if (
+        (ll.includes('renew') || ll.includes('cancel')) &&
+        (ll.includes('month') || ll.includes('annual') || ll.includes('account'))
+      ) {
+        actualCancelText = line;
+        break;
+      }
+    }
+    const expectedCancelUltimate = eventData.CANCELLATION_TEXT_ULTIMATE_APM || '';
+    const cancelStatus = expectedCancelUltimate
+      ? (compare(actualCancelText, expectedCancelUltimate, 'contains') ? 'PASS' : 'FAIL')
+      : (actualCancelText !== 'N/A' ? 'PASS' : 'FAIL');
+    console.log(`  ${cancelStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - Cancellation Text] actual="${actualCancelText.substring(0, 80)}..."`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Switch - Cancellation Text',
+      expected: expectedCancelUltimate || 'Contains: renew/cancel',
+      actual: actualCancelText,
+      status: cancelStatus,
+    });
+
+    // Validate 6: Upsell banner should be GONE after switch
+    const bannerGone = !(await this.page.locator(
+      'div:has-text("Switch to DAZN Ultimate"), [class*="upsell" i]:has-text("Switch to DAZN Ultimate")'
+    ).first().isVisible({ timeout: 1500 }).catch(() => false));
+    const bannerGoneStatus = bannerGone ? 'PASS' : 'FAIL';
+    console.log(`  ${bannerGoneStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - Upsell Banner Gone] expected="Yes" actual="${bannerGone ? 'Yes' : 'No'}"`);
+    results.push({
+      page: 'Payment',
+      field: 'Ultimate Switch - Upsell Banner Gone',
+      expected: 'Yes',
+      actual: bannerGone ? 'Yes' : 'No',
+      status: bannerGoneStatus,
+    });
+
+    console.log('✅ [Ultimate Upsell] Post-switch validation complete');
+    return true;
   }
 
   // ─────────────────────────────
@@ -728,38 +1055,95 @@ export class PaymentPage extends BasePage {
 
     // ── Cancellation Text ──────────────────────────────────────
     if (fieldLower === 'cancellation text' || fieldLower === 'cancel text') {
-      const lines = bodyText.split('\n')
-        .map(l => l.trim())
-        .filter(l => !/terms of use|privacy policy|cookie notice|by signing up|agree to our terms/i.test(l));
-      for (const line of lines) {
-        if (/auto[-\s]?renews/i.test(line) && /cancel/i.test(line) && line.length < 350) return line;
-        if (/first\s+month\s+free/i.test(line) && /month/i.test(line) && line.length > 40) return line;
+      // STEP 1: Check if a "...More" expand link is present — click it to reveal full text
+      const moreSelectors = [
+        'button:has-text("More")',
+        'a:has-text("More")',
+        'span[role="button"]:has-text("More")',
+        '[class*="more" i]:has-text("More")',
+        'button:has-text("... More")',
+        'span:has-text("... More")',
+      ];
+      const moreLink = this.page.locator(moreSelectors.join(', ')).first();
+      const moreVisible = await moreLink.isVisible({ timeout: 2000 }).catch(() => false);
+
+      if (moreVisible) {
+        console.log('🔽 [Cancellation Text] "...More" link found — clicking to expand full text...');
+        try {
+          await moreLink.scrollIntoViewIfNeeded().catch(() => {});
+          await moreLink.click({ force: true });
+          // Wait for "Less" to appear (confirms expansion) or "More" to disappear
+          await this.page.waitForFunction(() => {
+            const body = document.body.innerText;
+            return body.includes('Less') || !body.includes('... More');
+          }, { timeout: 3000 }).catch(() => {});
+          console.log('✅ [Cancellation Text] Full text expanded');
+        } catch (e: any) {
+          console.log(`⚠️ [Cancellation Text] Could not click "More" link: ${e.message}`);
+        }
       }
-      // Prioritized: look for charge/billing terms combined with cancel/renew
-      for (const line of lines) {
-        if (line.length > 30 && line.length < 350) {
-          const lowerLine = line.toLowerCase();
+
+      // STEP 2: Re-read body text AFTER expansion
+      const expandedBodyText = (await this.page.locator('body').innerText().catch(() => '')).replace(/\u200B/g, '');
+      const expandedLines = expandedBodyText.split('\n')
+        .map((l: string) => l.trim())
+        .filter((l: string) =>
+          l.length > 0 &&
+          !/terms of use|privacy policy|cookie notice|by signing up|agree to our terms/i.test(l)
+        );
+
+      // STEP 3: Extract full cancellation text — priority order
+
+      // Priority 1: auto-renews + cancel (APM/APU pattern)
+      for (const line of expandedLines) {
+        if (/auto[-\s]?renews/i.test(line) && /cancel/i.test(line) && line.length < 600) {
+          return line;
+        }
+      }
+
+      // Priority 2: first month free + month (APM pattern)
+      for (const line of expandedLines) {
+        if (
+          /first\s+month\s+free/i.test(line) &&
+          /month/i.test(line) &&
+          line.length > 40 &&
+          line.length < 600
+        ) {
+          return line;
+        }
+      }
+
+      // Priority 3: charge/billing + cancel/renew + time period (trial pattern)
+      for (const line of expandedLines) {
+        if (line.length > 30 && line.length < 600) {
+          const ll = line.toLowerCase();
           if (
-            (lowerLine.includes('charged') || lowerLine.includes('charge') || lowerLine.includes('pay') || lowerLine.includes('billed') || lowerLine.includes('billing')) &&
-            (lowerLine.includes('cancel') || lowerLine.includes('renew') || lowerLine.includes('renewal')) &&
-            (lowerLine.includes('month') || lowerLine.includes('trial') || lowerLine.includes('days') || lowerLine.includes('free') || lowerLine.includes('subscription'))
+            (ll.includes('charged') || ll.includes('charge') || ll.includes('pay') ||
+             ll.includes('billed') || ll.includes('billing')) &&
+            (ll.includes('cancel') || ll.includes('renew') || ll.includes('renewal')) &&
+            (ll.includes('month') || ll.includes('trial') || ll.includes('days') ||
+             ll.includes('free') || ll.includes('subscription'))
           ) {
             return line;
           }
         }
       }
-      // Fallback: find paragraph with cancel, renew, subscription, contract, or term details
-      for (const line of lines) {
-        if (line.length > 30 && line.length < 350) {
-          const lowerLine = line.toLowerCase();
+
+      // Priority 4: cancel/renew + account/contract/term (Ultimate APM/APU pattern)
+      for (const line of expandedLines) {
+        if (line.length > 30 && line.length < 600) {
+          const ll = line.toLowerCase();
           if (
-            (lowerLine.includes('cancel') || lowerLine.includes('renew') || lowerLine.includes('renewal')) &&
-            (lowerLine.includes('account') || lowerLine.includes('contract') || lowerLine.includes('term') || lowerLine.includes('cycle') || lowerLine.includes('month') || lowerLine.includes('year') || lowerLine.includes('free') || lowerLine.includes('subscription'))
+            (ll.includes('cancel') || ll.includes('renew') || ll.includes('renewal')) &&
+            (ll.includes('account') || ll.includes('contract') || ll.includes('term') ||
+             ll.includes('cycle') || ll.includes('month') || ll.includes('year') ||
+             ll.includes('free') || ll.includes('subscription'))
           ) {
             return line;
           }
         }
       }
+
       return 'N/A';
     }
 
@@ -770,6 +1154,38 @@ export class PaymentPage extends BasePage {
         if (/switch\s+to\s+dazn\s+ultimate/i.test(line)) return line;
       }
       return lower.includes('switch to dazn ultimate') ? 'Switch to DAZN Ultimate' : 'N/A';
+    }
+
+    // ── Ultimate Upsell Banner Present ────────────────────────────
+    if (fieldLower === 'ultimate upsell banner present') {
+      const bannerSelectors = [
+        '[aria-label="Switch to ultimate tier"]',
+        '[aria-label*="Switch to ultimate" i]',
+        '[role="button"]:has-text("Switch to DAZN Ultimate")',
+        'a:has-text("Switch to DAZN Ultimate")',
+        'button:has-text("Switch to DAZN Ultimate")',
+      ];
+      const banner = this.page.locator(bannerSelectors.join(', ')).first();
+      const bannerVisible = await banner.isVisible({ timeout: 3000 }).catch(() => false);
+      return bannerVisible ? 'Yes' : 'No';
+    }
+
+    // ── Ultimate Upsell Price ──────────────────────────────────────
+    if (fieldLower === 'ultimate upsell price') {
+      const bannerSelectors = [
+        '[aria-label="Switch to ultimate tier"]',
+        '[aria-label*="Switch to ultimate" i]',
+        '[role="button"]:has-text("Switch to DAZN Ultimate")',
+        'a:has-text("Switch to DAZN Ultimate")',
+        'button:has-text("Switch to DAZN Ultimate")',
+      ];
+      const banner = this.page.locator(bannerSelectors.join(', ')).first();
+      const bannerVisible = await banner.isVisible({ timeout: 3000 }).catch(() => false);
+      if (!bannerVisible) return 'N/A';
+      const bannerText = ((await banner.textContent().catch(() => '')) || '').trim();
+      // Extract the price from banner text (e.g. "£24.99/month")
+      const priceMatch = bannerText.match(/[\$£€₹]?\s?\d+(?:[.,]\d{2})?(?:\/\w+)?/);
+      return priceMatch ? priceMatch[0].trim() : bannerText;
     }
 
     // ── Bundle Name ───────────────────────────────────────────
@@ -1048,7 +1464,7 @@ export class PaymentPage extends BasePage {
   //   - Price comparison (numeric extraction)
   //   - Date flexibility (month + day matching)
   //   - Time match flexibility
-  private compareValues(actual: string, expected: string, field: string): string {
+  private compareValues(actual: string, expected: string, field: string, type?: string): string {
     if (!expected) return 'SKIP';
 
     // Skip unresolved placeholders
@@ -1061,7 +1477,7 @@ export class PaymentPage extends BasePage {
 
     // Extract type from row (if available, passed via field context)
     // The compare utility handles all standard cases
-    const result = compare(actual, expected);
+    const result = compare(actual, expected, type);
     return result ? 'PASS' : 'FAIL';
   }
   // ─────────────────────────────
@@ -1109,6 +1525,545 @@ export class PaymentPage extends BasePage {
       await this.page.locator(`iframe[title='${title}']`).waitFor({ state: 'visible', timeout: 30000 });
     }
     console.log('✅ All VGS iframes are visible.');
+  }
+
+  /**
+   * Select Google Pay section on DAZN payment page
+   */
+  async selectGooglePay(): Promise<void> {
+    console.log('💳 [GPay] Selecting Google Pay payment method...');
+
+    // Try clicking the Google Pay section/accordion
+    const gpaySection = this.page.locator(
+      "section[id='Google Pay'], " +
+      "section[id*='Google' i], " +
+      ".accordion-cta-refined___3csKv:has-text('Google Pay')"
+    ).first();
+
+    if (await gpaySection.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await gpaySection.scrollIntoViewIfNeeded().catch(() => {});
+      // Click the radio button SVG inside the section (same pattern as selectCreditCard)
+      const gpayRadio = this.page.locator(
+        "section[id='Google Pay'] span svg, " +
+        "section[id*='Google' i] span svg, " +
+        "section[id*='Google' i] input[type='radio']"
+      ).first();
+      await gpayRadio.click({ force: true }).catch(async () => {
+        // Fallback: click the section itself
+        await gpaySection.click({ force: true });
+      });
+      console.log('✅ [GPay] Clicked Google Pay radio button');
+    } else {
+      throw new Error('❌ [GPay] Google Pay section not found on payment page');
+    }
+
+    // Verify "Buy with G Pay" button appears after selection
+    const buyWithGPay = this.page.locator(
+      'button:has-text("Buy with G Pay"), ' +
+      'button:has-text("Buy with Google Pay"), ' +
+      '[class*="gpay-button" i]'
+    ).first();
+
+    await buyWithGPay.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {
+      console.log('⚠️ [GPay] "Buy with G Pay" button not visible after selection');
+    });
+
+    console.log('✅ [GPay] Google Pay selected — "Buy with G Pay" button visible');
+  }
+
+  /**
+   * Complete Google Pay flow orchestrator
+   * Equivalent of fillPaymentAndSubmit() but for Google Pay
+   * Handles: select GPay → click Buy with GPay → popup sign-in → validate → pay
+   */
+  async fillGooglePayAndSubmit(
+    results: any[],
+    eventData: Record<string, string>
+  ): Promise<void> {
+    console.log('\n💳 [GPay] Starting Google Pay flow...');
+
+    // Step 1: Select Google Pay
+    await this.selectGooglePay();
+
+    // Step 2: Click "Buy with G Pay" and capture popup
+    console.log('🖱️ [GPay] Clicking "Buy with G Pay" button...');
+    const buyWithGPayBtn = this.page.locator(
+      'button:has-text("Buy with G Pay"), ' +
+      'button:has-text("Buy with Google Pay"), ' +
+      '[class*="gpay-button" i]'
+    ).first();
+
+    await buyWithGPayBtn.waitFor({ state: 'visible', timeout: 10000 });
+
+    // Set up popup listener BEFORE clicking
+    const popupPromise = this.page.context().waitForEvent('page', { timeout: 30000 });
+
+    await buyWithGPayBtn.scrollIntoViewIfNeeded().catch(() => {});
+    try {
+      await buyWithGPayBtn.click({ force: true, timeout: 10000 });
+    } catch (e: any) {
+      const handle = await buyWithGPayBtn.elementHandle().catch(() => null);
+      if (handle) {
+        await this.page.evaluate((el: any) => el.click(), handle);
+      } else {
+        throw new Error(`❌ [GPay] "Buy with G Pay" click failed: ${e.message}`);
+      }
+    }
+
+    // Step 3: Wait for popup
+    const popup = await popupPromise;
+    await popup.waitForLoadState('domcontentloaded', { timeout: 30000 });
+    console.log(`✅ [GPay] Popup opened: ${popup.url()}`);
+
+    // Step 4: Sign in with Google
+    await this._googleSignIn(popup);
+
+    // Step 5: Validate pay.google.com summary page
+    await this._validateGPaySummary(popup, results, eventData);
+
+    // Step 6: Click Pay
+    await this._clickGPayPay(popup);
+
+    // Step 7: Wait for DAZN success page
+    await this._waitForGPaySuccess();
+
+    console.log('✅ [GPay] Google Pay flow complete');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRIVATE: Sign in with Google in popup
+  // ─────────────────────────────────────────────────────────────────────────
+  private async _googleSignIn(popup: import('@playwright/test').Page): Promise<void> {
+    console.log(`📧 [GPay] Signing in with Google: ${GPAY_EMAIL}`);
+
+    await popup.waitForLoadState('domcontentloaded', { timeout: 30000 });
+    await popup.waitForTimeout(1000);
+
+    // ── PHASE 1: Email entry ──────────────────────────────────────────────
+    const emailInput = popup.locator(
+      'input[type="email"], input[name="identifier"], #identifierId'
+    ).first();
+
+    const emailVisible = await emailInput.waitFor({ state: 'visible', timeout: 15000 })
+      .then(() => true).catch(() => false);
+
+    if (emailVisible) {
+      console.log('📧 [GPay] Entering email...');
+      await emailInput.click({ force: true });
+      await emailInput.fill('');
+      await emailInput.type(GPAY_EMAIL, { delay: 80 });
+
+      const emailNextBtn = popup.locator(
+        '#identifierNext, button:has-text("Next")'
+      ).first();
+      await emailNextBtn.waitFor({ state: 'visible', timeout: 10000 });
+      await emailNextBtn.click({ force: true });
+      console.log('✅ [GPay] Email entered, Next clicked');
+      await popup.waitForTimeout(2000);
+      await popup.waitForLoadState('domcontentloaded').catch(() => {});
+    } else {
+      console.log('⚠️ [GPay] Email input not found — may already be on password page');
+    }
+
+    // ── PHASE 2: Password entry ───────────────────────────────────────────
+    const passwordInput = popup.locator(
+      'input[type="password"], input[name="Passwd"], #password input'
+    ).first();
+
+    const passwordVisible = await passwordInput.waitFor({ state: 'visible', timeout: 20000 })
+      .then(() => true).catch(() => false);
+
+    if (passwordVisible) {
+      console.log('🔑 [GPay] Entering password...');
+      await passwordInput.click({ force: true });
+      await passwordInput.fill('');
+      await passwordInput.type(GPAY_PASSWORD, { delay: 80 });
+
+      const passwordNextBtn = popup.locator(
+        '#passwordNext, button:has-text("Next")'
+      ).first();
+      await passwordNextBtn.waitFor({ state: 'visible', timeout: 10000 });
+      await passwordNextBtn.click({ force: true });
+      console.log('✅ [GPay] Password entered, Next clicked');
+      await popup.waitForTimeout(2000);
+      await popup.waitForLoadState('domcontentloaded').catch(() => {});
+    } else {
+      console.log('⚠️ [GPay] Password input not found — may have auto-signed in');
+    }
+
+    // ── Wait for redirect to pay.google.com ──────────────────────────────
+    console.log('⏳ [GPay] Waiting for redirect to pay.google.com...');
+    await popup.waitForURL(
+      (url) => url.toString().includes('pay.google.com') || url.toString().includes('payments.google.com'),
+      { timeout: 30000 }
+    ).catch(() => {
+      console.log(`⚠️ [GPay] Did not redirect to pay.google.com — current: ${popup.url()}`);
+    });
+
+    await popup.waitForLoadState('domcontentloaded').catch(() => {});
+    await popup.waitForTimeout(1500);
+    console.log(`✅ [GPay] Signed in — popup URL: ${popup.url()}`);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRIVATE: Validate pay.google.com summary page
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * PRIVATE: Get the Google Pay content frame from the popup.
+   * pay.google.com renders its content inside an iframe.
+   */
+  private async _getGPayFrame(popup: import('@playwright/test').Page): Promise<import('@playwright/test').Frame | null> {
+    console.log('🔍 [GPay] Looking for content iframe inside popup...');
+
+    // Wait for the page to have iframes
+    await popup.waitForTimeout(3000);
+
+    // List all frames for debugging
+    const allFrames = popup.frames();
+    console.log(`📋 [GPay] Popup has ${allFrames.length} frame(s):`);
+    for (const f of allFrames) {
+      console.log(`   - ${f.url()}`);
+    }
+
+    // Find the iframe that contains Google Pay content
+    // Usually it's the first child frame, or one that has pay.google.com URL
+    for (const frame of allFrames) {
+      if (frame === popup.mainFrame()) continue; // Skip main frame
+      const url = frame.url();
+      if (url.includes('pay.google.com') || url.includes('payments.google.com') || url.includes('google.com')) {
+        console.log(`✅ [GPay] Found content frame: ${url}`);
+        return frame;
+      }
+    }
+
+    // If no matching child frame, try any non-main frame
+    if (allFrames.length > 1) {
+      const childFrame = allFrames[1];
+      console.log(`⚠️ [GPay] Using first child frame: ${childFrame.url()}`);
+      return childFrame;
+    }
+
+    console.log('⚠️ [GPay] No child iframe found — content may be on main frame');
+    return null;
+  }
+
+  private async _validateGPaySummary(
+    popup: import('@playwright/test').Page,
+    results: any[],
+    eventData: Record<string, string>
+  ): Promise<void> {
+    console.log('\n📋 [GPay] Validating Google Pay summary page...');
+
+    // Check if popup is still open
+    if (popup.isClosed()) {
+      console.log('⚠️ [GPay] Popup already closed — skipping validation');
+      return;
+    }
+
+    // Wait for pay.google.com content to load (iframe needs time)
+    await popup.waitForLoadState('load', { timeout: 15000 }).catch(() => {
+      console.log('⚠️ [GPay] load timeout on pay.google.com — proceeding anyway');
+    });
+    await popup.waitForTimeout(3000); // Extra time for iframe to render
+
+    // Get the Google Pay content frame (content is inside an iframe)
+    const gpayFrame = await this._getGPayFrame(popup);
+    // Use the frame if found, otherwise fallback to main page
+    const contentContext = gpayFrame || popup.mainFrame();
+
+    // Wait for content to appear in the frame
+    await contentContext.waitForLoadState('domcontentloaded').catch(() => {});
+    await popup.waitForTimeout(2000);
+
+    // Take debug screenshot
+    await popup.screenshot({ path: 'test-results/gpay_popup_debug.png' }).catch(() => {});
+
+    const bodyText = (await contentContext.locator('body').innerText().catch(() => '')).replace(/\u200B/g, '');
+    const lower = bodyText.toLowerCase();
+    console.log(`📄 [GPay] Content text (first 500 chars): ${bodyText.substring(0, 500)}`);
+
+    // 1. Test Card present (Visa ••1111)
+    const hasTestCard = lower.includes('test card') || lower.includes('1111') || lower.includes('visa ••') || lower.includes('visa');
+    results.push({
+      page: 'Google Pay',
+      field: 'Test Card Present',
+      expected: 'Yes',
+      actual: hasTestCard ? 'Yes' : 'No',
+      status: hasTestCard ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${hasTestCard ? '✅' : '❌'} [GPay - Test Card Present] actual="${hasTestCard ? 'Yes' : 'No'}"`);
+
+    // 2. "Pay DAZN" text
+    const hasPayDazn = lower.includes('pay dazn') || lower.includes('dazn');
+    results.push({
+      page: 'Google Pay',
+      field: 'Pay DAZN Text',
+      expected: 'Yes',
+      actual: hasPayDazn ? 'Yes' : 'No',
+      status: hasPayDazn ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${hasPayDazn ? '✅' : '❌'} [GPay - Pay DAZN Text] actual="${hasPayDazn ? 'Yes' : 'No'}"`);
+
+    // 3. Amount matches PPV price
+    const expectedAmount = eventData.PPV_PRICE || eventData.TODAY_YOU_PAY_PRICE || '';
+    if (expectedAmount) {
+      const amountNumeric = expectedAmount.replace(/[^\d.]/g, '');
+      const hasAmount = bodyText.includes(amountNumeric);
+      results.push({
+        page: 'Google Pay',
+        field: 'Payment Amount',
+        expected: expectedAmount,
+        actual: hasAmount ? expectedAmount : 'Not found',
+        status: hasAmount ? 'PASS' : 'FAIL',
+      });
+      console.log(`  ${hasAmount ? '✅' : '❌'} [GPay - Amount] expected="${expectedAmount}" actual="${hasAmount ? expectedAmount : 'Not found'}"`);
+    }
+
+    // 4. Test environment notice
+    const hasTestNotice = lower.includes("won't be charged") || lower.includes('test environment') || lower.includes('will not be charged');
+    results.push({
+      page: 'Google Pay',
+      field: 'Test Environment Notice',
+      expected: 'Yes',
+      actual: hasTestNotice ? 'Yes' : 'No',
+      status: hasTestNotice ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${hasTestNotice ? '✅' : '❌'} [GPay - Test Environment Notice] actual="${hasTestNotice ? 'Yes' : 'No'}"`);
+
+    // 5. Pay button present — search inside the iframe
+    const payBtnVisible = await contentContext.locator(
+      'button:has-text("Pay"), [role="button"]:has-text("Pay"), span:has-text("Pay")'
+    ).first().isVisible({ timeout: 5000 }).catch(() => false);
+    results.push({
+      page: 'Google Pay',
+      field: 'Pay Button Present',
+      expected: 'Yes',
+      actual: payBtnVisible ? 'Yes' : 'No',
+      status: payBtnVisible ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${payBtnVisible ? '✅' : '❌'} [GPay - Pay Button Present] actual="${payBtnVisible ? 'Yes' : 'No'}"`);
+
+    console.log('✅ [GPay] Summary validation complete');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRIVATE: Click Pay button in popup (content is inside an iframe)
+  // ─────────────────────────────────────────────────────────────────────────
+  private async _clickGPayPay(popup: import('@playwright/test').Page): Promise<void> {
+    console.log('🖱️ [GPay] Clicking "Pay" button...');
+
+    // Check if popup already closed
+    if (popup.isClosed()) {
+      console.log('✅ [GPay] Popup already closed — payment may have auto-completed');
+      return;
+    }
+
+    // Get the Google Pay content frame
+    const gpayFrame = await this._getGPayFrame(popup);
+    const contentContext = gpayFrame || popup.mainFrame();
+
+    // Selectors to try — both in iframe and top-level
+    const payBtnSelectors = [
+      'button:has-text("Pay")',
+      '[role="button"]:has-text("Pay")',
+      'button:has-text("Continue")',
+      'span:has-text("Pay")',
+    ];
+
+    let clicked = false;
+
+    // Try in the content frame first
+    for (const selector of payBtnSelectors) {
+      if (popup.isClosed()) {
+        console.log('✅ [GPay] Popup closed during Pay button search');
+        return;
+      }
+
+      const btn = contentContext.locator(selector).first();
+      const isVisible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
+      if (isVisible) {
+        console.log(`🎯 [GPay] Found Pay button via frame locator: ${selector}`);
+        await btn.scrollIntoViewIfNeeded().catch(() => {});
+        try {
+          await btn.click({ force: true, timeout: 10000 });
+          console.log('✅ [GPay] Clicked Pay button in frame');
+          clicked = true;
+          break;
+        } catch (e: any) {
+          console.log(`⚠️ [GPay] Frame click failed for ${selector}: ${e.message}`);
+        }
+      }
+    }
+
+    // Fallback: Try using Playwright's frameLocator API (searches all iframes)
+    if (!clicked && !popup.isClosed()) {
+      console.log('🔄 [GPay] Trying frameLocator API...');
+      try {
+        // Try all iframes
+        const iframeCount = await popup.locator('iframe').count().catch(() => 0);
+        console.log(`🔍 [GPay] Found ${iframeCount} iframe(s) in popup`);
+
+        for (let i = 0; i < iframeCount; i++) {
+          if (popup.isClosed()) break;
+          const fl = popup.frameLocator(`iframe >> nth=${i}`);
+          const payBtn = fl.locator('button:has-text("Pay"), [role="button"]:has-text("Pay")').first();
+          const visible = await payBtn.isVisible({ timeout: 3000 }).catch(() => false);
+          if (visible) {
+            console.log(`🎯 [GPay] Found Pay button in iframe[${i}] via frameLocator`);
+            await payBtn.click({ force: true, timeout: 10000 });
+            console.log('✅ [GPay] Clicked Pay button via frameLocator');
+            clicked = true;
+            break;
+          }
+        }
+      } catch (e: any) {
+        console.log(`⚠️ [GPay] frameLocator approach failed: ${e.message}`);
+      }
+    }
+
+    // Fallback: JS click inside each iframe
+    if (!clicked && !popup.isClosed()) {
+      console.log('🔄 [GPay] Trying JS click inside iframes...');
+      try {
+        const frames = popup.frames();
+        for (const frame of frames) {
+          if (popup.isClosed()) break;
+          try {
+            const jsClicked = await frame.evaluate(() => {
+              const elements = document.querySelectorAll('button, [role="button"], span, div');
+              for (const el of elements) {
+                const text = (el as HTMLElement).textContent?.trim() || '';
+                if (/^Pay$/i.test(text) && (el as HTMLElement).offsetParent !== null) {
+                  (el as HTMLElement).click();
+                  return true;
+                }
+              }
+              return false;
+            });
+            if (jsClicked) {
+              console.log(`✅ [GPay] JS click succeeded in frame: ${frame.url()}`);
+              clicked = true;
+              break;
+            }
+          } catch {
+            // Frame may be detached, continue
+          }
+        }
+      } catch (e: any) {
+        console.log(`⚠️ [GPay] JS iframe click failed: ${e.message}`);
+      }
+    }
+
+    if (!clicked && !popup.isClosed()) {
+      await popup.screenshot({ path: 'test-results/gpay_pay_button_not_found.png' }).catch(() => {});
+      console.log('📸 [GPay] Screenshot saved: test-results/gpay_pay_button_not_found.png');
+      console.log(`⚠️ [GPay] Could not find/click Pay button — popup URL: ${popup.url()}`);
+    }
+
+    // Wait for popup to close
+    if (!popup.isClosed()) {
+      console.log('⏳ [GPay] Waiting for popup to close...');
+      await popup.waitForEvent('close', { timeout: 30000 }).catch(() => {
+        console.log('⚠️ [GPay] Popup close event not received — may have already closed');
+      });
+    }
+    console.log('✅ [GPay] Popup closed');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRIVATE: Wait for DAZN success page after popup closes
+  // ─────────────────────────────────────────────────────────────────────────
+  private async _checkForPaymentErrors(): Promise<void> {
+    if (this.page.isClosed()) return;
+
+    const errorSelectors = [
+      '[class*="error" i]',
+      '[role="alert"]',
+      'div[class*="message" i][class*="fail" i]',
+      'div[class*="message" i][class*="error" i]',
+      '[class*="ErrorMessage" i]',
+      '[data-testid*="error" i]'
+    ];
+
+    for (const selector of errorSelectors) {
+      const el = this.page.locator(selector).first();
+      if (await el.isVisible({ timeout: 200 }).catch(() => false)) {
+        const text = await el.textContent().catch(() => '');
+        if (text && text.trim()) {
+          const trimmed = text.trim();
+          if (trimmed.length > 3 && !trimmed.toLowerCase().includes('success') && !trimmed.toLowerCase().includes('welcome')) {
+            console.log(`🚨 [Payment Error Detected] Found error via selector "${selector}": "${trimmed}"`);
+            throw new Error(`Payment failed. Error on page: ${trimmed}`);
+          }
+        }
+      }
+    }
+
+    const errorPhrases = [
+      'declined by your bank',
+      'payment declined',
+      'different payment method',
+      'error processing your payment',
+      'transaction declined',
+      'payment was not successful',
+      'unable to process payment',
+      'card was declined',
+      'invalid card number',
+      'incorrect cvv'
+    ];
+
+    for (const phrase of errorPhrases) {
+      const locator = this.page.locator(`text=/${phrase}/i`).first();
+      if (await locator.isVisible({ timeout: 200 }).catch(() => false)) {
+        const text = await locator.textContent().catch(() => '');
+        const trimmed = text ? text.trim() : phrase;
+        console.log(`🚨 [Payment Error Detected] Found phrase "${phrase}": "${trimmed}"`);
+        throw new Error(`Payment failed. Error on page: ${trimmed}`);
+      }
+    }
+  }
+
+  private async _waitForGPaySuccess(): Promise<void> {
+    console.log('⏳ [GPay] Waiting for DAZN success page...');
+
+    await this.page.waitForTimeout(2000);
+    await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+
+    let foundSuccess = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (this.page.isClosed()) break;
+
+      await this._checkForPaymentErrors();
+
+      const currentUrl = this.page.url();
+      if (
+        currentUrl.includes('purchasedSignupPPV') ||
+        currentUrl.includes('UpsellAfter') ||
+        currentUrl.includes('success') ||
+        currentUrl.includes('welcome') ||
+        currentUrl.includes('home')
+      ) {
+        console.log(`✅ [GPay] Success URL detected: ${currentUrl}`);
+        foundSuccess = true;
+        break;
+      }
+
+      const successText = await this.page.locator('text=/payment was successful/i').first()
+        .isVisible({ timeout: 500 }).catch(() => false);
+      if (successText) {
+        console.log('✅ [GPay] "payment was successful" text detected');
+        foundSuccess = true;
+        break;
+      }
+
+      await this.page.waitForTimeout(1500);
+    }
+
+    if (!foundSuccess) {
+      await this._checkForPaymentErrors();
+      console.log(`⚠️ [GPay] Success page not confirmed — current URL: ${this.page.url()}`);
+      throw new Error('Timeout waiting for payment success page/confirmation');
+    }
   }
 
   /**
@@ -1251,12 +2206,17 @@ export class PaymentPage extends BasePage {
     for (let attempt = 0; attempt < 15; attempt++) {
       if (this.page.isClosed()) throw new Error('Page closed during payment processing');
 
+      // Check for errors immediately
+      await this._checkForPaymentErrors();
+
       const currentUrl = this.page.url();
       if (
         currentUrl.includes('success') ||
         currentUrl.includes('welcome') ||
         currentUrl.includes('home') ||
-        currentUrl.includes('watching')
+        currentUrl.includes('watching') ||
+        currentUrl.includes('purchasedSignupPPV') ||
+        currentUrl.includes('UpsellAfter')
       ) {
         console.log(`✅ Success page detected via URL: ${currentUrl}`);
         foundSuccess = true;
@@ -1276,11 +2236,7 @@ export class PaymentPage extends BasePage {
     }
 
     if (!foundSuccess) {
-      // Check if we have error messages on the page
-      const errorMsg = await this.page.locator('[class*="error" i], [role="alert"]').first().textContent().catch(() => '');
-      if (errorMsg && errorMsg.trim()) {
-        throw new Error(`Payment failed. Error on page: ${errorMsg.trim()}`);
-      }
+      await this._checkForPaymentErrors();
       throw new Error('Timeout waiting for payment success page/confirmation');
     }
   }

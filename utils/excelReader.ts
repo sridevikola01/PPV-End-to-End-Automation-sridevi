@@ -3,13 +3,7 @@ import * as XLSX from 'xlsx';
 let FILE_PATH = 'data/PPV_Input.xlsx';
 
 export function configureExcelPathForEvent(eventKey: string) {
-  if (eventKey === 'standalone_collision') {
-    FILE_PATH = 'data/Standalone_Input.xlsx';
-  } else if (eventKey === 'upsell_flow') {
-    FILE_PATH = 'data/Upsell_Input.xlsx';
-  } else {
-    FILE_PATH = 'data/PPV_Input.xlsx';
-  }
+  FILE_PATH = 'data/PPV_Input.xlsx';
   console.log(`📊 excelReader configured path: ${FILE_PATH}`);
 }
 
@@ -17,17 +11,8 @@ export function configureExcelPathForEvent(eventKey: string) {
 // READ SHEET
 // =========================
 export const readSheet = (sheetName: string) => {
-  let workbook = XLSX.readFile(FILE_PATH);
-  let sheet = workbook.Sheets[sheetName];
-
-  if (!sheet && FILE_PATH !== 'data/PPV_Input.xlsx') {
-    console.log(`ℹ️ Sheet "${sheetName}" not found in ${FILE_PATH}. Falling back to data/PPV_Input.xlsx`);
-    const fallbackWorkbook = XLSX.readFile('data/PPV_Input.xlsx');
-    sheet = fallbackWorkbook.Sheets[sheetName];
-    if (sheet) {
-      workbook = fallbackWorkbook;
-    }
-  }
+  const workbook = XLSX.readFile(FILE_PATH);
+  const sheet = workbook.Sheets[sheetName];
 
   if (!sheet) {
     const available = workbook.SheetNames.join(', ');
@@ -306,4 +291,55 @@ export const getHomePageData = (flowName: string) => {
   console.log(`🏠 Home Page Flow: ${flowName}`);
   console.log(`📊 Home Page rows: ${flowData.length}`);
   return flowData;
+};
+
+// =========================
+// STANDALONE PPV PAGE DATA
+// =========================
+export const getStandalonePPVPageData = () => {
+  const data = readSheet('Standalone PPV page');
+  console.log(`📊 Standalone PPV page rows: ${data.length}`);
+  return data;
+};
+
+// =========================
+// UPSELL FIRST SUCCESS PAGE
+// =========================
+export const getUpsellFirstSuccessData = () => {
+  try {
+    const data = readSheet('Upsell First Success page');
+    console.log(`📊 Upsell First Success rows: ${data.length}`);
+    return data;
+  } catch {
+    console.log('ℹ️ No Upsell First Success page sheet');
+    return [];
+  }
+};
+
+// =========================
+// UPSELL SECOND SUCCESS PAGE
+// =========================
+export const getUpsellSecondSuccessData = () => {
+  try {
+    const data = readSheet('Upsell Second Success page');
+    console.log(`📊 Upsell Second Success rows: ${data.length}`);
+    return data;
+  } catch {
+    console.log('ℹ️ No Upsell Second Success page sheet');
+    return [];
+  }
+};
+
+// =========================
+// UPSELL PAYMENT PAGE
+// =========================
+export const getUpsellPaymentData = () => {
+  try {
+    const data = readSheet('Upsell Payment page');
+    console.log(`📊 Upsell Payment rows: ${data.length}`);
+    return data;
+  } catch {
+    console.log('ℹ️ No Upsell Payment page sheet');
+    return [];
+  }
 };

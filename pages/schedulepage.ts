@@ -123,6 +123,14 @@ export class SchedulePage {
       );
     }
 
+    // Immediately restore scroll and lock background BEFORE waiting for Buy Now
+    await this.page.evaluate((y) => {
+      window.scrollTo(0, y);
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    }, scrollY);
+
+    // Wait for Buy Now button using manual poll (not expect, which can trigger scrollIntoView)
     const buyNowButton = this.page.locator(
       'a:has-text("Buy now"), '      +
       'button:has-text("Buy now"), ' +
@@ -130,9 +138,21 @@ export class SchedulePage {
       'button:has-text("Buy Now")'
     ).first();
 
-    await expect(buyNowButton).toBeVisible({ timeout: 15000 });
+    let buyVisible = false;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      buyVisible = await buyNowButton.isVisible({ timeout: 500 }).catch(() => false);
+      if (buyVisible) break;
+      // Re-restore scroll position in case the modal opening caused a scroll change
+      await this.page.evaluate((y) => {
+        window.scrollTo(0, y);
+      }, scrollY);
+    }
 
-    // Restore scroll + lock background
+    if (!buyVisible) {
+      throw new Error('❌ Buy Now button not visible in modal after 15s');
+    }
+
+    // Final scroll restoration
     await this.page.evaluate((y) => {
       window.scrollTo(0, y);
       document.body.style.overflow = 'hidden';

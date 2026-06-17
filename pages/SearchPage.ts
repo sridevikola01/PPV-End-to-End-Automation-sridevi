@@ -249,7 +249,7 @@ export class SearchPage extends BasePage {
       const baseUrl = this.page.url().match(/https:\/\/[^\/]+\/en-[A-Z]+/i)?.[0] || 'https://www.dazn.com/en-GB';
 
       // Ensure cookies are dismissed before clicking search link
-
+      await this.waitForConsentAndDismiss().catch(() => {});
 
       const searchLink = this.page.locator('header a[href*="/search"]').first();
       const searchVisible = await searchLink.isVisible({ timeout: 5000 }).catch(() => false);

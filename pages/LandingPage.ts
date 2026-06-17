@@ -28,24 +28,27 @@ export class LandingPage extends BasePage {
   // DISMISS CONSENT
   // ─────────────────────────────
   async dismissConsentIfPresent(): Promise<void> {
-    // Cookie banner is now dismissed via UI click in handleCookies()
-    const { handleCookies } = await import('../utils/helpers.js');
-    await handleCookies(this.page);
+    await this.waitForConsentAndDismiss();
   }
 
   // ─────────────────────────────
   // FIND BANNER CAROUSEL CONTAINER (resilient selector)
   // ─────────────────────────────
   protected bannerCarousel(): import('@playwright/test').Locator {
-    // Use a broad selector to find the hero banner carousel, excluding rail swipers
+    // Use specific selectors to find the hero banner carousel, excluding general rail swipers
     return this.page.locator([
-      'main [class*="banner"]',
-      'main [class*="hero"]',
-      'main .swiper:not([class*="rail" i]):not([class*="tiles" i])',
-      'section[class*="banner"]',
-      '[class*="heroBanner"]',
-      '[class*="hero-banner"]',
-      'div[class*="bannersContainer"]',
+      'main [class*="hero-banner" i]',
+      'main [class*="heroBanner" i]',
+      'main [class*="herobanner" i]',
+      'main div.heroBannerSlider',
+      'main [class*="bannersContainer" i]',
+      'main [class*="hero-slider" i]',
+      'main [class*="heroSlider" i]',
+      'main [class*="hero" i] .swiper',
+      'main [class*="banner" i] .swiper',
+      '[class*="hero-banner" i]',
+      '[class*="heroBanner" i]',
+      '[class*="bannersContainer" i]',
     ].join(', ')).first();
   }
 
@@ -92,7 +95,7 @@ export class LandingPage extends BasePage {
   // ─────────────────────────────
   // MATCH PPV NAME (flexible, splits colons/hyphens)
   // ─────────────────────────────
-  private matchesPPVName(text: string, ppvName: string): boolean {
+  protected matchesPPVName(text: string, ppvName: string): boolean {
     if (!text || !ppvName) return false;
     const nameParts = ppvName.split(/[:\-–]/).map(p => p.trim()).filter(p => p.length > 3);
     const cleanStr = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -149,15 +152,30 @@ export class LandingPage extends BasePage {
     }
 
     // Check active slide first — try selectors.json path, then fallback to carousel content
-    const activeSlide = this.page.locator(selectors.banner.activeSlide).locator(':visible').first();
+    const activeSlide = carousel.locator(selectors.banner.activeSlide).locator(':visible').first();
     let activeText = '';
-    if (await activeSlide.isVisible({ timeout: 1000 }).catch(() => false)) {
+    const isActiveVisible = await activeSlide.isVisible({ timeout: 1000 }).catch(() => false);
+    if (isActiveVisible) {
       activeText = (await activeSlide.textContent().catch(() => ''))?.trim() || '';
       if (activeText && this.matchesPPVName(activeText, ppvName)) {
         console.log(`✅ [Banner] PPV already on active slide`);
         return activeSlide;
       }
       console.log(`ℹ️  Active slide: "${activeText.substring(0, 50)}..." — not our PPV`);
+    } else {
+      // If active slide locator is not visible, check if we have any swiper slides
+      const slides = this.bannerSlides(carousel);
+      const slideCount = await slides.count().catch(() => 0);
+      if (slideCount === 0) {
+        console.log('🔍 [Banner] No swiper slides found. Checking static banner container content...');
+        const containerText = await carousel.textContent().catch(() => '');
+        if (containerText && this.matchesPPVName(containerText, ppvName)) {
+          console.log('✅ [Banner] PPV found on static banner container');
+          return carousel;
+        }
+        console.log('⚠️ [Banner] PPV not found on static banner');
+        return null;
+      }
     }
 
     // Navigate carousel using "Buy now" + CheVRON buttons
@@ -174,21 +192,14 @@ export class LandingPage extends BasePage {
         'button[class*="chevron" i]',
       ].filter(Boolean).join(', ');
 
-      let nextBtn = carousel.locator(nextBtnSelectors).first();
-      if (!await nextBtn.isVisible().catch(() => false)) {
-        nextBtn = this.page.locator(nextBtnSelectors).first();
-      }
-
+      const nextBtn = carousel.locator(nextBtnSelectors).first();
       let firstSlideText = '';
 
       for (let attempt = 0; attempt < 6; attempt++) {
         await this.stopCarouselAutoSlide();
 
         let currentText = '';
-        let current = carousel.locator(selectors.banner.activeSlide).locator(':visible').first();
-        if (!await current.isVisible().catch(() => false)) {
-          current = this.page.locator(selectors.banner.activeSlide).locator(':visible').first();
-        }
+        const current = carousel.locator(selectors.banner.activeSlide).locator(':visible').first();
 
         if (await current.isVisible({ timeout: 1000 }).catch(() => false)) {
           currentText = (await current.textContent().catch(() => ''))?.trim() || '';
@@ -727,6 +738,7 @@ export class LandingPage extends BasePage {
 
       if (isSwiperSlide) {
         console.log('🔄 Container is a swiper slide — checking active slide in swiper...');
+
         const slideIndex = await container.evaluate((node: HTMLElement) => {
           const slideEl = node.classList.contains('swiper-slide') ? node : node.closest('.swiper-slide');
           if (!slideEl) return null;
@@ -734,7 +746,7 @@ export class LandingPage extends BasePage {
           if (slideIndexAttr !== null && slideIndexAttr !== undefined) {
             return { type: 'loop', index: parseInt(slideIndexAttr, 10) };
           }
-          const swiperEl = slideEl.closest('.swiper, [class*="swiper"]');
+          const swiperEl = slideEl.parentElement?.closest('.swiper, [class*="swiper"]');
           const slides = Array.from(swiperEl?.querySelectorAll('.swiper-slide') || []);
           const idx = slides.indexOf(slideEl);
           return { type: 'normal', index: idx };
@@ -743,7 +755,11 @@ export class LandingPage extends BasePage {
         console.log(`ℹ️ Target slide info: ${JSON.stringify(slideIndex)}`);
 
         if (slideIndex !== null) {
-          const activeSlideLocator = this.page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
+          const swiperLocator = container.locator('xpath=ancestor-or-self::*[contains(@class, "swiper") or contains(@class, "Swiper")][1]');
+          const swiperCount = await swiperLocator.count().catch(() => 0);
+          const activeSlideLocator = (swiperCount > 0)
+            ? swiperLocator.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first()
+            : this.page.locator('.swiper-slide-active, [class*="swiper-slide-active"]').first();
           let isActiveMatching = false;
           if (await activeSlideLocator.isVisible().catch(() => false)) {
             const activeInfo = await activeSlideLocator.evaluate((node: HTMLElement) => {
@@ -751,7 +767,7 @@ export class LandingPage extends BasePage {
               if (slideIndexAttr !== null && slideIndexAttr !== undefined) {
                 return { type: 'loop', index: parseInt(slideIndexAttr, 10) };
               }
-              const swiperEl = node.closest('.swiper, [class*="swiper"]');
+              const swiperEl = node.parentElement?.closest('.swiper, [class*="swiper"]');
               const slides = Array.from(swiperEl?.querySelectorAll('.swiper-slide') || []);
               const idx = slides.indexOf(node);
               return { type: 'normal', index: idx };
@@ -773,7 +789,7 @@ export class LandingPage extends BasePage {
                 if (!slideNode) return;
                 const slideEl = slideNode.classList.contains('swiper-slide') ? slideNode : slideNode.closest('.swiper-slide');
                 if (!slideEl) return;
-                const swiperEl = slideEl.closest('.swiper, [class*="swiper"]');
+                const swiperEl = slideEl.parentElement?.closest('.swiper, [class*="swiper"]');
                 const swiper = (swiperEl as any)?.swiper;
                 if (swiper) {
                   swiper.autoplay?.stop();
@@ -798,7 +814,7 @@ export class LandingPage extends BasePage {
                   if (slideIndexAttr !== null && slideIndexAttr !== undefined) {
                     return { type: 'loop', index: parseInt(slideIndexAttr, 10) };
                   }
-                  const swiperEl = node.closest('.swiper, [class*="swiper"]');
+                  const swiperEl = node.parentElement?.closest('.swiper, [class*="swiper"]');
                   const slides = Array.from(swiperEl?.querySelectorAll('.swiper-slide') || []);
                   const idx = slides.indexOf(node);
                   return { type: 'normal', index: idx };

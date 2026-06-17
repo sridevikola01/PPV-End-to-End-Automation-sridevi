@@ -1,4 +1,5 @@
 import { Page, Locator } from '@playwright/test';
+import { handleCookies } from '../utils/helpers';
 
 
 export class MyAccountPage {
@@ -20,8 +21,6 @@ export class MyAccountPage {
   // DISMISS CONSENT OVERLAY
   // ─────────────────────────────
   private async dismissConsentIfPresent(): Promise<void> {
-    // Cookie banner is now dismissed via UI click in handleCookies()
-    const { handleCookies } = await import('../utils/helpers.js');
     await handleCookies(this.page);
   }
 
@@ -541,9 +540,12 @@ export class MyAccountPage {
     if (!row) return 'N/A';
     const el = row
       .locator('span, p, div')
-      .filter({ hasText: /[£$€]\s?[\d,.]+/ })
+      .filter({ hasText: /(AED\s?|[£$€₹]\s?)[\d,.]+/ })
       .first();
-    return (await el.textContent().catch(() => 'N/A'))?.trim() || 'N/A';
+    const text = (await el.textContent().catch(() => 'N/A'))?.trim() || 'N/A';
+    if (text === 'N/A') return 'N/A';
+    const match = text.match(/(AED\s?|[£$€₹]\s?)[\d,.]+/);
+    return match ? match[0].trim() : text;
   }
 
   async getPPVStatus(ppvName: string): Promise<string> {
@@ -622,6 +624,179 @@ export class MyAccountPage {
 
     console.log(`✅ PPV Status: "${result}"`);
     return result;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST-PAYMENT: Navigate to My Account and validate PPV status = Purchased
+  // Called after successful stag payment for both new and existing users
+  // ─────────────────────────────────────────────────────────────────────────
+  async navigateToMyAccountAndValidatePPVStatus(
+    ppvName: string,
+    results: any[],
+    eventData: Record<string, string>
+  ): Promise<void> {
+    console.log('\n🏠 [Post-Payment] Navigating to My Account to validate PPV status...');
+
+    // STEP 1: Extract base URL from current page URL
+    const currentUrl = this.page.url();
+    const baseMatch = currentUrl.match(/(https:\/\/[a-z0-9.-]*dazn\.com\/en-[A-Z]+)/i);
+    let base = baseMatch?.[1] || '';
+
+    // Fallback: build base URL from env vars if not extractable from URL
+    if (!base) {
+      const env = (process.env.DAZN_ENV || 'stag').toLowerCase();
+      const region = (process.env.DAZN_REGION || 'GB').toUpperCase();
+      const domain =
+        env === 'prod' ? 'www.dazn.com' :
+        env === 'beta' ? 'beta.dazn.com' :
+        'stag.dazn.com';
+      base = `https://${domain}/en-${region}`;
+      console.log(`🔗 [Post-Payment] Using fallback base URL: ${base}`);
+    }
+
+    const myAccountUrl = `${base}/myaccount`;
+    console.log(`🔗 [Post-Payment] Navigating to: ${myAccountUrl}`);
+
+    // STEP 2: Navigate to My Account
+    try {
+      await this.page.goto(myAccountUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    } catch (e: any) {
+      console.log(`⚠️ [Post-Payment] Navigation to My Account failed: ${e.message}`);
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'PPV Status After Purchase',
+        expected: 'Purchased',
+        actual: `Navigation failed: ${e.message}`,
+        status: 'FAIL',
+      });
+      return;
+    }
+
+    console.log(`✅ [Post-Payment] On My Account: ${this.page.url()}`);
+
+    // STEP 3: Dismiss consent/cookies if present
+    await this.dismissConsentIfPresent();
+
+    // STEP 4: Wait for My Account content to load
+    console.log('⏳ [Post-Payment] Waiting for My Account content to load...');
+    const contentFound = await Promise.race([
+      this.page.waitForSelector(
+        'button:has-text("Manage subscription"), button:has-text("Manage"), ' +
+        '[data-testid*="subscription" i], h2, h3',
+        { state: 'visible', timeout: 20000 }
+      ).then(() => true).catch(() => false),
+    ]);
+
+    if (!contentFound) {
+      console.log('⚠️ [Post-Payment] My Account content not found within 20s — proceeding anyway');
+    } else {
+      console.log('✅ [Post-Payment] My Account content loaded');
+    }
+
+    // Small stabilisation wait
+    await this.page.waitForTimeout(1500);
+
+    // STEP 5: Scroll to PPV section
+    console.log('📺 [Post-Payment] Scrolling to PPV section...');
+    const scrolled = await this.page.evaluate(() => {
+      const allEls = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,span,div'));
+      const ppvHeadings = ['pay-per-view', 'pay per view', 'available to buy'];
+      for (const el of allEls) {
+        const text = (el as HTMLElement).innerText?.trim().toLowerCase() || '';
+        if (ppvHeadings.some(h => text === h)) {
+          const rect = el.getBoundingClientRect();
+          const target = Math.max(0, window.scrollY + rect.top - 120);
+          window.scrollTo({ top: target, behavior: 'instant' });
+          return target;
+        }
+      }
+      // Fallback: scroll to mid-page
+      window.scrollTo({ top: document.body.scrollHeight / 2, behavior: 'instant' });
+      return -1;
+    }).catch(() => -1);
+
+    if (scrolled >= 0) {
+      console.log(`✅ [Post-Payment] Scrolled to PPV section at ${scrolled}px`);
+    } else {
+      console.log('⚠️ [Post-Payment] PPV section heading not found — scrolled to mid-page');
+    }
+
+    await this.page.waitForTimeout(1000);
+
+    // STEP 6: Check if PPV is on My Account page directly
+    let ppvStatus = 'N/A';
+
+    // First attempt: search in current DOM
+    ppvStatus = await this.isPPVPurchased(ppvName);
+    console.log(`🔍 [Post-Payment] PPV status from My Account DOM: "${ppvStatus}"`);
+
+    // If not found in My Account, navigate to PPV listing page
+    if (ppvStatus === 'N/A' || ppvStatus === 'Buy now') {
+      console.log('🔍 [Post-Payment] PPV not found directly — checking for "Explore more PPV events" link...');
+
+      let exploreBtn = this.page.getByText(/explore.*ppv/i).first();
+      let isExploreVisible = await exploreBtn.isVisible({ timeout: 2000 }).catch(() => false);
+
+      if (!isExploreVisible) {
+        exploreBtn = this.page.getByText(/explore.*pay-per-view/i).first();
+        isExploreVisible = await exploreBtn.isVisible({ timeout: 2000 }).catch(() => false);
+      }
+
+      if (!isExploreVisible) {
+        exploreBtn = this.page.locator('a[href*="/ppv"], a[href*="/pay-per-view"]').first();
+        isExploreVisible = await exploreBtn.isVisible({ timeout: 2000 }).catch(() => false);
+      }
+
+      if (isExploreVisible) {
+        console.log('🖱️ [Post-Payment] Clicking "Explore more PPV events" link...');
+        await exploreBtn.scrollIntoViewIfNeeded().catch(() => {});
+        await exploreBtn.click({ force: true });
+
+        await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+        await this.page.waitForSelector(
+          '#addons-list-card, article, [class*="card" i], button:has-text("Buy now"), text=/Purchased/i',
+          { state: 'visible', timeout: 10000 }
+        ).catch(() => {});
+
+        // Scroll and search on listing page
+        let lastScrollY = -1;
+        let currentScrollY = 0;
+        while (currentScrollY !== lastScrollY) {
+          ppvStatus = await this.isPPVPurchased(ppvName);
+          if (ppvStatus !== 'N/A') break;
+          lastScrollY = currentScrollY;
+          await this.page.evaluate(() => window.scrollBy(0, 600)).catch(() => {});
+          await this.page.waitForTimeout(500);
+          currentScrollY = await this.page.evaluate(() => window.scrollY).catch(() => 0);
+        }
+        console.log(`🔍 [Post-Payment] PPV status from listing page: "${ppvStatus}"`);
+      } else {
+        console.log('⚠️ [Post-Payment] "Explore more PPV events" link not found');
+      }
+    }
+
+    // STEP 7: Push validation result
+    const expectedStatus = 'Purchased';
+    const statusMatches =
+      ppvStatus.toLowerCase().includes('purchased') ||
+      ppvStatus.toLowerCase().includes('included');
+    const finalStatus = statusMatches ? 'PASS' : 'FAIL';
+
+    console.log(`  ${finalStatus === 'PASS' ? '✅' : '❌'} [PPV Status After Purchase] expected="${expectedStatus}" actual="${ppvStatus}"`);
+    results.push({
+      page: 'My Account (Post-Payment)',
+      field: 'PPV Status After Purchase',
+      expected: expectedStatus,
+      actual: ppvStatus,
+      status: finalStatus,
+    });
+
+    if (finalStatus === 'PASS') {
+      console.log(`✅ [Post-Payment] PPV status confirmed as "${ppvStatus}" — purchase verified!`);
+    } else {
+      console.log(`❌ [Post-Payment] PPV status is "${ppvStatus}" — expected "Purchased"`);
+    }
   }
 
   // ─────────────────────────────

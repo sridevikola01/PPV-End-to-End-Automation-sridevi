@@ -7,7 +7,7 @@ export function compare(
 
   // ── N/A expected ───────────────────────────────────────────────
   if (expected.trim().toUpperCase() === 'N/A') {
-    return true;
+    return actual.trim().toUpperCase() === 'N/A';
   }
 
   const norm = (s: string) =>
@@ -28,7 +28,8 @@ export function compare(
      .replace(/[:\-–]/g, ' ')
      .replace(/\s+/g, ' ')
      .trim()
-     .toLowerCase();
+     .toLowerCase()
+     .replace(/\.$/, '');
 
   const a = norm(actual);
   const e = norm(expected);

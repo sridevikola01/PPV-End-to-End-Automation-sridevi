@@ -10,6 +10,7 @@ import {
   formatFlexFutureDate,
   formatRenewalDate,
   formatRenewalDateUS,
+  getNowIST,
 } from './dateUtils';
 
 function deepMerge(base: any, override: any): any {
@@ -33,7 +34,7 @@ function deepMerge(base: any, override: any): any {
 
 const GLOBAL_DEFAULTS: Record<string, string> = {
   PPV_CTA_TEXT: "Continue with pay-per-view",
-  PLAN_PAGE_TITLE: "Choose a plan that's right for you|Choose your plan|Choose a plan",
+  PLAN_PAGE_TITLE: "Choose a plan that's right for you|Choose the right plan for you|Choose the right plan for you.|Choose your plan|Choose a plan",
   PLAN_CTA_BUTTON_STANDARD: "Continue with 7-day Free Trial",
   PLAN_CTA_BUTTON_ULTIMATE: "Continue with DAZN Ultimate",
   PPV_PAGE_TITLE: "Choose the right plan for you.",
@@ -365,6 +366,13 @@ export function buildEventData(
   }
   base.PPV_STATUS = ppvStatus;
 
+  // Active standard user: Choose How To Buy page shows different feature text
+  if (userStateKey === 'active_standard') {
+    base.UPSELL_FEATURE_1 = 'Pay-per-views included at no extra cost. Minimum of 12 events per year.';
+    base.UPSELL_FEATURE_2 = "185+ fights a year from the best promoters.|185+ fights a year from the best promotors.|185+ fights a year from the world's best promoters.";
+    base.UPSELL_FEATURE_3 = "HDR and Dolby 5.1 surround sound on select events.";
+  }
+
   if (!base.RATE_PLAN_LABEL && (regional.RATE_PLAN_LABEL ?? merged.RATE_PLAN_LABEL)) base.RATE_PLAN_LABEL = regional.RATE_PLAN_LABEL ?? merged.RATE_PLAN_LABEL;
   if (!base.USER_EMAIL && (regional.USER_EMAIL ?? merged.USER_EMAIL)) base.USER_EMAIL = regional.USER_EMAIL ?? merged.USER_EMAIL;
   if (!base.USER_PASSWORD && (regional.USER_PASSWORD ?? merged.USER_PASSWORD)) base.USER_PASSWORD = regional.USER_PASSWORD ?? merged.USER_PASSWORD;
@@ -423,8 +431,13 @@ export function buildEventData(
     'BUNDLE_MONTHLY_PRICE',
   ];
   for (const field of directFields) {
-    const val = regional[field] ?? merged[field];
+    const val = regional[field] ?? merged.global?.[field] ?? merged[field];
     if (val !== undefined) base[field] = val;
+  }
+
+  // Active standard user: CTA must be set AFTER directFields to avoid being clobbered
+  if (userStateKey === 'active_standard') {
+    base.PPV_CTA_TEXT = `Continue with ${base.PPV_NAME} only|Continue with pay-per-view`;
   }
 
   const isUSRegion = (base.BASE_URL || '').includes('/en-US');
@@ -481,7 +494,7 @@ export function buildEventData(
   if (offerType === '7_day_trial') {
     base.FLEX_FUTURE_DATE = formatFlexFutureDate(7);
   } else {
-    const futureDate = new Date();
+    const futureDate = getNowIST();
     futureDate.setMonth(futureDate.getMonth() + 1);
     const day = futureDate.getDate();
     const month = futureDate.toLocaleString('en-GB', { month: 'long' });

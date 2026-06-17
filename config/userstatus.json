@@ -118,8 +118,8 @@
             "USER_PASSWORD": "Dazn@123"
           },
           "prod": {
-            "USER_EMAIL": "uk_standard_apm@t.com",
-            "USER_PASSWORD": "Test1!"
+            "USER_EMAIL": "garcia@t.dazn.com",
+            "USER_PASSWORD": "Dazn@1"
           }
         }
       },
@@ -172,8 +172,20 @@
             "USER_PASSWORD": "Dazn@123"
           },
           "prod": {
-            "USER_EMAIL": "uk_ultimate_apm@yopmail.com",
-            "USER_PASSWORD": "Dazn@123"
+            "USER_EMAIL": "uk11a@yopmail.com",
+            "USER_PASSWORD": "Test1!"
+          }
+        }
+      },
+      "AU": {
+        "environments": {
+          "stag": {
+            "USER_EMAIL": "au_standard_apm@t.com",
+            "USER_PASSWORD": "Test1!"
+          },
+          "prod": {
+            "USER_EMAIL": "auen888@yopmail.com",
+            "USER_PASSWORD": "Dazn@1"
           }
         }
       }

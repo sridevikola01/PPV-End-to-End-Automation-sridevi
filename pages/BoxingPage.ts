@@ -304,13 +304,22 @@ export class BoxingPage extends LandingPage {
   }
 
   override async findPPVContainer(eventData: Record<string, string>, source?: string): Promise<any> {
-    if (source && (source.startsWith('boxing-bundle') || source.startsWith('boxing-page-bundle'))) {
+    const src = (source || '').toLowerCase();
+    if (src.startsWith('boxing-bundle') || src.startsWith('boxing-page-bundle')) {
       return this.findBundleSection();
     }
-    if (source === 'boxing-upcoming-fights') {
+    if (src === 'boxing-upcoming-fights') {
       // Returns the specific PPV card element — clickBuyNow will find
       // "Buy now" inside it. Throws if section or PPV not found.
       return this.findUpcomingFightsPPV(eventData);
+    }
+    if (src === 'boxing-page-banner' || src === 'boxing-buy' || src === 'boxing-ultimate') {
+      const banner = await this.findPPVInBanner(eventData);
+      if (!banner) {
+        console.log(`❌ [BoxingPage Banner] PPV "${eventData.PPV_NAME}" not found on hero banner.`);
+        return null;
+      }
+      return banner;
     }
     return this.page.locator('body').first();
   }
@@ -366,9 +375,9 @@ export class BoxingPage extends LandingPage {
         btn = cardBuyNow;
       }
       if (!btn || (source !== 'boxing-upcoming-fights' && !btnSelector)) {
-        btn = this.page.locator(btnSelector || 'button:has-text("Buy now")').first();
+        btn = container.locator(btnSelector || 'button:has-text("Buy now")').first();
       } else if (source !== 'boxing-upcoming-fights') {
-        btn = this.page.locator(btnSelector).first();
+        btn = container.locator(btnSelector).first();
       }
     }
 

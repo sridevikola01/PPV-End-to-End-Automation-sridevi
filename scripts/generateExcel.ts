@@ -101,7 +101,7 @@ const ppvData = [
   { Variant: 'variant1', Field: 'Upsell Price Text', Expected: 'N/A', Flow: '' },
   { Variant: 'variant1', Field: 'Upsell Price', Expected: '{{UPSELL_PRICE}}', Flow: '' },
   { Variant: 'variant1', Field: 'Upsell Price Length', Expected: '/month', Flow: '' },
-  { Variant: 'variant1', Field: 'Upsell Billing Text', Expected: 'N/A', Flow: '' },
+  { Variant: 'variant1', Field: 'Upsell Billing Text', Expected: '{{ANNUAL_PAY_MONTHLY_CONTRACT_TEXT}}', Flow: '' },
   { Variant: 'variant1', Field: 'Upsell Offer Text', Expected: '{{UPSELL_OFFER_TEXT}}', Flow: '' },
   { Variant: 'variant1', Field: 'Upsell Section Heading', Expected: '{{UPSELL_SECTION_HEADING}}', Flow: '' },
   { Variant: 'variant1', Field: 'Included PPV1 Name', Expected: '{{PPV_NAME}}', Flow: '' },
@@ -247,7 +247,7 @@ const paymentData = [
   { Tier: 'Standard', 'Rate Plan': 'Monthly', Field: 'Today You Pay Text', Expected: 'Today you pay', Flow: '' },
   { Tier: 'Standard', 'Rate Plan': 'Monthly', Field: 'Today You Pay Price', Expected: '{{PPV_PRICE}}', Flow: '' },
   { Tier: 'Standard', 'Rate Plan': 'Monthly', Field: 'Cancellation Text', Expected: '{{CANCELLATION_TEXT}}', Flow: '' },
-  { Tier: 'Standard', 'Rate Plan': 'Monthly', Field: 'Ultimate Upsell Text', Expected: 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost|N/A', Flow: '' },
+  { Tier: 'Standard', 'Rate Plan': 'Monthly', Field: 'Ultimate Upsell Text', Expected: 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost – {{UPSELL_PRICE}}/month|Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost|N/A', Flow: '' },
 
   // ── Standard + Annual Pay Monthly ────────────────────────
   { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly', Field: 'Page Title', Expected: 'Choose how to pay', Flow: '' },
@@ -261,7 +261,7 @@ const paymentData = [
   { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly', Field: 'Today You Pay Price', Expected: '{{PPV_PRICE}}', Flow: '' },
   { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly', Field: 'Cancellation Text', Expected: '{{CANCELLATION_TEXT_ANNUAL}}', Flow: '' },
   { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly', Field: 'Redeem Promo Code CTA', Expected: 'Yes', Flow: '' },
-  { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly', Field: 'Ultimate Upsell Text', Expected: 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost|N/A', Flow: '' },
+  { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly', Field: 'Ultimate Upsell Text', Expected: 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost – {{UPSELL_PRICE}}/month|Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost|N/A', Flow: '' },
 
   // ── Ultimate + Annual Pay Monthly ────────────────────────
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Monthly', Field: 'Page Title', Expected: 'Choose how to pay', Flow: '' },
@@ -310,7 +310,7 @@ const paymentData = [
   { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly Bundle', Field: 'Bundle Discount', Expected: '{{BUNDLE_DISCOUNT}}', Flow: '' },
   { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly Bundle', Field: 'Today You Pay Price', Expected: '{{BUNDLE_TODAY_YOU_PAY_STANDARD}}', Flow: '' },
   { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly Bundle', Field: 'Cancellation Text', Expected: '{{CANCELLATION_TEXT_ANNUAL}}', Flow: '' },
-  { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly Bundle', Field: 'Ultimate Upsell Text', Expected: 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost|N/A', Flow: '' },
+  { Tier: 'Standard', 'Rate Plan': 'Annual Pay Monthly Bundle', Field: 'Ultimate Upsell Text', Expected: 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost – {{UPSELL_PRICE}}/month|Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost|N/A', Flow: '' },
 
   // ── Ultimate + Annual Pay Monthly Bundle ──────────────────
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Monthly Bundle', Field: 'Page Title', Expected: 'Choose how to pay', Flow: '' },

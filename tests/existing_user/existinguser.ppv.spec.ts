@@ -3,17 +3,18 @@ import { PaymentPage } from '../../pages/PaymentPage';
 import { HomePage } from '../../pages/HomePage';
 import { MyAccountPage } from '../../pages/MyAccountPage';
 import { StandalonePPVPage } from '../../pages/StandalonePPVPage';
+import { DefaultSignupPage } from '../../pages/DefaultSignupPage';
 import { LandingPage } from '../../pages/LandingPage';
 import { BoxingPage } from '../../pages/BoxingPage';
 import { BoxingHomePage } from '../../pages/BoxingHomePage';
 import { SchedulePage } from '../../pages/schedulepage';
 import { SearchPage } from '../../pages/SearchPage';
-import { PaymentFillPage } from '../../pages/PaymentFillPage';
 import { PPVUpsellSuccessPage } from '../../pages/PPVUpsellSuccessPage';
 import { PPVUpsellPaymentPage } from '../../pages/PPVUpsellPaymentPage';
+
+
 import {
   readSheet,
-  readSheet as readUpsellSheet,
   getPPVDataByVariant,
   getPlanDataByTier,
   getPaymentDataByTierAndPlan,
@@ -25,6 +26,10 @@ import {
   configureExcelPathForEvent,
   getHomeOfBoxingData,
   getHomePageData,
+  getStandalonePPVPageData,
+  getUpsellFirstSuccessData,
+  getUpsellSecondSuccessData,
+  getUpsellPaymentData,
 } from '../../utils/excelReader';
 import { detectVariant } from '../../flows/detectVariant';
 import { validateVariant } from '../../flows/validateVariant';
@@ -38,28 +43,36 @@ import {
   stabilisePage,
   handleCookies,
   injectConsentCookies,
+  dismissMarketingPopup,
 } from '../../utils/helpers';
 import {
   loadEventConfig,
   safeScrollToElement,
   clickAndWaitForNav,
   handlePopupModal,
+  assertCountryMatch,
 } from '../../utils/testHelpers';
 
 const REGION = process.env.DAZN_REGION || 'GB';
-const EVENT_CONFIG = process.env.PPV_CONFIG || 'beauty_and_beast';
+const EVENT_CONFIG = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
 const SOURCE = process.env.SOURCE || 'my-account';
 
 // ── Flow constant — used for flow-restricted Excel rows ──────────────
 // Enables Welcome Back, Saved Card, Signed In As, Log Out validations
 const FLOW = 'myaccount';
+const SWITCH_TO_ULTIMATE = (process.env.SWITCH || '').toLowerCase() === 'true';
+const ENV = (process.env.DAZN_ENV || 'stag').toLowerCase();
+const PAYMENT_METHOD = (process.env.PAYMENT_METHOD || 'credit_card').toLowerCase();
 
 test('PPV flow via existing user my account', async ({ browser }) => {
   test.setTimeout(300_000);
 
   const json = loadEventConfig(EVENT_CONFIG);
+  const PPV_TYPE = (process.env.PPV_TYPE || json.PPV_TYPE || 'normal').toLowerCase();
   configureExcelPathForEvent(json.eventKey || '');
   const eventData = buildEventData(json, REGION);
+  eventData.source = SOURCE;
+  eventData.SOURCE = SOURCE;
   const userStateKey = process.env.USER_STATE || 'freemium';
 
   // Compute dynamic future date variables
@@ -71,10 +84,15 @@ test('PPV flow via existing user my account', async ({ browser }) => {
   eventData.FLEX_FUTURE_DATE_SHORT = `${fDay} ${fMonth} ${fYear}`;
 
   const tier = (json.TIER || 'freemium').toLowerCase();
+  const isUSorGB = REGION === 'GB' || REGION === 'US';
+  const devModeEnabled = tier === 'ultimate' && isUSorGB && ENV !== 'prod';
   const ratePlan = (json.RATE_PLAN || 'monthly').toLowerCase();
   const userEmail = eventData.USER_EMAIL || json.USER_EMAIL || '';
   const userPassword = eventData.USER_PASSWORD || json.USER_PASSWORD || '';
-  const purchaseOption = (json.PURCHASE_OPTION || 'ppv').toLowerCase();
+  let purchaseOption = (json.PURCHASE_OPTION || 'ppv').toLowerCase();
+  if (tier === 'ultimate') {
+    purchaseOption = 'ultimate';
+  }
   const baseUrl = eventData.BASE_URL;
   const variantConfig = json.variants;
   const pagesConfig = json.pages;
@@ -156,6 +174,8 @@ test('PPV flow via existing user my account', async ({ browser }) => {
     viewport: null,
     colorScheme: 'dark',
     reducedMotion: 'no-preference',
+    timezoneId: 'Asia/Kolkata',
+    locale: 'en-IN',
     ...(recordVideo ? { recordVideo } : {}),
   });
 
@@ -278,6 +298,14 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         const schedule = new SchedulePage(page);
         await schedule.navigate(baseUrl);
         await setupPage(page, 8000);
+        assertCountryMatch(page, REGION);
+
+        if (devModeEnabled) {
+          console.log('\n🎭 Dev mode flow detected — enabling dev mode on schedule page...');
+          const searchPage = new SearchPage(page);
+          await searchPage.enableDevMode();
+        }
+
         await schedule.selectSport(sport);
 
         const eventCard = await schedule.findEvent(eventData.PPV_NAME);
@@ -297,6 +325,14 @@ test('PPV flow via existing user my account', async ({ browser }) => {
       } else if (isSearch) {
         const searchPage = new SearchPage(page);
         await searchPage.navigate(baseUrl);
+        await setupPage(page, 8000);
+        assertCountryMatch(page, REGION);
+
+        if (devModeEnabled) {
+          console.log('\n🎭 Dev mode flow detected — enabling dev mode on search page...');
+          await searchPage.enableDevMode();
+        }
+
         let searchQuery = eventData.PPV_NAME;
         if (eventData.PPV_NAME && eventData.PPV_NAME.includes(':')) {
           searchQuery = eventData.PPV_NAME.split(':').pop()?.trim() || eventData.PPV_NAME;
@@ -311,10 +347,15 @@ test('PPV flow via existing user my account', async ({ browser }) => {
           console.log(`⚠️ Search for "${searchQuery}" failed: ${err.message}. Trying fallback search...`);
         }
 
-        if (!searchSuccess && eventData.PPV_PROMOTER && eventData.PPV_PROMOTER !== 'N/A') {
-          console.log(`🔄 Searching with promoter fallback: "${eventData.PPV_PROMOTER}"`);
-          await searchPage.searchForEvent(eventData.PPV_PROMOTER);
-          await searchPage.clickPPVTile(eventData.PPV_NAME);
+        if (!searchSuccess) {
+          if (eventData.PPV_PROMOTER && eventData.PPV_PROMOTER !== 'N/A') {
+            console.log(`🔄 Searching with promoter fallback: "${eventData.PPV_PROMOTER}"`);
+            await searchPage.searchForEvent(eventData.PPV_PROMOTER);
+            await searchPage.clickPPVTile(eventData.PPV_NAME);
+            searchSuccess = true;
+          } else {
+            throw new Error(`❌ PPV event "${eventData.PPV_NAME}" not found via search`);
+          }
         }
 
         console.log('\n📋 Validating Search page...');
@@ -332,7 +373,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
         await searchPage.clickBuyNow();
       } else {
-        const isHomePageSource = SOURCE.startsWith('home-page-');
+        const isHomePageSource = SOURCE.startsWith('home-page-') || SOURCE === 'home-biggest-fights';
         const isHomeSport = SOURCE.startsWith('home-') && !isHomePageSource;
         const isBoxingSource = SOURCE.startsWith('boxing-page') || SOURCE.startsWith('boxing');
 
@@ -346,10 +387,17 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
         await landing.navigate(baseUrl, SOURCE, eventData);
         await setupPage(page, 8000);
+        assertCountryMatch(page, REGION);
+
+        if (devModeEnabled) {
+          console.log('\n🎭 Dev mode flow detected — enabling dev mode on landing page...');
+          const searchPage = new SearchPage(page);
+          await searchPage.enableDevMode();
+        }
 
         // Validate entry page
         const isBoxingSourceInner = SOURCE.startsWith('boxing-page') || SOURCE.startsWith('boxing');
-        const isHomePageSourceInner = SOURCE.startsWith('home-page-');
+        const isHomePageSourceInner = SOURCE.startsWith('home-page-') || SOURCE === 'home-biggest-fights';
         const isHomeSportInner = SOURCE.startsWith('home-') && !isHomePageSourceInner;
 
         let sheetName = 'Landing page';
@@ -371,7 +419,9 @@ test('PPV flow via existing user my account', async ({ browser }) => {
           pageName = 'Boxing';
           flowParam = SOURCE.startsWith('boxing-page-bundle') || SOURCE.startsWith('boxing-bundle')
             ? 'boxing-bundle'
-            : 'boxing';
+            : SOURCE === 'boxing-upcoming-fights'
+              ? 'boxing-upcoming'
+              : 'boxing';
         }
 
         const container = await landing.findPPVContainer(eventData, SOURCE);
@@ -434,6 +484,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
       console.log('🍪 Waiting for cookie banner...');
       await handleCookies(page, 10000);
       await stabilisePage(page);
+      assertCountryMatch(page, REGION);
 
       console.log(`📧 Entering email: ${userEmail}`);
       const emailInput = page.locator(
@@ -478,6 +529,14 @@ test('PPV flow via existing user my account', async ({ browser }) => {
       // Dismiss popup and navigate to My Account
       const homePage = new HomePage(page, baseUrl);
       await homePage.dismissPopup();
+
+      if (devModeEnabled) {
+        console.log('\n🎭 Dev mode flow detected — enabling dev mode for existing user...');
+        const searchPage = new SearchPage(page);
+        await searchPage.enableDevMode();
+        console.log('✅ dev mode enabled — continuing with ultimate flow');
+      }
+
       await homePage.navigateToMyAccount();
       await handleCookies(page, 8000);
     }
@@ -524,13 +583,20 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         }
       }
 
-      // Temporarily override DAZN_TIER to DAZN Free for freemium/frozen on My Account
+      // Temporarily override DAZN_TIER for My Account validation based on current user state
       const originalDaznTier = eventData.DAZN_TIER;
       if (userStateKey === 'freemium' || userStateKey === 'frozen') {
         eventData.DAZN_TIER = 'DAZN Free';
         eventData['DAZN_TIER'] = 'DAZN Free';
+      } else if (userStateKey === 'active_standard') {
+        eventData.DAZN_TIER = 'DAZN Standard';
+        eventData['DAZN_TIER'] = 'DAZN Standard';
+      } else if (userStateKey === 'active_ultimate') {
+        eventData.DAZN_TIER = 'DAZN Ultimate';
+        eventData['DAZN_TIER'] = 'DAZN Ultimate';
       }
 
+      const originalScrollY = await page.evaluate(() => window.scrollY).catch(() => 0);
       await page.evaluate(() => {
         document.documentElement.style.overflow = 'hidden';
         document.body.style.overflow = 'hidden';
@@ -548,6 +614,8 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         document.documentElement.style.overflow = '';
         document.body.style.overflow = '';
       });
+      // Restore original scroll position since setting overflow: hidden resets scroll position in some environments
+      await page.evaluate((y) => window.scrollTo(0, y), originalScrollY).catch(() => {});
 
       // ══════════════════════════════════════════════════════════════
       // STEP 4b — EXTRACT DYNAMIC USER DATA FROM MY ACCOUNT
@@ -627,19 +695,17 @@ test('PPV flow via existing user my account', async ({ browser }) => {
           ratePlan,
           tier,
           env: process.env.DAZN_ENV || 'prod',
-          flowName: `${SOURCE} → ${tier} → ${ratePlan} (${userStateKey})`,
+          flowName: SOURCE,
           endTime: new Date(),
           excelPath,
           videoPath,
-          userStatus: userStateKey.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-          userType: 'existing-user' as const,
-          paymentMethod: 'Credit Card (Visa)',
+          userType: 'existing-user',
         });
         if (htmlPath) console.log(`\n📊 Report: ${htmlPath}${pdfPath ? `\n📊 Report: ${pdfPath}` : ''}`);
         return; // ← Exit early — no purchase flow needed
       }
 
-      if (tier === 'ultimate') {
+      if (tier === 'ultimate' && userStateKey === 'active_ultimate') {
         console.log('\n💎 Ultimate tier — checking PPV status...');
 
         await myAccountPage.scrollToPPVSection();
@@ -672,22 +738,20 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         });
 
         // Generate HTML + PDF run report before early exit
-        const { htmlPath: htmlPath2, pdfPath: pdfPath2 } = await generateReports(results, {
+        const { htmlPath, pdfPath } = await generateReports(results, {
           event: eventData.PPV_NAME,
           region: REGION,
           source: SOURCE,
           ratePlan,
           tier,
           env: process.env.DAZN_ENV || 'prod',
-          flowName: `${SOURCE} → ${tier} → ${ratePlan} (${userStateKey})`,
+          flowName: SOURCE,
           endTime: new Date(),
           excelPath,
           videoPath,
-          userStatus: userStateKey.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-          userType: 'existing-user' as const,
-          paymentMethod: 'Credit Card (Visa)',
+          userType: 'existing-user',
         });
-        if (htmlPath2) console.log(`\n📊 Report: ${htmlPath2}${pdfPath2 ? `\n📊 Report: ${pdfPath2}` : ''}`);
+        if (htmlPath) console.log(`\n📊 Report: ${htmlPath}${pdfPath ? `\n📊 Report: ${pdfPath}` : ''}`);
         return;
       }
 
@@ -709,6 +773,40 @@ test('PPV flow via existing user my account', async ({ browser }) => {
           await validateVariant(
             page, 'myaccount', ppvListingData, results, eventData, 'Pay Per View'
           );
+        }
+      }
+
+      // ── VALIDATE PPV LISTING PAGE after "Explore more PPV events" navigation ──
+      // MyAccountPage.clickBuyNow() internally calls findPPVRow() which navigates
+      // to the PPV listing page if PPV not found in My Account.
+      // We need to validate the PPV card on the listing page BEFORE clicking Buy Now.
+      // Strategy: scroll and search for the PPV, then validate its card fields.
+      if (!hasPPV) {
+        console.log('\n📋 Checking if navigated to PPV listing page for validation...');
+        // Wait briefly for any navigation that may have happened
+        await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
+        const listingUrl = page.url();
+        const isOnListingPage = listingUrl.includes('/ppv') || listingUrl.includes('/pay-per-view') ||
+          listingUrl.includes('/addons') || listingUrl.includes('/content/');
+
+        if (isOnListingPage) {
+          console.log(`📍 On PPV listing page: ${listingUrl}`);
+          // Wait for PPV cards to load
+          await page.waitForSelector(
+            '#addons-list-card, article, [class*="card" i], button:has-text("Buy now")',
+            { state: 'visible', timeout: 10000 }
+          ).catch(() => { });
+
+          // Validate PPV listing page fields from Excel
+          const ppvListingPageData = getPayPerViewData();
+          if (ppvListingPageData.length > 0) {
+            console.log(`📊 PPV Listing page rows: ${ppvListingPageData.length}`);
+            await validateVariant(
+              page, 'myaccount', ppvListingPageData, results, eventData, 'Pay Per View'
+            );
+          } else {
+            console.log('ℹ️ No Pay Per View page sheet data — skipping listing page validation');
+          }
         }
       }
 
@@ -814,6 +912,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
         await handleCookies(page, step === 0 ? 8000 : 1500);
         await stabilisePage(page);
+        await dismissMarketingPopup(page);
 
         // Dynamically extract name from page if available to keep eventData in sync
         let signedInText = '';
@@ -864,6 +963,8 @@ test('PPV flow via existing user my account', async ({ browser }) => {
             }
             if (page.url().includes('paymentDetails') || page.url().includes('payment')) {
               reachedEndPage = true;
+              console.log('💳 Navigated to payment page after loop detection retry');
+              continue;
             }
             break;
           }
@@ -944,18 +1045,97 @@ test('PPV flow via existing user my account', async ({ browser }) => {
             }
           }
 
+          // ── SCENARIO 2: Ultimate Upsell Banner — validate before click,
+          //    click conditionally, validate after click ──────────────────
+          const isStandardTierForUpsell = (tier || '').toLowerCase() === 'standard';
+          const isMonthlyOrAPMForUpsell = ratePlan === 'monthly' || ratePlan === 'annual pay monthly';
+
+          if (isStandardTierForUpsell && isMonthlyOrAPMForUpsell) {
+            try {
+              // STEP A: Always validate banner text BEFORE click (both prod and stag)
+              await paymentPage.validateUltimateUpsellBannerText(results, eventData);
+
+              // STEP B: Decide whether to click the arrow
+              // prod: always click (no payment follows anyway)
+              // stag: only click if SWITCH=true env var is set
+              const shouldClickUpsell = ENV !== 'stag' || SWITCH_TO_ULTIMATE;
+
+              if (shouldClickUpsell) {
+                // STEP C: Click > arrow and validate DAZN Ultimate summary
+                const switched = await paymentPage.clickUltimateUpsellAndValidate(results, eventData);
+
+                if (switched && ENV === 'stag' && SWITCH_TO_ULTIMATE) {
+                  // STEP D: stag + SWITCH=true → update eventData so payment
+                  // fill proceeds as Ultimate (plan already changed on page)
+                  console.log('💎 [SWITCH=true] Proceeding with DAZN Ultimate payment on stag...');
+                  eventData.TIER = 'ultimate';
+                  eventData['TIER'] = 'ultimate';
+                  eventData.DAZN_TIER = 'DAZN Ultimate';
+                  eventData['DAZN_TIER'] = 'DAZN Ultimate';
+                  // Rate plan stays as annual pay monthly (Ultimate APM)
+                  eventData.RATE_PLAN = 'annual pay monthly';
+                  eventData['RATE_PLAN'] = 'annual pay monthly';
+                }
+              } else {
+                // stag + SWITCH not set → skip click, log info, proceed with Standard
+                console.log('ℹ️ [stag] SWITCH not set — skipping Ultimate upsell click. Proceeding with Standard payment.');
+              }
+            } catch (upsellErr: any) {
+              console.warn(`⚠️ Ultimate Upsell Banner validation error: ${upsellErr.message}`);
+            }
+          }
+          // ── End Scenario 2 ────────────────────────────────────────────
+
           firstPaymentDone = true;
 
           // On staging, fill payment details and submit
           const env = (process.env.DAZN_ENV || 'stag').toLowerCase();
           if (env === 'stag') {
-            console.log('💳 DAZN_ENV is stag — filling credit card payment details...');
-            const paymentFill = new PaymentFillPage(page);
+            console.log(`💳 DAZN_ENV is stag — filling payment via method: ${PAYMENT_METHOD}`);
             try {
-              await paymentFill.fillPaymentAndSubmit();
-              await paymentFill.verifyPaymentSuccess();
-              await paymentFill.clickSuccessContinue();
+              if (PAYMENT_METHOD === 'gpay') {
+                // ── Google Pay flow ──────────────────────────────────
+                console.log('🔵 [GPay] Using Google Pay payment method...');
+                await paymentPage.fillGooglePayAndSubmit(results, eventData);
+                await paymentPage.verifyPaymentSuccess();
+                await paymentPage.clickSuccessContinue();
+              } else {
+                // ── Credit Card flow (existing default) ──────────────
+                console.log('💳 Using Credit Card payment method...');
+                await paymentPage.fillPaymentAndSubmit();
+                await paymentPage.verifyPaymentSuccess();
+                await paymentPage.clickSuccessContinue();
+              }
               console.log('✅ Payment details submitted successfully on staging!');
+
+              // ── SCENARIO 3: Navigate to My Account and validate PPV status = Purchased ──
+              // Only runs on stag after successful payment, and only for normal PPV flows
+              if (PPV_TYPE !== 'upsell') {
+                try {
+                  console.log('\n🏠 [Post-Payment] Validating PPV status in My Account...');
+                  const myAccountPagePostPayment = new MyAccountPage(page);
+                  await myAccountPagePostPayment.navigateToMyAccountAndValidatePPVStatus(
+                    eventData.PPV_NAME,
+                    results,
+                    eventData
+                  );
+                } catch (myAccountErr: any) {
+                  console.warn(`⚠️ [Post-Payment] My Account PPV status validation error: ${myAccountErr.message}`);
+                  results.push({
+                    page: 'My Account (Post-Payment)',
+                    field: 'PPV Status After Purchase',
+                    expected: 'Purchased',
+                    actual: `Error: ${myAccountErr.message}`,
+                    status: 'FAIL',
+                  });
+                }
+              }
+              // ── End Scenario 3 ────────────────────────────────────────────────────────
+
+              if (PPV_TYPE === 'upsell') {
+                await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
+                continue;
+              }
             } catch (paymentErr: any) {
               console.error(`❌ Payment filling failed: ${paymentErr.message}`);
               throw paymentErr;
@@ -963,6 +1143,9 @@ test('PPV flow via existing user my account', async ({ browser }) => {
             continue;
           }
 
+          if (PPV_TYPE === 'upsell') {
+            reachedEndPage = true;
+          }
           break;
         }
 
@@ -975,7 +1158,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
           if (!ppvValidated) {
             try {
-              const ppvData = readSheet('PPV page');
+              const ppvData = getStandalonePPVPageData();
               console.log(`📊 Standalone PPV rows: ${ppvData.length}`);
 
               // Validate checked state
@@ -998,7 +1181,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         }
 
         // ── PPV Upsell Success Page (first success after initial payment) ──
-        if (pageType === 'success-upsell' && firstPaymentDone && !firstSuccessValidated) {
+        if (pageType === 'success-upsell' && PPV_TYPE === 'upsell' && firstPaymentDone && !firstSuccessValidated) {
           console.log('\n══════════════════════════════════════════════');
           console.log('First Success Page — PPV Upsell');
           console.log('══════════════════════════════════════════════');
@@ -1006,7 +1189,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
           const successPage = new PPVUpsellSuccessPage(page);
           try {
-            const successData = readUpsellSheet('First Success page');
+            const successData = getUpsellFirstSuccessData();
             await successPage.validateUpsellSuccess(successData, results, eventData);
           } catch (err: any) {
             console.warn(`⚠️ First Success page validation error: ${err.message}`);
@@ -1018,7 +1201,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         }
 
         // ── Saved Card Payment (upsell PPV purchase) ──
-        if (pageType === 'saved-card-payment' && firstPaymentDone && firstSuccessValidated) {
+        if (pageType === 'saved-card-payment' && PPV_TYPE === 'upsell' && firstPaymentDone && firstSuccessValidated && !savedCardPaymentDone) {
           console.log('\n══════════════════════════════════════════════');
           console.log('Upsell PPV — Saved Card Payment');
           console.log('══════════════════════════════════════════════');
@@ -1026,7 +1209,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
           const savedCardPage = new PPVUpsellPaymentPage(page);
           try {
-            const upsellPaymentData = readUpsellSheet('Upsell Payment page');
+            const upsellPaymentData = getUpsellPaymentData();
             await savedCardPage.validateSavedCardPayment(upsellPaymentData, results, eventData, 'Upsell Payment');
           } catch (err: any) {
             console.warn(`⚠️ Saved Card Payment validation error: ${err.message}`);
@@ -1046,7 +1229,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         }
 
         // ── DAZN Bet / Promotional Upsell (second success) ──
-        if (pageType === 'bet-upsell' && firstPaymentDone && savedCardPaymentDone) {
+        if (pageType === 'bet-upsell' && PPV_TYPE === 'upsell' && firstPaymentDone && savedCardPaymentDone) {
           console.log('\n══════════════════════════════════════════════');
           console.log('Second Success Page — DAZN Bet Upsell');
           console.log('══════════════════════════════════════════════');
@@ -1054,7 +1237,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
           const successPage = new PPVUpsellSuccessPage(page);
           try {
-            const betData = readUpsellSheet('Second Success page');
+            const betData = getUpsellSecondSuccessData();
             await successPage.validateBetUpsell(betData, results, eventData);
           } catch (err: any) {
             console.warn(`⚠️ Second Success page validation error: ${err.message}`);
@@ -1074,17 +1257,17 @@ test('PPV flow via existing user my account', async ({ browser }) => {
             try {
               const ppvData = getPPVDataByVariant(variant);
               console.log(`📊 PPV rows (Default Signup): ${ppvData.length}`);
+              const defaultSignupPage = new DefaultSignupPage(page);
               const ppvFlow = isReturning ? 'returning' : undefined;
-              await validateVariant(page, variant, ppvData, results, eventData, 'Default Signup', ppvFlow);
+              await defaultSignupPage.validate(ppvData, results, eventData, variant, ppvFlow);
             } catch (e: any) {
               console.warn('⚠️ Default Signup validation error:', e.message);
             }
             ppvValidated = true;
           }
 
-          console.log('🖱️ [DefaultSignup] Clicking "Continue with pay-per-view"...');
-          await page.locator('button:has-text("Continue with pay-per-view"), a:has-text("Continue with pay-per-view")').first().click({ force: true });
-          console.log('✅ [DefaultSignup] Clicked "Continue with pay-per-view"');
+          const defaultSignupPage = new DefaultSignupPage(page);
+          await defaultSignupPage.clickContinueWithPPV();
           await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
           continue;
         }
@@ -1231,6 +1414,23 @@ test('PPV flow via existing user my account', async ({ browser }) => {
             'button:has-text("Continue")'
           ).first();
           await planBtn.waitFor({ state: 'visible', timeout: 8000 }).catch(() => { });
+
+          // Validate CTA text after APM selection
+          if (ratePlan === 'annual pay monthly' && tier === 'standard') {
+            const ctaText = await planBtn.textContent().catch(() => '') || '';
+            const cleanCta = ctaText.replace(/\s+/g, ' ').trim();
+            const expectedCta = 'Continue with 1st Month Free';
+            const ctaMatch = cleanCta.toLowerCase().includes(expectedCta.toLowerCase());
+            console.log(`  ${ctaMatch ? '✅' : '❌'} [Plan CTA after APM] expected="${expectedCta}" actual="${cleanCta}"`);
+            results.push({
+              page: 'DAZN Plan',
+              field: 'CTA After APM Selection',
+              expected: expectedCta,
+              actual: cleanCta,
+              status: ctaMatch ? 'PASS' : 'FAIL'
+            });
+          }
+
           await clickAndWaitForNav(page, planBtn, 'Plan Continue');
 
           await page.waitForLoadState('domcontentloaded').catch(() => { });
@@ -1339,8 +1539,11 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         ).catch(() => { });
 
         const originalTier = eventData.TIER;
+        const originalPlanCta = eventData.PLAN_CTA_BUTTON;
         eventData.TIER = 'ultimate';
         eventData['TIER'] = 'ultimate';
+        eventData.PLAN_CTA_BUTTON = 'Continue';
+        eventData['PLAN_CTA_BUTTON'] = 'Continue';
 
         const planData = getPlanDataByTier('ultimate');
         console.log(`📊 Plan rows: ${planData.length}`);
@@ -1351,6 +1554,8 @@ test('PPV flow via existing user my account', async ({ browser }) => {
         // Restore
         eventData.TIER = originalTier;
         eventData['TIER'] = originalTier;
+        eventData.PLAN_CTA_BUTTON = originalPlanCta;
+        eventData['PLAN_CTA_BUTTON'] = originalPlanCta;
 
         // Select rate plan
         if (ratePlan === 'annual pay monthly') {
@@ -1465,13 +1670,11 @@ test('PPV flow via existing user my account', async ({ browser }) => {
       ratePlan,
       tier,
       env: process.env.DAZN_ENV || 'prod',
-      flowName: `${SOURCE} → ${tier} → ${ratePlan} (${userStateKey})`,
+      flowName: SOURCE,
       endTime: new Date(),
       excelPath,
       videoPath,
-      userStatus: userStateKey.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
-      userType: 'existing-user' as const,
-      paymentMethod: 'Credit Card (Visa)',
+      userType: 'existing-user',
     });
     if (htmlPath) console.log(`\n📊 Report: ${htmlPath}${pdfPath ? `\n📊 Report: ${pdfPath}` : ''}`);
 

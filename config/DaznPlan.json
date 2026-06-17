@@ -24,6 +24,8 @@
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "Every match from Lega Serie A, and highlights from LALIGA, Bundesliga and the Saudi Pro League.",
         "ULTIMATE_FEATURE_3": "HDR and Dolby 5.1 surround sound on select events.",
+        "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "£24.99",
+        "TODAY_YOU_PAY_ULTIMATE_APM": "£24.99",
         "offers": [
           {
             "name": "standard_flex_offer",
@@ -63,6 +65,8 @@
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "185+ fights a year from the world's best promoters.",
         "ULTIMATE_FEATURE_3": "HDR and Dolby 5.1 surround sound on select events.",
+        "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "$49.99",
+        "TODAY_YOU_PAY_ULTIMATE_APM": "$49.99",
         "offers": []
       },
       "AU": {
@@ -85,6 +89,8 @@
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "185+ fights a year from the world's best promoters.",
         "ULTIMATE_FEATURE_3": "HDR and Dolby 5.1 surround sound on select events.",
+        "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "$39.99",
+        "TODAY_YOU_PAY_ULTIMATE_APM": "$39.99",
         "offers": [],
         "TRIAL_MONTHLY_PRICE": "$31.99"
       },
@@ -109,6 +115,8 @@
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "185+ fights a year from the world's best promoters.",
         "ULTIMATE_FEATURE_3": "HDR and Dolby 5.1 surround sound on select events.",
+        "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "AED 72.99",
+        "TODAY_YOU_PAY_ULTIMATE_APM": "AED 72.99",
         "offers": []
       }
     }
@@ -133,6 +141,9 @@
         "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged £25.99/month. Cancel anytime before the end of the trial.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "ANNUAL_SAVINGS_BADGE": "SAVE £135.99 A YEAR",
+        "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
+        "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "£24.99",
+        "TODAY_YOU_PAY_ULTIMATE_APM": "£24.99",
         "offers": []
       },
       "US": {
@@ -151,6 +162,9 @@
         "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $30.99/month. Cancel anytime before the end of the trial.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "ANNUAL_SAVINGS_BADGE": "SAVE $140.99 A YEAR",
+        "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
+        "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "$49.99",
+        "TODAY_YOU_PAY_ULTIMATE_APM": "$49.99",
         "offers": []
       },
       "AU": {
@@ -168,6 +182,9 @@
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $31.99/month. Cancel anytime before the end of the trial.",
         "CANCELLATION_TEXT_ANNUAL": "First month free, then $16.99/month for 11 months ($186.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
+        "CANCELLATION_TEXT_ULTIMATE_APM": "Your Monthly Saver plan will renew automatically on {{RENEWAL_DATE}}. Cancel this auto-renewal in My Account.",
+        "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "$39.99",
+        "TODAY_YOU_PAY_ULTIMATE_APM": "$39.99",
         "offers": [],
         "TRIAL_MONTHLY_PRICE": "$31.99"
       }

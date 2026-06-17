@@ -1,5 +1,14 @@
+export function getNowIST(): Date {
+  // Returns current time expressed as a Date object in IST (UTC+5:30)
+  // Works correctly on any server timezone including UTC CI environments
+  const now = new Date();
+  const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const istOffsetMs = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+  return new Date(utcMs + istOffsetMs);
+}
+
 export function formatNextPaymentDate(daysOffset: number): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setDate(date.getDate() + daysOffset);
 
   const dd   = String(date.getDate()).padStart(2, '0');
@@ -11,7 +20,7 @@ export function formatNextPaymentDate(daysOffset: number): string {
 
 // ✅ New helper — adds exactly 1 calendar month
 export function formatNextPaymentDateMonthly(): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setMonth(date.getMonth() + 1);
 
   const dd   = String(date.getDate()).padStart(2, '0');
@@ -23,7 +32,7 @@ export function formatNextPaymentDateMonthly(): string {
 
 // ✅ New helper — adds exactly 1 calendar year
 export function formatNextPaymentDateYearly(): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setFullYear(date.getFullYear() + 1);
 
   const dd   = String(date.getDate()).padStart(2, '0');
@@ -37,7 +46,7 @@ export function formatNextPaymentDateYearly(): string {
 
 // US monthly — 1 month from today in MM.DD.YYYY
 export function formatNextPaymentDateMonthlyUS(): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setMonth(date.getMonth() + 1);
 
   const dd   = String(date.getDate()).padStart(2, '0');
@@ -49,7 +58,7 @@ export function formatNextPaymentDateMonthlyUS(): string {
 
 // US yearly — 1 year from today in MM.DD.YYYY
 export function formatNextPaymentDateYearlyUS(): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setFullYear(date.getFullYear() + 1);
 
   const dd   = String(date.getDate()).padStart(2, '0');
@@ -61,7 +70,7 @@ export function formatNextPaymentDateYearlyUS(): string {
 
 // US offset — N days from today in MM.DD.YYYY
 export function formatNextPaymentDateUS(daysOffset: number): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setDate(date.getDate() + daysOffset);
 
   const dd   = String(date.getDate()).padStart(2, '0');
@@ -73,7 +82,7 @@ export function formatNextPaymentDateUS(daysOffset: number): string {
 
 // ── Flex Future Date — "In 7 days • 4 June 2026" ────────────
 export function formatFlexFutureDate(daysOffset: number = 7): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setDate(date.getDate() + daysOffset);
 
   const day   = date.getDate(); // no padding
@@ -85,7 +94,7 @@ export function formatFlexFutureDate(daysOffset: number = 7): string {
 
 // ✅ Renewal date helper — 1 year minus 1 day from today in DD/MM/YYYY
 export function formatRenewalDate(): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setFullYear(date.getFullYear() + 1);
   date.setDate(date.getDate() - 1);
 
@@ -98,7 +107,7 @@ export function formatRenewalDate(): string {
 
 // ✅ US renewal date helper — 1 year minus 1 day from today in MM/DD/YYYY
 export function formatRenewalDateUS(): string {
-  const date = new Date();
+  const date = getNowIST();
   date.setFullYear(date.getFullYear() + 1);
   date.setDate(date.getDate() - 1);
 
@@ -109,7 +118,7 @@ export function formatRenewalDateUS(): string {
   return `${mm}/${dd}/${yyyy}`;
 }
 
-export function parseConfigDate(configStr: string, referenceDate: Date = new Date()): Date {
+export function parseConfigDate(configStr: string, referenceDate: Date = getNowIST()): Date {
   const clean = configStr.toLowerCase().replace(/\bat\b/g, ' ').replace(/\s+/g, ' ').trim();
   
   const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -188,7 +197,7 @@ export function parseConfigDate(configStr: string, referenceDate: Date = new Dat
   return fallbackDate;
 }
 
-function getDynamicDateBadgeSingle(configStr: string, referenceDate: Date = new Date()): string {
+function getDynamicDateBadgeSingle(configStr: string, referenceDate: Date = getNowIST()): string {
   if (configStr.toUpperCase() === 'N/A' || !configStr.trim()) {
     return configStr;
   }
@@ -316,7 +325,7 @@ function getDynamicDateBadgeSingle(configStr: string, referenceDate: Date = new 
   return Array.from(candidates).join('|');
 }
 
-export function getDynamicDateBadge(configStr: string, referenceDate: Date = new Date()): string {
+export function getDynamicDateBadge(configStr: string, referenceDate: Date = getNowIST()): string {
   if (!configStr) return '';
   return configStr.split('|').map(part => getDynamicDateBadgeSingle(part, referenceDate)).join('|');
 }

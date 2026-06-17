@@ -1,12 +1,12 @@
 import { Page } from '@playwright/test';
-import { LandingPage } from './LandingPage';
+import { HomePage } from './HomePage';
 import selectors from '../config/selectors.json';
 
 /**
  * BoxingHomePage — Page object to dynamically handle navigation and checkout flow
  * for any sport landing page (Boxing, Kickboxing, Misfits Boxing, etc.).
  */
-export class BoxingHomePage extends LandingPage {
+export class BoxingHomePage extends HomePage {
   private _fighter1 = '';
   private _fighter2 = '';
   private _bannerBuyNowHref = '';
@@ -27,14 +27,6 @@ export class BoxingHomePage extends LandingPage {
     return 'prod';
   }
 
-  private getFallbackBaseUrl(): string {
-    const env = (process.env.DAZN_ENV || 'stag').toLowerCase();
-    const region = (process.env.DAZN_REGION || 'GB').toUpperCase();
-    let domain = 'stag.dazn.com';
-    if (env === 'beta') domain = 'beta.dazn.com';
-    if (env === 'prod') domain = 'www.dazn.com';
-    return `https://${domain}/en-${region}`;
-  }
 
   // ─────────────────────────────
   // NAVIGATE: Welcome → Explore → Home → Tab/Dropdown → Sport competition page
@@ -51,24 +43,27 @@ export class BoxingHomePage extends LandingPage {
 
     console.log(`✅ Home page loaded: ${this.page.url()}`);
 
-    const targetSport = (eventData?.SPORT || 'Boxing').trim();
-    console.log(`🏅 Target sport from config: "${targetSport}"`);
+    let targetSport = (eventData?.SPORT || 'Boxing').trim();
+    if (source) {
+      if (source.toLowerCase().includes('kickboxing')) {
+        targetSport = 'Kickboxing';
+      } else if (source.toLowerCase().includes('boxing')) {
+        targetSport = 'Boxing';
+      }
+    }
+    console.log(`🏅 Target sport resolved for navigation: "${targetSport}" (from source: "${source || ''}")`);
 
-    if (targetSport.toLowerCase() === 'boxing') {
-      await this.clickBoxingTab();
-    } else {
-      console.log(`🧭 Navigating to "${targetSport}" landing page via All Sports dropdown...`);
-      const dropdownClicked = await this.clickAllSportsDropdown();
-      if (dropdownClicked) {
-        const sportSelected = await this.selectSportFromDropdown(targetSport);
-        if (!sportSelected) {
-          console.log(`⚠️ Could not select "${targetSport}" from dropdown — trying direct navigation fallback`);
-          await this.navigateToSportDirectFallback(targetSport);
-        }
-      } else {
-        console.log(`⚠️ Could not open sports dropdown — trying direct navigation fallback`);
+    console.log(`🧭 Navigating to "${targetSport}" landing page via All Sports dropdown...`);
+    const dropdownClicked = await this.clickAllSportsDropdown();
+    if (dropdownClicked) {
+      const sportSelected = await this.selectSportFromDropdown(targetSport);
+      if (!sportSelected) {
+        console.log(`⚠️ Could not select "${targetSport}" from dropdown — trying direct navigation fallback`);
         await this.navigateToSportDirectFallback(targetSport);
       }
+    } else {
+      console.log(`⚠️ Could not open sports dropdown — trying direct navigation fallback`);
+      await this.navigateToSportDirectFallback(targetSport);
     }
 
     await this.waitForSportPageContent(targetSport);
@@ -79,43 +74,6 @@ export class BoxingHomePage extends LandingPage {
     console.log(`✅ ${targetSport} competition page ready: ${this.page.url()}`);
   }
 
-  // ─────────────────────────────
-  // CLICK EXPLORE on welcome page
-  // ─────────────────────────────
-  private async clickExplore(): Promise<void> {
-    console.log('🔍 Looking for "Explore" button on welcome page...');
-
-    const exploreSelectors = [
-      'a:has-text("Explore")',
-      'button:has-text("Explore")',
-      'a[href*="/home" i]',
-      'a:has-text("Explore DAZN")',
-      'a:has-text("Explore without subscribing")',
-      'a:has-text("Explore for free")',
-      '[class*="explore" i]',
-    ];
-
-    const combinedSelector = exploreSelectors.join(', ');
-    const anyExplore = this.page.locator(combinedSelector).first();
-    const found = await anyExplore.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
-
-    if (found) {
-      console.log(`📍 Found Explore button`);
-      await anyExplore.scrollIntoViewIfNeeded().catch(() => { });
-      await anyExplore.click({ force: true });
-      await this.page.waitForURL((url: URL) => url.toString().includes('/home'), { timeout: 15000 }).catch(() => { });
-    } else {
-      console.log('⚠️ Explore button not found — trying direct navigation to /home');
-      const currentUrl = this.page.url();
-      const baseMatch = currentUrl.match(/(https:\/\/[a-z0-9.-]*dazn\.com\/en-[A-Z]+)/i);
-      const base = baseMatch?.[1] || this.getFallbackBaseUrl();
-      await this.page.goto(`${base}/home`, { waitUntil: 'domcontentloaded' });
-    }
-
-    // Wait for Home page to be visually ready before next action
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
-
-  }
 
   // ─────────────────────────────
   // CLICK BOXING TAB on home page
@@ -171,80 +129,6 @@ export class BoxingHomePage extends LandingPage {
     await this.waitForSportPageContent('Boxing');
   }
 
-  // ─────────────────────────────
-  // SPORTS DROPDOWN TRIGGER HELPERS
-  // ─────────────────────────────
-  private async clickAllSportsDropdown(): Promise<boolean> {
-    console.log('🔍 Looking for "All Sports" or "Sports" dropdown menu trigger...');
-    const triggers = [
-      'button:has-text("Sports")',
-      'a:has-text("Sports")',
-      'button:has-text("All Sports")',
-      'a:has-text("All Sports")',
-      '[aria-label*="sports" i]',
-      '[class*="sports" i]',
-      'button[aria-haspopup="true"]',
-    ];
-
-    for (const selector of triggers) {
-      const locator = this.page.locator(selector);
-      const count = await locator.count().catch(() => 0);
-      for (let i = 0; i < count; i++) {
-        const el = locator.nth(i);
-        if (await el.isVisible().catch(() => false)) {
-          console.log(`🎯 Clicking Sports dropdown trigger: "${selector}"`);
-          await el.scrollIntoViewIfNeeded().catch(() => {});
-          await el.click({ force: true });
-          await this.page.waitForTimeout(500); // Wait briefly for menu to open
-          return true;
-        }
-      }
-    }
-    console.log('⚠️ Could not click Sports dropdown trigger.');
-    return false;
-  }
-
-  private async selectSportFromDropdown(sportName: string): Promise<boolean> {
-    console.log(`🔍 Selecting sport "${sportName}" from dropdown list...`);
-
-    const selectors = [
-      `a:has-text("${sportName}")`,
-      `button:has-text("${sportName}")`,
-      `[role="menuitem"]:has-text("${sportName}")`,
-      `li:has-text("${sportName}")`,
-      `div:has-text("${sportName}")`,
-      `a[href*="${sportName.toLowerCase().replace(/\s+/g, '')}"]`
-    ];
-
-    for (const selector of selectors) {
-      const locator = this.page.locator(selector);
-      const count = await locator.count().catch(() => 0);
-      for (let i = 0; i < count; i++) {
-        const el = locator.nth(i);
-        if (await el.isVisible().catch(() => false)) {
-          const box = await el.boundingBox().catch(() => null);
-          if (box && box.width > 0 && box.height > 0 && box.width < 500) {
-            console.log(`🎯 Clicking sport link: "${selector}"`);
-            await el.scrollIntoViewIfNeeded().catch(() => {});
-            const beforeUrl = this.page.url();
-            await el.click({ force: true });
-
-            const navigated = await this.page.waitForURL(
-              (url: URL) => url.toString() !== beforeUrl,
-              { timeout: 8000 }
-            ).then(() => true).catch(() => false);
-
-            if (navigated) {
-              return true;
-            } else {
-              console.log(`⚠️ Clicked sport link "${selector}" but URL did not change from "${beforeUrl}"`);
-            }
-          }
-        }
-      }
-    }
-    return false;
-  }
 
   private async navigateToSportDirectFallback(sportName: string): Promise<void> {
     console.log(`🧭 [Fallback] Navigating directly to "${sportName}" competition page...`);
@@ -368,7 +252,7 @@ export class BoxingHomePage extends LandingPage {
             if (this.page.url() !== beforeUrl) {
               return this.page.locator('body');
             }
-            modal = await this.waitForModal();
+            modal = await this.waitForSportModal();
             if (modal) {
               return modal;
             }
@@ -423,7 +307,7 @@ export class BoxingHomePage extends LandingPage {
             console.log(`✅ [Home Sport Tile] Tile click navigated to: ${this.page.url()}`);
             return this.page.locator('body');
           }
-          modal = await this.waitForModal();
+          modal = await this.waitForSportModal();
           if (modal) {
             break;
           }
@@ -453,7 +337,7 @@ export class BoxingHomePage extends LandingPage {
       }
 
       console.log(`📅 Clicking "Upcoming Fights" tab (env: ${env})...`);
-      const tab = this.page.getByText('Upcoming Fights').first();
+      const tab = this.page.locator('a, button, [role="tab"]').filter({ hasText: /^Upcoming Fights$/i }).first();
       const tabFound = await tab.waitFor({ state: 'visible', timeout: 10000 })
         .then(() => true)
         .catch(() => false);
@@ -574,10 +458,12 @@ export class BoxingHomePage extends LandingPage {
   // ─────────────────────────────
   private async scrollToDontMissSection(): Promise<void> {
     const env = this.detectEnvironment();
-    const sectionPattern = /don'?t miss|coming up|upcoming/i;
+    const sectionPattern = /don't miss|coming up|upcoming/i;
     console.log(`📍 [Home Sport Tile] Scrolling to section matching pattern (env: ${env})...`);
 
-    const railHeader = this.page.getByText(sectionPattern).first();
+    const railHeader = this.page.locator('section:not([class*="hero" i]):not([class*="banner" i]):not([class*="carousel" i]) h2, section:not([class*="hero" i]):not([class*="banner" i]):not([class*="carousel" i]) h3, [class*="rail" i] h1, [class*="rail" i] h2, [class*="rail" i] h3, [class*="rail" i] h4, [class*="rail" i] [class*="heading" i], [class*="rail" i] [class*="title" i]')
+      .filter({ hasText: sectionPattern })
+      .first();
 
     let found = false;
     for (let i = 0; i < 8; i++) {
@@ -588,8 +474,8 @@ export class BoxingHomePage extends LandingPage {
       const scrollPos = (i + 1) * 800;
       await this.page.evaluate((pos) => {
         window.scrollTo({ top: pos, behavior: 'instant' });
-      }, scrollPos).catch(() => {});
-      
+      }, scrollPos).catch(() => { });
+
       found = await railHeader.waitFor({ state: 'attached', timeout: 200 }).then(() => true).catch(() => false);
       if (found) break;
     }
@@ -623,7 +509,9 @@ export class BoxingHomePage extends LandingPage {
 
     const env = this.detectEnvironment();
     const sectionPattern = /don'?t miss|coming up|upcoming/i;
-    const railHeader = this.page.getByText(sectionPattern).first();
+    const railHeader = this.page.locator('section:not([class*="hero" i]):not([class*="banner" i]):not([class*="carousel" i]) h2, section:not([class*="hero" i]):not([class*="banner" i]):not([class*="carousel" i]) h3, [class*="rail" i] h1, [class*="rail" i] h2, [class*="rail" i] h3, [class*="rail" i] h4, [class*="rail" i] [class*="heading" i], [class*="rail" i] [class*="title" i]')
+      .filter({ hasText: sectionPattern })
+      .first();
     await railHeader.waitFor({ state: 'attached', timeout: 15000 });
 
     const railWrapper = railHeader.locator('xpath=ancestor::*[contains(@class,"rail__rail-wrapper")][1] | ancestor::section[contains(@class,"rail")][1] | ancestor::div[contains(@class,"rail")][1]');
@@ -664,7 +552,7 @@ export class BoxingHomePage extends LandingPage {
       // 1. Try to find by text content match — score all candidates and pick best
       const tileCandidates = railWrapper.locator('a[class*="tile__link" i], a[class*="tile" i], div[class*="tile" i], div[class*="card" i], a, button');
       const candidateCount = await tileCandidates.count().catch(() => 0);
-      
+
       let bestTile: any = null;
       let bestScore = 0;
 
@@ -763,7 +651,7 @@ export class BoxingHomePage extends LandingPage {
         console.log('⚠️ Next click error:', e.message);
       });
       clicks++;
-      
+
       await this.page.waitForTimeout(250);
       found = await isTileInView();
     }
@@ -802,7 +690,7 @@ export class BoxingHomePage extends LandingPage {
   }
 
   // ─────────────────────────────
-  private async waitForModal(): Promise<any> {
+  private async waitForSportModal(): Promise<any> {
     console.log('🔍 [Home Sport Tile] Searching for modal popup...');
 
     const modalSelectors = [
@@ -942,7 +830,7 @@ export class BoxingHomePage extends LandingPage {
           try {
             const box = await buyNowByRole.boundingBox().catch(() => null);
             if (box && box.width > 0 && box.height > 0) {
-              console.log(`🖱️ Clicking Buy now via page mouse at (${box.x + box.width/2}, ${box.y + box.height/2})`);
+              console.log(`🖱️ Clicking Buy now via page mouse at (${box.x + box.width / 2}, ${box.y + box.height / 2})`);
               await this.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
               await this.page.mouse.down();
               await this.page.mouse.up();

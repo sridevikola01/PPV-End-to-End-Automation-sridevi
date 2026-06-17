@@ -18,8 +18,14 @@ export function resolveExpected(
 
 
   if (pageName === 'payment') {
-    if (field === 'signed in as text') return 'N/A';
-    if (field === 'log out present') return 'No';
+    const isReturning =
+      String(rule.Flow || rule.flow).toLowerCase() === 'returning' ||
+      ['frozen', 'sub_active', 'cancelled'].includes(String(eventData.USER_STATE || process.env.USER_STATE || '').toLowerCase().trim());
+
+    if (!isReturning) {
+      if (field === 'signed in as text') return 'N/A';
+      if (field === 'log out present') return 'No';
+    }
     if (field === 'saved card present') {
       const userState = (eventData.USER_STATE || process.env.USER_STATE || 'freemium').trim().toLowerCase();
       return userState === 'freemium' ? 'No' : 'Yes';
@@ -28,12 +34,22 @@ export function resolveExpected(
 
   let raw = rule.Expected ?? rule.Value;
 
+  if (field === 'popup date') {
+    const pDate = eventData.PPV_DATE || '';
+    const lpDate = eventData.LANDING_PAGE_PPV_DATE || '';
+    if (pDate && lpDate) {
+      raw = `${pDate}|${lpDate}`;
+    }
+  }
+
   if (raw !== undefined && raw !== null) {
     const currentRatePlan = (eventData.RATE_PLAN || eventData.ratePlan || '').trim().toLowerCase();
     const currentSource = (eventData.SOURCE || eventData.source || '').trim().toLowerCase();
 
     if (field === 'header' || field === 'page header') {
-      if (eventData.PAYMENT_HEADER) {
+      if (pageName === 'payment') {
+        raw = eventData.PAYMENT_PAGE_TITLE || eventData.PAYMENT_PAGE_TITLE_STANDARD || 'Choose how to pay';
+      } else if (eventData.PAYMENT_HEADER) {
         raw = eventData.PAYMENT_HEADER;
       } else if (raw && typeof raw === 'string') {
         raw = raw + '|N/A';
@@ -257,7 +273,8 @@ export function resolveExpected(
       const k = key.trim();
       
       // Override PPV_DATE specifically for landing/boxing/home pages
-      if (k.toUpperCase() === 'PPV_DATE' && (pageName === 'landing' || pageName === 'boxing' || pageName.includes('home'))) {
+      const pageNameLower = pageName.toLowerCase();
+      if (k.toUpperCase() === 'PPV_DATE' && (pageNameLower === 'landing' || pageNameLower === 'boxing' || pageNameLower.includes('home'))) {
         if (eventData.LANDING_PAGE_PPV_DATE) {
           return String(eventData.LANDING_PAGE_PPV_DATE);
         }

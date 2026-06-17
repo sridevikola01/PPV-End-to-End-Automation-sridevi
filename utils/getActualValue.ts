@@ -31,8 +31,16 @@ async function getScopedLandingPPVContainer(
         railWrapper = railHeading.locator('xpath=ancestor::*[contains(@class,"rail")][1]');
         hasWrapper = await railWrapper.count().catch(() => 0) > 0;
       }
+      if (!hasWrapper) {
+        railWrapper = railHeading.locator('xpath=ancestor::div[contains(@class,"fights")][1]');
+        hasWrapper = await railWrapper.count().catch(() => 0) > 0;
+      }
+      if (!hasWrapper) {
+        railWrapper = railHeading.locator('xpath=ancestor::div[contains(@class,"section")][1]');
+        hasWrapper = await railWrapper.count().catch(() => 0) > 0;
+      }
       if (hasWrapper) {
-        const tile = railWrapper.locator('.swiper-slide, [class*="tile" i], a').filter({ hasText: new RegExp(firstWord, 'i') }).first();
+        const tile = railWrapper.locator('.swiper-slide, [class*="tile" i], [class*="card" i], [class*="fight" i], [class*="event" i], a, article, li').filter({ hasText: new RegExp(firstWord, 'i') }).first();
         if (await tile.count().catch(() => 0) > 0) {
           return tile;
         }
@@ -1009,6 +1017,8 @@ export async function getActualValue(
       const firstWord = vsPart.replace(/\bppv\b/gi, '').trim().split(/\s+/)[0] || '';
 
       const withBuy = snapFind(n =>
+        (n.tag === 'p' || n.tag === 'span' || n.tag === 'div') &&
+        n.childCount <= 1 &&
         normalize(n.text.toLowerCase()).includes(firstWord) &&
         (n.text.toLowerCase().includes('subscription') ||
           n.text.toLowerCase().includes('included') ||
@@ -1065,16 +1075,36 @@ export async function getActualValue(
     }
 
     case 'header highlight text2': {
+      // Only match actual highlighted/gold text elements — not regular paragraph text
       const found = snapFind(n =>
         (n.tag === 'strong' || n.tag === 'b' || n.tag === 'a') &&
+        n.text.length < 80 &&
         (n.text.toLowerCase().includes('ultimate') ||
           n.text.toLowerCase().includes('included'))
       );
       if (found !== 'N/A') return found;
-      return snapFind(n =>
-        n.text.toLowerCase().includes('get it included') ||
-        n.text.toLowerCase().includes('included in dazn ultimate')
+
+      // Check for highlighted span/b elements — must be short and specific (not full paragraph)
+      const highlighted = snapFind(n =>
+        (n.tag === 'strong' || n.tag === 'b') &&
+        n.childCount === 0 &&
+        n.text.length < 60 &&
+        n.text.length > 5 &&
+        (n.text.toLowerCase().includes('get it included') ||
+          n.text.toLowerCase().includes('included in dazn ultimate'))
       );
+      if (highlighted !== 'N/A') return highlighted;
+
+      // Check for gold-colored/highlighted spans with specific class markers
+      try {
+        const goldEl = page.locator('strong:has-text("included"), b:has-text("included"), [class*="highlight" i]:has-text("included"), [class*="gold" i]:has-text("included")').first();
+        if (await goldEl.isVisible({ timeout: 1000 }).catch(() => false)) {
+          const t = await goldEl.textContent().catch(() => '');
+          if (t && t.trim().length < 60) return t.trim();
+        }
+      } catch {}
+
+      return 'N/A';
     }
 
     // ════════════════════════════════════════════════════════════
@@ -1262,7 +1292,9 @@ export async function getActualValue(
         const fullMatch = snapFind(n =>
           (n.text.toLowerCase().includes(ppvNameFull) || n.text.toLowerCase().includes(vsPart)) &&
           n.text.length < 100 &&
-          !n.text.toLowerCase().includes('buy')
+          !n.text.toLowerCase().includes('buy') &&
+          !/\d{1,2}:\d{2}/.test(n.text) &&
+          (n.childCount === 0 || ['h1', 'h2', 'h3', 'h4', 'strong', 'b'].includes(n.tag))
         );
         if (fullMatch !== 'N/A') return fullMatch;
 
@@ -1271,15 +1303,27 @@ export async function getActualValue(
           !n.isInModal &&
           (n.text.toLowerCase().includes(ppvNameFull) || n.text.toLowerCase().includes(vsPart)) &&
           n.text.length < 100 &&
-          !n.text.toLowerCase().includes('buy')
+          !n.text.toLowerCase().includes('buy') &&
+          !/\d{1,2}:\d{2}/.test(n.text) &&
+          (n.childCount === 0 || ['h1', 'h2', 'h3', 'h4', 'strong', 'b'].includes(n.tag))
         );
         if (fullMatchAny) return fullMatchAny.text.trim();
+
+        // Fallback without childCount guard, but still requiring no time pattern
+        const fullMatchFallback = snapFind(n =>
+          (n.text.toLowerCase().includes(ppvNameFull) || n.text.toLowerCase().includes(vsPart)) &&
+          n.text.length < 100 &&
+          !n.text.toLowerCase().includes('buy') &&
+          !/\d{1,2}:\d{2}/.test(n.text)
+        );
+        if (fullMatchFallback !== 'N/A') return fullMatchFallback;
       }
 
       // Priority 2: Heading tags with "vs"
       const fromHeading = snapFind(n =>
         ['h1', 'h2', 'h3', 'h4'].includes(n.tag) &&
         matchesVsPattern(n.text) &&
+        !/\d{1,2}:\d{2}/.test(n.text) &&
         n.text.length < 80
       );
       if (fromHeading !== 'N/A') return fromHeading;
@@ -1299,6 +1343,7 @@ export async function getActualValue(
         const headingMatch = snapFind(n =>
           ['h1', 'h2', 'h3', 'h4'].includes(n.tag) &&
           matchesWords(n.text) &&
+          !/\d{1,2}:\d{2}/.test(n.text) &&
           n.text.length < 80 &&
           !n.text.toLowerCase().includes('buy')
         );
@@ -1307,10 +1352,12 @@ export async function getActualValue(
         // Then any short text node
         const snapWordMatch = snapFind(n =>
           matchesWords(n.text) &&
+          !/\d{1,2}:\d{2}/.test(n.text) &&
           n.text.length < 80 &&
           !n.text.toLowerCase().includes('buy') &&
           !n.text.toLowerCase().includes('choose') &&
-          !n.text.toLowerCase().includes('subscribe')
+          !n.text.toLowerCase().includes('subscribe') &&
+          (n.childCount === 0 || ['h1', 'h2', 'h3', 'h4', 'strong', 'b'].includes(n.tag))
         );
         if (snapWordMatch !== 'N/A') return snapWordMatch;
       }
@@ -1318,9 +1365,11 @@ export async function getActualValue(
       // Priority 3: Any element with "vs" + first word
       const fromSnap = snapFind(n =>
         matchesVsPattern(n.text) &&
+        !/\d{1,2}:\d{2}/.test(n.text) &&
         n.text.length < 80 &&
         !n.text.toLowerCase().includes('buy') &&
-        (!firstWord || n.text.toLowerCase().includes(firstWord))
+        (!firstWord || n.text.toLowerCase().includes(firstWord)) &&
+        (n.childCount === 0 || ['h1', 'h2', 'h3', 'h4', 'strong', 'b'].includes(n.tag))
       );
       if (fromSnap !== 'N/A') return fromSnap;
 
@@ -1328,13 +1377,15 @@ export async function getActualValue(
       const fromSnapAny = snap.find(n =>
         !n.isInModal &&
         matchesVsPattern(n.text) &&
+        !/\d{1,2}:\d{2}/.test(n.text) &&
         n.text.length < 80 &&
         !n.text.toLowerCase().includes('buy') &&
-        (!firstWord || n.text.toLowerCase().includes(firstWord))
+        (!firstWord || n.text.toLowerCase().includes(firstWord)) &&
+        (n.childCount === 0 || ['h1', 'h2', 'h3', 'h4', 'strong', 'b'].includes(n.tag))
       );
       if (fromSnapAny) return fromSnapAny.text.trim();
 
-      // Priority 5: Live DOM search
+      // Priority 5: Live DOM search — find the smallest leaf element with the name
       const articles = page.locator('article');
       const artCount = await articles.count().catch(() => 0);
       for (let i = 0; i < artCount; i++) {
@@ -1345,14 +1396,29 @@ export async function getActualValue(
         if (firstWord && !artText.includes(firstWord)) continue;
         const inner = art.locator('h2, h3, h4, p, span');
         const ic = await inner.count().catch(() => 0);
+        // Collect all matching leaf texts, pick the shortest (most specific)
+        let bestMatch = '';
         for (let j = 0; j < ic; j++) {
           const el = inner.nth(j);
           if (!await el.isVisible().catch(() => false)) continue;
+          const kids = await el.locator('> *').count().catch(() => 0);
           const t = clean(await el.innerText({ timeout: T }).catch(() => ''));
-          if (matchesVsPattern(t) && t.length < 80) return t;
+          // Skip texts that include time patterns (e.g. "9:30PM") or are too long
+          if (/\d{1,2}:\d{2}\s*(?:am|pm)?/i.test(t) && t.length > 30) continue;
+          if (matchesVsPattern(t) && t.length < 80) {
+            // Prefer leaf nodes (no children) over parent nodes
+            if (!bestMatch || (kids === 0 && t.length < bestMatch.length) || (t.length < bestMatch.length && kids === 0)) {
+              bestMatch = t;
+            } else if (!bestMatch) {
+              bestMatch = t;
+            }
+          }
           // Non-boxing: match by PPV name words
-          if (!ppvNameFull.includes('vs') && firstWord && t.toLowerCase().includes(firstWord) && t.length < 80 && t.length > 3) return t;
+          if (!ppvNameFull.includes('vs') && firstWord && t.toLowerCase().includes(firstWord) && t.length < 80 && t.length > 3 && kids === 0) {
+            if (!bestMatch || t.length < bestMatch.length) bestMatch = t;
+          }
         }
+        if (bestMatch) return bestMatch;
       }
       return 'N/A';
     }
@@ -1412,27 +1478,8 @@ export async function getActualValue(
     }
 
     case 'popup date': {
-      const firstWord = (eventData?.PPV_NAME || '').toLowerCase().split(' ')[0];
-      const ppvDate = (eventData?.PPV_DATE || '').toLowerCase();
-      const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun',
-        'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-      const expectedMonth = months.find(m => ppvDate.includes(m));
-      const cleanedPpvDate = ppvDate.replace(/\b\d{1,2}:\d{2}\s*(?:am|pm)?\b/g, '');
-      const expectedDay = cleanedPpvDate.match(/\b(\d{1,2})(st|nd|rd|th)?\b/)?.[1];
-
-      const modalTexts = snap
-        .filter(n => n.isInModal)
-        .map(n => n.text.toLowerCase());
-      const modalHasEvent = firstWord
-        ? modalTexts.some(t => t.includes(firstWord))
-        : true;
-
-      if (!modalHasEvent) {
-        console.log(`⚠️  Modal does not contain "${firstWord}"`);
-        return 'N/A';
-      }
-
-      return snapFind(n => {
+      // Find date text inside the modal popup
+      const popupDateResult = snapFind(n => {
         if (!n.isInModal) return false;
         const t = n.text;
         const tl = t.toLowerCase();
@@ -1442,12 +1489,6 @@ export async function getActualValue(
         if (tl.includes('buy')) return false;
         if (tl.includes('catch')) return false;
         if (tl.includes('select')) return false;
-
-        if (expectedMonth && !tl.includes(expectedMonth)) return false;
-        if (expectedDay) {
-          const dayMatch = t.match(/\b(\d{1,2})(st|nd|rd|th)?\b/)?.[1];
-          if (dayMatch !== expectedDay) return false;
-        }
 
         if (
           /^\d{1,2}\s+(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\s+\d{1,2}:\d{2}$/i.test(t)
@@ -1461,6 +1502,32 @@ export async function getActualValue(
         if (isDateText(t) && t.length < 60) return true;
         return false;
       }, true);
+      if (popupDateResult !== 'N/A') return popupDateResult;
+
+      // Fallback: live DOM search inside modal/dialog for date text
+      const modalSelectors = [
+        '[role="dialog"]', '[aria-modal="true"]', '[class*="modal" i]', '[class*="popup" i]', '[class*="overlay" i]'
+      ];
+      for (const sel of modalSelectors) {
+        const modal = page.locator(sel).first();
+        if (!await modal.isVisible({ timeout: 1000 }).catch(() => false)) continue;
+        const dateEls = modal.locator('span, p, time, div');
+        const dateElCount = await dateEls.count().catch(() => 0);
+        for (let di = 0; di < dateElCount; di++) {
+          const el = dateEls.nth(di);
+          if (!await el.isVisible().catch(() => false)) continue;
+          const kids = await el.locator('> *').count().catch(() => 0);
+          if (kids > 2) continue;
+          const t = clean(await el.textContent().catch(() => '') || '');
+          if (!t || t.length > 60 || t.length < 3) continue;
+          const tl = t.toLowerCase();
+          if (tl.includes('vs') || tl.includes('buy') || tl.includes('catch')) continue;
+          if (isPriceText(t)) continue;
+          if (isDateText(t)) return t;
+          if (/\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\b/i.test(t) && /\d{1,2}/.test(t) && t.length < 40) return t;
+        }
+      }
+      return 'N/A';
     }
 
     case 'popup ppv name': {
@@ -1567,7 +1634,8 @@ export async function getActualValue(
 
     case 'ppv2 image present on ultimate tier':
     case 'ppv2 image present on bundle': {
-      const secPPV = (eventData?.SECONDARY_PPV || '').toLowerCase();
+      const secPPV = (eventData?.SECONDARY_PPV || eventData?.BUNDLE_PPV2_NAME || '').toLowerCase();
+      if (!secPPV || secPPV === 'n/a') return 'N/A';
       const secWord = secPPV.split(' ')[0];
 
       if (secWord) {
@@ -1654,6 +1722,15 @@ export async function getActualValue(
       const expectedPrice = eventData?.PPV_PRICE || '';
       const currency = eventData?.CURRENCY || '';
       const ppvNameForPrice = (eventData?.PPV_NAME || '').toLowerCase();
+
+      // On My Account page, route directly through the MyAccountPage POM to ensure we scope to the correct card
+      const url = page.url();
+      if (url.includes('/myaccount') || (eventData?.CURRENT_PAGE && eventData.CURRENT_PAGE.toLowerCase() === 'my account')) {
+        const { MyAccountPage } = require('../pages/MyAccountPage');
+        const myAccountPage = new MyAccountPage(page);
+        const ppvPrice = await myAccountPage.getPPVPrice(eventData?.PPV_NAME || '');
+        if (ppvPrice && ppvPrice !== 'N/A') return ppvPrice;
+      }
 
       // Context-aware: find price near our specific PPV name
       // Build name matchers
@@ -1919,11 +1996,49 @@ export async function getActualValue(
     }
 
     // ════════════════════════════════════════════════════════════
-    // PPV DESCRIPTION / LOCATION (Landing / Boxing / Welcome page)
+    // PPV DESCRIPTION / LOCATION (Landing / Boxing / Welcome / PPV Payment)
     // ════════════════════════════════════════════════════════════
     case 'ppv description text':
     case 'ppv description': {
       const url = page.url();
+
+      // PPV Payment page (active_standard): presence + content check
+      const isPPVPayment = url.includes('/addon/purchase') ||
+        (eventData?.CURRENT_PAGE && ['ppv payment', 'ppv payment page'].includes(eventData.CURRENT_PAGE.toLowerCase()));
+      if (isPPVPayment) {
+        const ppvDesc = (eventData?.PPV_DESCRIPTION || '').toLowerCase();
+        const firstWord = ppvDesc.split(' ')[0];
+
+        // Try exact match with PPV_DESCRIPTION first word
+        const found = snapFind(n =>
+          (n.tag === 'p' || n.tag === 'span' || n.tag === 'div') &&
+          n.text.length > 20 &&
+          !matchesVsPattern(n.text) &&
+          !isDateText(n.text) &&
+          !isPriceText(n.text) &&
+          (firstWord ? n.text.toLowerCase().includes(firstWord) : true)
+        );
+        if (found !== 'N/A') return 'Yes';
+
+        // Broader fallback: any long text that looks like a description
+        const broader = snapFind(n =>
+          (n.tag === 'p' || n.tag === 'span' || n.tag === 'div') &&
+          n.childCount <= 2 &&
+          n.text.length > 30 &&
+          n.text.length < 300 &&
+          !matchesVsPattern(n.text) &&
+          !isDateText(n.text) &&
+          !isPriceText(n.text) &&
+          !n.text.toLowerCase().includes('terms') &&
+          !n.text.toLowerCase().includes('privacy') &&
+          !n.text.toLowerCase().includes('payment method') &&
+          !n.text.toLowerCase().includes('today you pay') &&
+          !n.text.toLowerCase().includes('one time payment') &&
+          !n.text.toLowerCase().includes('secure checkout')
+        );
+        return broader !== 'N/A' ? 'Yes' : 'No';
+      }
+
       const isLandingOrHome = url.includes('/welcome') || url.includes('/home') || url.includes('/boxing') || 
                               (eventData?.CURRENT_PAGE && ['landing', 'boxing', 'home page', 'home of boxing'].includes(eventData.CURRENT_PAGE.toLowerCase()));
       if (isLandingOrHome) {
@@ -2457,6 +2572,8 @@ export async function getActualValue(
     case 'upsell feature 2':
     case 'upsell feature 3': {
       const idx = key.endsWith('1') ? 0 : key.endsWith('2') ? 1 : 2;
+      const featureKey = `UPSELL_FEATURE_${idx + 1}`;
+      const expectedFeature = (eventData?.[featureKey] || '').toLowerCase();
 
       const upsellFeatures = snapFindAll(n =>
         (n.tag === 'p' || n.tag === 'li' || n.tag === 'div') &&
@@ -2483,11 +2600,29 @@ export async function getActualValue(
           n.text.toLowerCase().includes('resolution') ||
           n.text.toLowerCase().includes('events per year') ||
           n.text.toLowerCase().includes('promoters') ||
+          n.text.toLowerCase().includes('promotors') ||
           n.text.toLowerCase().includes('surround') ||
           n.text.toLowerCase().includes('minimum') ||
           n.text.toLowerCase().includes('additional cost'))
       );
 
+      // Content-based match: find the feature that matches the expected text (order-independent)
+      if (expectedFeature) {
+        const alternatives = expectedFeature.split('|');
+        for (const alt of alternatives) {
+          const expectedWords = alt.split(/\s+/).filter(w => w.length > 3);
+          if (expectedWords.length === 0) continue;
+          const contentMatch = upsellFeatures.find(f => {
+            const fLower = f.toLowerCase();
+            // Match if at least 2 significant words from expected are found in actual
+            const matchCount = expectedWords.filter(w => fLower.includes(w)).length;
+            return matchCount >= Math.min(2, expectedWords.length);
+          });
+          if (contentMatch) return contentMatch;
+        }
+      }
+
+      // Fallback: positional extraction
       if (upsellFeatures[idx]) return upsellFeatures[idx];
       return 'N/A';
     }
@@ -2560,7 +2695,8 @@ export async function getActualValue(
     case 'ppv1 included tag':
     case 'ppv2 included tag': {
       if (key === 'ppv2 included tag') {
-        const secPPV = (eventData?.SECONDARY_PPV || '').toLowerCase();
+        const secPPV = (eventData?.SECONDARY_PPV || eventData?.BUNDLE_PPV2_NAME || '').toLowerCase();
+        if (!secPPV || secPPV === 'n/a') return 'N/A';
         const secWord = secPPV.split(' ')[0];
         if (secWord) {
           const secFound = snapFind(n =>
@@ -2577,7 +2713,7 @@ export async function getActualValue(
         n.text.toLowerCase() === 'included' &&
         n.text.length < 40
       );
-      return found !== 'N/A' ? 'Yes' : 'No';
+      return found !== 'N/A' ? 'Yes' : 'N/A';
     }
 
     // ════════════════════════════════════════════════════════════
@@ -4643,33 +4779,7 @@ export async function getActualValue(
       return fallback;
     }
 
-    case 'header sub text': {
-      const ppvName = (eventData?.PPV_NAME || '').toLowerCase();
-      const headerSubText = (eventData?.HEADER_SUB_TEXT || '').toLowerCase();
 
-      // Try exact match first
-      if (headerSubText) {
-        const exact = snapFind(n =>
-          n.childCount <= 2 &&
-          n.text.toLowerCase().includes(ppvName) &&
-          n.text.toLowerCase().includes('subscription') &&
-          n.text.length < 150
-        );
-        if (exact !== 'N/A') return exact;
-      }
-
-      // Fallback
-      return snapFind(n =>
-        n.childCount <= 2 &&
-        n.text.toLowerCase().includes(ppvName) &&
-        (n.text.toLowerCase().includes('included') ||
-          n.text.toLowerCase().includes('subscription') ||
-          n.text.toLowerCase().includes('standard') ||
-          n.text.toLowerCase().includes('ultimate')) &&
-        n.text.length > 20 &&
-        n.text.length < 150
-      );
-    }
 
     case 'ppv option present': {
       const ppvName = (eventData?.PPV_NAME || '').toLowerCase();
@@ -4837,14 +4947,25 @@ export async function getActualValue(
           continue;
         }
         if (foundPrice && (n.text === '/ month' || n.text === '/month')) {
-          return n.text;
+          return '/ month';
         }
       }
-      // Fallback — find any / month
-      return snapFind(n =>
+      // Fallback — find standalone / month node
+      const standaloneMonth = snapFind(n =>
         n.childCount === 0 &&
         (n.text === '/ month' || n.text === '/month')
       );
+      if (standaloneMonth !== 'N/A') return '/ month';
+      // Broader fallback — inline text containing /month (e.g. "/month for 12 months")
+      const inlineNode = snapFind(n =>
+        !n.isInModal &&
+        (/\/\s*month/i.test(n.text)) &&
+        n.text.length < 50
+      );
+      if (inlineNode !== 'N/A') {
+        return '/ month';
+      }
+      return 'N/A';
     }
 
     case 'dazn ultimate billing text': {
