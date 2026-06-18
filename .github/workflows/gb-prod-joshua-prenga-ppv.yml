@@ -1,14 +1,25 @@
-name: GB Prod Joshua vs Prenga Matrix
+name: Joshua vs Prenga PPV Matrix
 
 on:
   workflow_dispatch:
+    inputs:
+      DAZN_REGION:
+        description: 'DAZN region to validate'
+        required: true
+        default: 'GB'
+        type: choice
+        options:
+          - GB
+          - AU
+          - US
+          - AE
 
 permissions:
   contents: read
 
 jobs:
   prod-matrix:
-    name: PROD | ${{ matrix.plan }}
+    name: ${{ matrix.dazn_env }} | ${{ matrix.plan }}
     timeout-minutes: 45
     runs-on:
       - self-hosted
@@ -19,6 +30,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
+        dazn_env: [stag, prod]
         plan:
           - standard_monthly
           - standard_apm
@@ -28,8 +40,8 @@ jobs:
     env:
       CI: 'true'
       HEADLESS: 'true'
-      DAZN_REGION: 'GB'
-      DAZN_ENV: 'prod'
+      DAZN_REGION: ${{ inputs.DAZN_REGION || 'GB' }}
+      DAZN_ENV: ${{ matrix.dazn_env }}
       PPV_EVENT: 'aj_joshua_prenga'
       PAYMENT_METHOD: 'credit_card'
       SWITCH: 'false'
@@ -57,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-prod-${{ matrix.plan }}
+          name: playwright-report-${{ matrix.dazn_env }}-${{ matrix.plan }}
           path: playwright-report/
           if-no-files-found: ignore
           retention-days: 30
@@ -66,7 +78,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-prod-${{ matrix.plan }}
+          name: test-results-${{ matrix.dazn_env }}-${{ matrix.plan }}
           path: |
             test-results/
             reports/

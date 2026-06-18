@@ -18,7 +18,10 @@ const DEFAULT_SOURCES = [
   'home-kickboxing-tile',
   'home-page-banner',
   'home-page-dont-miss',
-  'home-biggest-fights'
+  'home-page-live-tv-rail',
+  'home-page-live-event-rail',
+  'home-biggest-fights',
+  'home-page-dazntile'
 ];
 
 const DEFAULT_PLANS = [
