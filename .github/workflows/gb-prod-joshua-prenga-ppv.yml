@@ -54,10 +54,9 @@ on:
           - home-page-dazntile
           - home-page-dont-miss
           - home-page-get-started
-          - home-page-live-event-rail
-          - home-page-live-tv-rail
           - landing-page-banner
           - landing-page-dont-miss-live
+          - my-account
           - schedule
           - search
       PAYMENT_METHOD:
