@@ -63,8 +63,30 @@ permissions:
   contents: read
 
 jobs:
+  setup:
+    name: Setup Execution Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          ENVS='["stag", "prod"]'
+          PLANS='["standard_monthly", "standard_apm", "ultimate_apm", "ultimate_upfront"]'
+          
+          if [ "${{ inputs.DAZN_ENV }}" != "all" ]; then
+            ENVS='["${{ inputs.DAZN_ENV }}"]'
+          fi
+          if [ "${{ inputs.PLAN }}" != "all" ]; then
+            PLANS='["${{ inputs.PLAN }}"]'
+          fi
+          
+          MATRIX_JSON="{\"dazn_env\":$ENVS,\"plan\":$PLANS}"
+          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+
   prod-matrix:
     name: ${{ matrix.dazn_env }} | ${{ matrix.plan }}
+    needs: setup
     runs-on:
       - self-hosted
       - macOS
@@ -74,18 +96,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 4
-      matrix:
-        dazn_env: [stag, prod]
-        plan:
-          - standard_monthly
-          - standard_apm
-          - ultimate_apm
-          - ultimate_upfront
-
-    # Run this job only if it matches the selected env and plan inputs
-    if: |
-      (inputs.DAZN_ENV == 'all' || matrix.dazn_env == inputs.DAZN_ENV) &&
-      (inputs.PLAN == 'all' || matrix.plan == inputs.PLAN)
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     env:
       CI: 'true'
