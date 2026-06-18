@@ -13,6 +13,7 @@ on:
           - AU
           - US
           - AE
+          - BR
       DAZN_ENV:
         description: 'Environment to run'
         required: true
@@ -21,6 +22,7 @@ on:
         options:
           - prod
           - stag
+          - beta
           - all
       PLAN:
         description: 'Plan to run'
@@ -40,24 +42,32 @@ on:
         type: choice
         options:
           - all
-          - home-page-get-started
-          - landing-page-banner
-          - landing-page-dont-miss-live
           - boxing-page-banner
           - boxing-page-bundle
           - boxing-upcoming-fights
+          - home-biggest-fights
           - home-boxing-banner
           - home-boxing-tile
           - home-boxing-upcoming
-          - search
-          - schedule
           - home-kickboxing-tile
           - home-page-banner
-          - home-page-dont-miss
-          - home-page-live-tv-rail
-          - home-page-live-event-rail
-          - home-biggest-fights
           - home-page-dazntile
+          - home-page-dont-miss
+          - home-page-get-started
+          - home-page-live-event-rail
+          - home-page-live-tv-rail
+          - landing-page-banner
+          - landing-page-dont-miss-live
+          - schedule
+          - search
+      PAYMENT_METHOD:
+        description: 'Payment method (only used for stag and beta environments)'
+        required: true
+        default: 'credit_card'
+        type: choice
+        options:
+          - credit_card
+          - gpay
 
 permissions:
   contents: read
@@ -71,7 +81,7 @@ jobs:
     steps:
       - id: set-matrix
         run: |
-          ENVS='["stag", "prod"]'
+          ENVS='["stag", "prod", "beta"]'
           PLANS='["standard_monthly", "standard_apm", "ultimate_apm", "ultimate_upfront"]'
           
           if [ "${{ inputs.DAZN_ENV }}" != "all" ]; then
@@ -101,7 +111,7 @@ jobs:
       DAZN_REGION: ${{ inputs.DAZN_REGION }}
       DAZN_ENV: ${{ matrix.dazn_env }}
       PPV_EVENT: 'aj_joshua_prenga'
-      PAYMENT_METHOD: 'credit_card'
+      PAYMENT_METHOD: ${{ (matrix.dazn_env == 'stag' || matrix.dazn_env == 'beta') && inputs.PAYMENT_METHOD || 'credit_card' }}
       SWITCH: 'false'
 
     steps:

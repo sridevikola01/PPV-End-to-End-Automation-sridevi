@@ -17,6 +17,7 @@ on:
           - AU
           - US
           - AE
+          - BR
       PLAN:
         description: 'Plan key from config/DaznPlan.json'
         required: true
