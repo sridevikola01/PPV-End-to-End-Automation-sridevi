@@ -30,6 +30,14 @@ on:
         description: 'Test spec path to run'
         required: true
         default: 'tests/new_user/newuser.ppv.spec.ts'
+      sources:
+        description: 'Surfacing points (comma-separated, e.g., home-page-dont-miss, or leave empty to run all)'
+        required: false
+        default: 'home-page-get-started,landing-page-dont-miss-live,boxing-page-bundle,boxing-upcoming-fights,home-boxing-upcoming,schedule,home-page-dont-miss,home-page-live-tv-rail,home-page-live-event-rail,home-biggest-fights'
+      plans:
+        description: 'Plans (comma-separated, e.g., standard_monthly,standard_apm, or leave empty to run all)'
+        required: false
+        default: ''
 
 jobs:
   playwright-tests:
@@ -64,7 +72,9 @@ jobs:
           PPV_EVENT: ${{ github.event.inputs.ppv_event || 'aj_joshua_prenga' }}
           SPEC: ${{ github.event.inputs.spec || 'tests/new_user/newuser.ppv.spec.ts' }}
           SHARD: ${{ matrix.shard }}/4
-        run: npm run test:shard -- --concurrency=2
+          SOURCES: ${{ github.event.inputs.sources || '' }}
+          PLANS: ${{ github.event.inputs.plans || '' }}
+        run: npm run test:shard
 
       - name: Upload test artifacts
         if: always()

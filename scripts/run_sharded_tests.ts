@@ -57,16 +57,20 @@ async function main() {
   const shardIndex = parseInt(shardIndexStr, 10) || 1;
   const shardTotal = parseInt(shardTotalStr, 10) || 1;
 
+  // Parse lists of plans and sources
+  const plansStr = (options.plans as string) || process.env.PLANS || '';
+  const plans = plansStr ? plansStr.split(',') : DEFAULT_PLANS;
+
+  const sourcesStr = (options.sources as string) || process.env.SOURCES || '';
+  const sources = sourcesStr ? sourcesStr.split(',') : DEFAULT_SOURCES;
+
   const env = (options.env as string) || process.env.DAZN_ENV || 'prod';
   const region = (options.region as string) || process.env.DAZN_REGION || 'GB';
   const event = (options.event as string) || process.env.PPV_EVENT || 'aj_joshua_prenga';
   const spec = (options.spec as string) || process.env.SPEC || 'tests/new_user/newuser.ppv.spec.ts';
-  const concurrency = parseInt((options.concurrency as string) || '2', 10);
   const dryRun = !!options['dry-run'];
-
-  // Parse lists of plans and sources
-  const plans = options.plans ? (options.plans as string).split(',') : DEFAULT_PLANS;
-  const sources = options.sources ? (options.sources as string).split(',') : DEFAULT_SOURCES;
+  const headed = !!options.headed || process.env.HEADED === 'true';
+  const concurrency = options.concurrency ? parseInt(options.concurrency as string, 10) : plans.length;
 
   console.log('═══════════════════════════════════════════════════════════════');
   console.log('🤖 DAZN Parallel Test Runner');
@@ -76,6 +80,7 @@ async function main() {
   console.log(`🎫 Event:       ${event}`);
   console.log(`📋 Spec:        ${spec}`);
   console.log(`⚙️ Concurrency: ${concurrency} workers`);
+  console.log(`🖥️ Headed:      ${headed}`);
   console.log(`🧪 Dry Run:     ${dryRun}`);
   console.log('═══════════════════════════════════════════════════════════════');
 
@@ -136,11 +141,15 @@ async function main() {
         PLAN: task.plan,
         SOURCE: task.source,
         CI: 'true',
-        HEADLESS: 'true',
+        HEADLESS: headed ? 'false' : 'true',
       };
 
       // Spawn Playwright process
-      const child = spawn('npx', ['playwright', 'test', spec, '--workers=1'], {
+      const testArgs = ['playwright', 'test', spec, '--workers=1'];
+      if (headed) {
+        testArgs.push('--headed');
+      }
+      const child = spawn('npx', testArgs, {
         env: childEnv,
         shell: true,
       });
