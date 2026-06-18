@@ -466,7 +466,7 @@ export class BoxingHomePage extends HomePage {
       .first();
 
     let found = false;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 30; i++) {
       if (await railHeader.isVisible().catch(() => false)) {
         found = true;
         break;

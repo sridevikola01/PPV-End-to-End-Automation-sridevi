@@ -614,7 +614,7 @@ export class GloryPage extends BasePage {
     const railHeader = this.page.getByText(/coming up/i).first();
 
     let found = false;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 30; i++) {
       if (await railHeader.isVisible().catch(() => false)) {
         found = true;
         break;

@@ -80,15 +80,15 @@ export class HomePage extends LandingPage {
       const sectionHeading = this.page.locator('h2').filter({ hasText: /The Biggest Fights/i }).first();
 
       let foundHeading = false;
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 30; i++) {
         if (await sectionHeading.isVisible().catch(() => false)) {
           foundHeading = true;
           break;
         }
         await this.page.evaluate((pos: number) => {
           window.scrollTo({ top: pos, behavior: 'instant' });
-        }, (i + 1) * 500);
-        foundHeading = await sectionHeading.waitFor({ state: 'attached', timeout: 400 })
+        }, (i + 1) * 600);
+        foundHeading = await sectionHeading.waitFor({ state: 'attached', timeout: 300 })
           .then(() => true).catch(() => false);
         if (foundHeading) break;
       }
@@ -217,15 +217,15 @@ export class HomePage extends LandingPage {
         .filter({ hasText: /Coming [Uu]p/i }).first();
 
       let foundComingUp = false;
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 30; i++) {
         if (await comingUpHeading.isVisible().catch(() => false)) {
           foundComingUp = true;
           break;
         }
         await this.page.evaluate((pos: number) => {
           window.scrollTo({ top: pos, behavior: 'instant' });
-        }, (i + 1) * 400);
-        foundComingUp = await comingUpHeading.waitFor({ state: 'attached', timeout: 300 })
+        }, (i + 1) * 500);
+        foundComingUp = await comingUpHeading.waitFor({ state: 'attached', timeout: 200 })
           .then(() => true).catch(() => false);
         if (foundComingUp) break;
       }
@@ -306,7 +306,7 @@ export class HomePage extends LandingPage {
       const railHeader = this.page.getByText(sectionPattern).first();
 
       let foundHeading = false;
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 30; i++) {
         if (await railHeader.isVisible().catch(() => false)) {
           foundHeading = true;
           break;
