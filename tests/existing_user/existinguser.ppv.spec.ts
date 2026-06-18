@@ -190,6 +190,7 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
   const page = await context.newPage();
   const results: any[] = [];
+  let testError: any = null;
 
   // ── detectPageType ────────────────────────────────────────────
   const detectPageType = async (
@@ -1649,9 +1650,22 @@ test('PPV flow via existing user my account', async ({ browser }) => {
 
     }
 
-    // ══════════════════════════════════════════════════════════════
-    // STEP 8 — RESULTS
-    // ══════════════════════════════════════════════════════════════
+  } catch (error: any) {
+    console.error('❌ Test error:', error);
+    results.push({
+      page: 'Flow Execution',
+      field: 'Unhandled Exception',
+      expected: 'Flow completed without error',
+      actual: error instanceof Error ? error.message : String(error),
+      status: 'FAIL'
+    });
+    testError = error;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // STEP 8 — RESULTS
+  // ══════════════════════════════════════════════════════════════
+  try {
     const { excelPath, videoPath } = await writeResults(results);
 
     // Display detailed per-page results
@@ -1677,36 +1691,36 @@ test('PPV flow via existing user my account', async ({ browser }) => {
       userType: 'existing-user',
     });
     if (htmlPath) console.log(`\n📊 Report: ${htmlPath}${pdfPath ? `\n📊 Report: ${pdfPath}` : ''}`);
+  } catch (reportErr: any) {
+    console.error('⚠️ Report generation failed:', reportErr.message);
+  }
 
+  const passed = results.filter(r => r.status === 'PASS').length;
+  const failed = results.filter(r => r.status === 'FAIL').length;
+  const total = passed + failed;
 
-    const passed = results.filter(r => r.status === 'PASS').length;
-    const failed = results.filter(r => r.status === 'FAIL').length;
-    const total = passed + failed;
+  console.log(`\n✅ Flow "${SOURCE}" complete: ${passed}/${total} passed (${total > 0 ? ((passed / total) * 100).toFixed(1) : 0}%)`);
+  console.log(`${'─'.repeat(55)}`);
 
-    console.log(`\n✅ Flow "${SOURCE}" complete: ${passed}/${total} passed (${total > 0 ? ((passed / total) * 100).toFixed(1) : 0}%)`);
-    console.log(`${'─'.repeat(55)}`);
+  try {
+    await page.waitForTimeout(50);
+    const videoPath = await page.video()?.path();
+    if (videoPath) console.log(`🎥 Video saved: ${videoPath}`);
+    else console.log('⚠️  No video found');
+  } catch (e: any) {
+    console.log('⚠️  Video path error:', e.message);
+  }
+  await context.close().catch(() => { });
 
-    if (total === 0) {
-      throw new Error(`❌ Flow "${SOURCE}" had 0 validation checks`);
-    }
+  if (testError) {
+    throw testError;
+  }
 
-    if (!reachedEndPage) {
-      throw new Error(`❌ Flow "${SOURCE}" did not reach the expected end page: "payment" or "confirmation"`);
-    }
+  if (total === 0) {
+    throw new Error(`❌ Flow "${SOURCE}" had 0 validation checks`);
+  }
 
-  } catch (error) {
-    console.error('❌ Test error:', error);
-    throw error;
-
-  } finally {
-    try {
-      await page.waitForTimeout(50);
-      const videoPath = await page.video()?.path();
-      if (videoPath) console.log(`🎥 Video saved: ${videoPath}`);
-      else console.log('⚠️  No video found');
-    } catch (e: any) {
-      console.log('⚠️  Video path error:', e.message);
-    }
-    await context.close().catch(() => { });
+  if (!reachedEndPage) {
+    throw new Error(`❌ Flow "${SOURCE}" did not reach the expected end page: "payment" or "confirmation"`);
   }
 });
