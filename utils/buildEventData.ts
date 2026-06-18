@@ -10,7 +10,6 @@ import {
   formatFlexFutureDate,
   formatRenewalDate,
   formatRenewalDateUS,
-  getNowIST,
 } from './dateUtils';
 
 function deepMerge(base: any, override: any): any {
@@ -494,7 +493,7 @@ export function buildEventData(
   if (offerType === '7_day_trial') {
     base.FLEX_FUTURE_DATE = formatFlexFutureDate(7);
   } else {
-    const futureDate = getNowIST();
+    const futureDate = new Date();
     futureDate.setMonth(futureDate.getMonth() + 1);
     const day = futureDate.getDate();
     const month = futureDate.toLocaleString('en-GB', { month: 'long' });

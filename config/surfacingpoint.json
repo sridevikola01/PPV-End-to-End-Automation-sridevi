@@ -60,21 +60,8 @@
     "source": "home-page-dont-miss",
     "endPage": "payment"
   },
-  "home-page-live-tv-rail": {
-    "source": "home-page-live-tv-rail",
-    "endPage": "payment"
-  },
-  "home-page-live-event-rail": {
-    "source": "home-page-live-event-rail",
-    "endPage": "payment"
-  },
   "home-biggest-fights": {
     "source": "home-biggest-fights",
     "endPage": "payment"
-  },
-  "home-page-dazntile": {
-    "source": "home-page-dazntile",
-    "endPage": "payment",
-    "description": "Finds a tile on /home by matching EntitlementIds from the rails API response, then clicks it."
   }
 }

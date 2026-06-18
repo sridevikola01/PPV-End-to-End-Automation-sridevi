@@ -62,14 +62,11 @@ export const validateVariant = async (
   // ── Scroll to trigger lazy load before snapshot ───────────────
   // Only scroll on pages that need lazy loading
   const url = page.url();
-  const source = (eventData.SOURCE || eventData.source || '').toLowerCase();
   const isModalOpen = await page.locator('[role="dialog"], [aria-modal="true"], [class*="modal" i]').first().isVisible().catch(() => false);
   const needsScroll =
     (url.includes('/schedule') && !isModalOpen) ||
     url.includes('/addon/purchase') ||     // Choose How To Buy
-    (url.includes('page=PlanDetails') && !url.includes('upsellTierShown=true')) ||
-    ((url.includes('/welcome') || url.includes('/home') || pageName.toLowerCase().includes('landing') || pageName.toLowerCase().includes('home')) &&
-     (source.includes('dont-miss') || source.includes('tile') || source.includes('upcoming') || source.includes('rail')));
+    (url.includes('page=PlanDetails') && !url.includes('upsellTierShown=true'));
 
   if (needsScroll) {
     // Save original scroll position

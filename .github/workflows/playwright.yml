@@ -1,90 +1,124 @@
-name: Playwright Tests CI/CD
+name: Web PPV New User Matrix
 
 on:
   push:
-    branches:
-      - main
-      - feature/sridevi-changes
+    branches: [main, master]
   pull_request:
-    branches:
-      - main
+    branches: [main, master]
   workflow_dispatch:
     inputs:
-      dazn_env:
-        description: 'Environment (prod / stag)'
-        required: true
-        default: 'prod'
-        type: choice
-        options:
-          - prod
-          - stag
-      dazn_region:
-        description: 'Region (GB, IN, US, AE, etc.)'
+      DAZN_REGION:
+        description: 'DAZN region to validate'
         required: true
         default: 'GB'
-      ppv_event:
-        description: 'PPV Event'
+        type: choice
+        options:
+          - GB
+          - AU
+          - US
+          - AE
+      PLAN:
+        description: 'Plan key from config/DaznPlan.json'
         required: true
-        default: 'aj_joshua_prenga'
-      spec:
-        description: 'Test spec path to run'
+        default: 'standard_monthly'
+      PPV_CONFIG:
+        description: 'PPV config filename/key, for example aj_joshua_prenga.json'
         required: true
-        default: 'tests/new_user/newuser.ppv.spec.ts'
-      sources:
-        description: 'Surfacing points (comma-separated, or leave empty to run all)'
+        default: 'aj_joshua_prenga.json'
+      PAYMENT_METHOD:
+        description: 'Payment method used on stag payment flow'
+        required: true
+        default: 'credit_card'
+        type: choice
+        options:
+          - credit_card
+          - gpay
+      SWITCH:
+        description: 'On stag standard flows, switch to Ultimate from payment upsell banner'
         required: false
-        default: ''
-      plans:
-        description: 'Plans (comma-separated, e.g., standard_monthly,standard_apm, or leave empty to run all)'
-        required: false
-        default: ''
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
 
 jobs:
-  playwright-tests:
-    timeout-minutes: 60
-    runs-on: self-hosted
+  new-user-web:
+    name: ${{ matrix.dazn_env }} | ${{ matrix.source }}
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
+      max-parallel: 20
       matrix:
-        # Define 4 parallel shards
-        shard: [1, 2, 3, 4]
+        dazn_env: [stag, prod]
+        source:
+          - home-page-get-started
+          - landing-page-banner
+          - landing-page-dont-miss-live
+          - boxing-page-banner
+          - boxing-page-bundle
+          - boxing-upcoming-fights
+          - home-boxing-banner
+          - home-boxing-tile
+          - home-boxing-upcoming
+          - search
+          - schedule
+          - home-kickboxing-tile
+          - home-page-banner
+          - home-page-dont-miss
+          - home-biggest-fights
+
+    env:
+      CI: 'true'
+      HEADLESS: 'true'
+      DAZN_REGION: ${{ inputs.DAZN_REGION || 'GB' }}
+      DAZN_ENV: ${{ matrix.dazn_env }}
+      PLAN: ${{ inputs.PLAN || 'standard_monthly' }}
+      SOURCE: ${{ matrix.source }}
+      PPV_CONFIG: ${{ inputs.PPV_CONFIG || 'aj_joshua_prenga.json' }}
+      PAYMENT_METHOD: ${{ inputs.PAYMENT_METHOD || 'credit_card' }}
+      SWITCH: ${{ inputs.SWITCH || 'false' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: 'npm'
+          node-version: lts/*
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright Browsers
-        run: |
-          rm -rf ~/.cache/ms-playwright/__dirlock ~/Library/Caches/ms-playwright/__dirlock
-          npx playwright install
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium chrome
 
-      - name: Run Playwright tests (Sharded & Parallel)
-        env:
-          DAZN_ENV: ${{ github.event.inputs.dazn_env || 'prod' }}
-          DAZN_REGION: ${{ github.event.inputs.dazn_region || 'GB' }}
-          PPV_EVENT: ${{ github.event.inputs.ppv_event || 'aj_joshua_prenga' }}
-          SPEC: ${{ github.event.inputs.spec || 'tests/new_user/newuser.ppv.spec.ts' }}
-          SHARD: ${{ matrix.shard }}/4
-          SOURCES: ${{ github.event.inputs.sources || '' }}
-          PLANS: ${{ github.event.inputs.plans || '' }}
-        run: npm run test:shard
+      - name: Run new-user web PPV flow
+        run: npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
 
-      - name: Upload test artifacts
+      - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results-shard-${{ matrix.shard }}
+          name: playwright-report-${{ matrix.dazn_env }}-${{ matrix.source }}
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Upload test results, screenshots, videos, and Excel reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.dazn_env }}-${{ matrix.source }}
           path: |
             test-results/
-            playwright-report/
             reports/
-          retention-days: 7
+          if-no-files-found: ignore
+          retention-days: 30

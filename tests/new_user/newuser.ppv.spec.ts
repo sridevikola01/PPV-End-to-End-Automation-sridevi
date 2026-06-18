@@ -86,11 +86,11 @@ async function runFlow(
   json: any,
   flowConfig: any,
   region: string,
-  validateLanding: boolean,
-  results: any[] = []
-): Promise<{ reachedEndPage: boolean; skipped?: boolean; flowError?: any }> {
+  validateLanding: boolean
+): Promise<{ results: any[]; reachedEndPage: boolean; skipped?: boolean }> {
   const { name, source, tier, ratePlan: rawRatePlan, enableDevMode: devModeEnabled } = flowConfig;
   const ratePlan = (rawRatePlan || '').replace(/-/g, ' ').toLowerCase();
+  const results: any[] = [];
 
   // Configure Excel path based on event type (standalone, upsell, or normal PPV)
   configureExcelPathForEvent(json.eventKey || '');
@@ -224,8 +224,6 @@ async function runFlow(
   });
 
   let reachedEndPage = false;
-  let skipped = false;
-  let flowError: any = null;
 
   try {
     // ── Step 1: Navigate to landing page ─────────────────────
@@ -322,7 +320,7 @@ async function runFlow(
         if (!hasBundleHeading && !hasGetStarted) {
           console.log(`ℹ️  [Bundle Check] Bundle section not found on page. Skipping bundle flow: "${name}"`);
           await context.close().catch(() => { });
-          return { reachedEndPage: false, skipped: true };
+          return { results, reachedEndPage: false, skipped: true };
         }
       }
 
@@ -1336,16 +1334,6 @@ async function runFlow(
         console.log(`⚠️  Flow "${name}" did not reach expected end page`);
       }
     }
-  } catch (err: any) {
-    flowError = err;
-    console.error(`❌ Error in runFlow: ${err.message}`);
-    results.push({
-      page: 'Flow Execution',
-      field: 'Unhandled Exception',
-      expected: 'Flow completed without error',
-      actual: err.message,
-      status: 'FAIL'
-    });
   } finally {
     try {
       const videoPath = await page.video()?.path();
@@ -1354,7 +1342,7 @@ async function runFlow(
     await context.close().catch(() => { });
   }
 
-  return { reachedEndPage, skipped, flowError };
+  return { results, reachedEndPage };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1409,9 +1397,8 @@ test('PPV flow for new user', async ({ browser }) => {
 
   const currentJson = loadEventConfig(EVENT_CONFIG, PLAN);
 
-  const results: any[] = [];
-  const { reachedEndPage, skipped, flowError } = await runFlow(
-    browser, currentJson, flowConfig, REGION, true, results
+  const { results, reachedEndPage, skipped } = await runFlow(
+    browser, currentJson, flowConfig, REGION, true
   );
 
   if (skipped) {
@@ -1463,10 +1450,6 @@ test('PPV flow for new user', async ({ browser }) => {
 
   console.log(`\n✅ Flow "${flowConfig.name}" complete: ${passed}/${total} passed (${total > 0 ? ((passed / total) * 100).toFixed(1) : 0}%)`);
   console.log(`${'─'.repeat(55)}`);
-
-  if (flowError) {
-    throw flowError;
-  }
 
   if (total === 0) {
     throw new Error(`❌ Flow "${flowConfig.name}" had 0 validation checks`);

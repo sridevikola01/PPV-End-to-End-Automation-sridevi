@@ -11,7 +11,19 @@ reports/
 videos/
 auth/dazn-storage-state.json
 .env
-reports/
-tsc_errors.txt
-typescript
-*.stale-bak
+
+# GitHub Actions runners
+actions-runner/
+actions-runner-2/
+actions-runner-3/
+actions-runner-4/
+actions-runner-5/
+*.tar.gz
+
+# Runner runtime files
+.runner
+.credentials
+.credentials_rsaparams
+_work/
+_diag/
+

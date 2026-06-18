@@ -69,7 +69,6 @@ export class SignupPage extends BasePage {
 
     // Wait for SPA transition
     await this.page.waitForLoadState('domcontentloaded').catch(() => {});
-    await this.page.waitForTimeout(500);
   }
 
   // ─────────────────────────────
@@ -94,9 +93,6 @@ export class SignupPage extends BasePage {
 
     // Wait for form to be ready
     await firstName.waitFor({ state: 'visible', timeout: 10000 });
-    
-    // Stabilize and wait for React / MobX form stores to bind
-    await this.page.waitForTimeout(1000);
 
     // Ensure page is not closed before filling
     if (this.page.isClosed()) {
@@ -144,7 +140,6 @@ export class SignupPage extends BasePage {
         if (!text.includes(targetDial) && !text.toLowerCase().includes(targetCountry.toLowerCase())) {
           console.log(`⚠️  Dial code or flag not loaded. Clicking selector to set "${targetCountry}"...`);
           await countrySelector.click({ force: true }).catch(() => {});
-          await this.page.waitForTimeout(500);
 
           const option = this.page.locator(
             `[role="option"]:has-text("${targetCountry}"), [role="option"]:has-text("${targetDial}"), ` +
@@ -186,9 +181,6 @@ export class SignupPage extends BasePage {
       console.log(`📱 Phone number entered: ${phoneNumber}`);
     }
 
-    // Small stabilization for React forms
-    await this.page.waitForTimeout(500);
-
     console.log('✅ Personal details filled');
   }
 
@@ -204,8 +196,6 @@ export class SignupPage extends BasePage {
     }
 
     const btn = this.page.locator(selectors.signup.continueButtonStep2).first();
-
-    await this.page.waitForTimeout(500);
 
     if (!(await btn.isVisible().catch(() => false))) {
       // Re-verify URL in case navigation completed during the timeout
