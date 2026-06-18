@@ -87,10 +87,7 @@ jobs:
   prod-matrix:
     name: ${{ matrix.dazn_env }} | ${{ matrix.plan }}
     needs: setup
-    runs-on:
-      - self-hosted
-      - macOS
-      - ARM64
+    runs-on: self-hosted
     timeout-minutes: 45
 
     strategy:
