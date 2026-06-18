@@ -105,7 +105,7 @@ async function main() {
   }
 
   // Ensure log directory exists
-  const logsDir = path.resolve(process.cwd(), 'test-results', 'logs');
+  const logsDir = path.resolve(process.cwd(), 'reports', 'logs');
   if (!dryRun && !fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
   }
