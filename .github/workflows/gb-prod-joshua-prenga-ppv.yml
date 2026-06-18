@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   prod-matrix:
-    name: ${{ matrix.source }} | ${{ matrix.plan }}
+    name: PROD | ${{ matrix.plan }}
     timeout-minutes: 45
     runs-on:
       - self-hosted
@@ -19,22 +19,6 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        source:
-          - home-page-get-started
-          - landing-page-banner
-          - landing-page-dont-miss-live
-          - boxing-page-banner
-          - boxing-page-bundle
-          - boxing-upcoming-fights
-          - home-boxing-banner
-          - home-boxing-tile
-          - home-boxing-upcoming
-          - search
-          - schedule
-          - home-kickboxing-tile
-          - home-page-banner
-          - home-page-dont-miss
-          - home-biggest-fights
         plan:
           - standard_monthly
           - standard_apm
@@ -46,9 +30,7 @@ jobs:
       HEADLESS: 'true'
       DAZN_REGION: 'GB'
       DAZN_ENV: 'prod'
-      PLAN: ${{ matrix.plan }}
-      SOURCE: ${{ matrix.source }}
-      PPV_CONFIG: 'aj_joshua_prenga.json'
+      PPV_EVENT: 'aj_joshua_prenga'
       PAYMENT_METHOD: 'credit_card'
       SWITCH: 'false'
 
@@ -68,14 +50,14 @@ jobs:
       - name: Verify Playwright
         run: npx playwright --version
 
-      - name: Run Web PPV Flow
-        run: npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
+      - name: Run Web PPV Flow (4 local workers)
+        run: npx ts-node scripts/run_sharded_tests.ts --plans=${{ matrix.plan }} --concurrency=4
 
       - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-prod-${{ matrix.source }}-${{ matrix.plan }}
+          name: playwright-report-prod-${{ matrix.plan }}
           path: playwright-report/
           if-no-files-found: ignore
           retention-days: 30
@@ -84,7 +66,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-prod-${{ matrix.source }}-${{ matrix.plan }}
+          name: test-results-prod-${{ matrix.plan }}
           path: |
             test-results/
             reports/
