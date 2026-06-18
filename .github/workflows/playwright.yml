@@ -63,7 +63,7 @@ jobs:
         run: npm ci
 
       - name: Install Google Chrome and System Dependencies
-        run: npx playwright install --with-deps chrome
+        run: npx playwright install chrome
 
       - name: Run Playwright tests (Sharded & Parallel)
         env:
