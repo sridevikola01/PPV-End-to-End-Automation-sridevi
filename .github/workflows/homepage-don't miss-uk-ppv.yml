@@ -1,0 +1,183 @@
+name: UK home page don't miss PPV New User
+on:
+  workflow_dispatch:
+    inputs:
+      PPV_CONFIG:
+        description: 'PPV config filename/key'
+        required: true
+        default: 'aj_joshua_prenga.json'
+
+      PAYMENT_METHOD:
+        description: 'Payment method'
+        required: true
+        default: 'credit_card'
+        type: choice
+        options:
+          - credit_card
+          - gpay
+
+      SWITCH:
+        description: 'Switch to Ultimate'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
+
+jobs:
+
+  stag:
+    name: STAG | ${{ matrix.plan }}
+
+    needs: prod
+    if: always()
+
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        plan:
+          - standard_monthly
+          - standard_apm
+          - ultimate_apm
+          - ultimate_upfront
+
+    env:
+      CI: 'true'
+      HEADLESS: 'true'
+      DAZN_REGION: AU
+      DAZN_ENV: stag
+      SOURCE: home-page-dont-miss
+      PLAN: ${{ matrix.plan }}
+      PPV_CONFIG: ${{ inputs.PPV_CONFIG }}
+      PAYMENT_METHOD: ${{ inputs.PAYMENT_METHOD }}
+      SWITCH: ${{ inputs.SWITCH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Runner
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          hostname
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Playwright
+        run: npx playwright --version
+
+      - name: Run STAG PPV Flow
+        run: npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-stag-${{ matrix.plan }}
+          path: playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-stag-${{ matrix.plan }}
+          path: |
+            test-results/
+            reports/
+          if-no-files-found: ignore
+
+  prod:
+    name: PROD | ${{ matrix.plan }}
+
+
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        plan:
+          - standard_monthly
+          - standard_apm
+          - ultimate_apm
+          - ultimate_upfront
+
+    env:
+      CI: 'true'
+      HEADLESS: 'true'
+      DAZN_REGION: AU
+      DAZN_ENV: prod
+      SOURCE: schedule
+      PLAN: ${{ matrix.plan }}
+      PPV_CONFIG: ${{ inputs.PPV_CONFIG }}
+      PAYMENT_METHOD: ${{ inputs.PAYMENT_METHOD }}
+      SWITCH: ${{ inputs.SWITCH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Runner
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          hostname
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Playwright
+        run: npx playwright --version
+
+      - name: Run PROD PPV Flow
+        run: npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
+
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-prod-${{ matrix.plan }}
+          path: playwright-report/
+          if-no-files-found: ignore
+
+      - name: Upload Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-prod-${{ matrix.plan }}
+          path: |
+            test-results/
+            reports/
+          if-no-files-found: ignore
