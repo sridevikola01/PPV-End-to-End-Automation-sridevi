@@ -10,11 +10,14 @@ jobs:
   prod-matrix:
     name: ${{ matrix.source }} | ${{ matrix.plan }}
     timeout-minutes: 45
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
 
     strategy:
       fail-fast: false
-      max-parallel: 20
+      max-parallel: 4
       matrix:
         source:
           - home-page-get-started
@@ -62,8 +65,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium chrome
+      - name: Verify Playwright
+        run: npx playwright --version
 
       - name: Run Web PPV Flow
         run: npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
