@@ -63,7 +63,9 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Browsers
-        run: npx playwright install
+        run: |
+          rm -rf ~/.cache/ms-playwright/__dirlock ~/Library/Caches/ms-playwright/__dirlock
+          npx playwright install
 
       - name: Run Playwright tests (Sharded & Parallel)
         env:
