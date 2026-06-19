@@ -11,14 +11,13 @@ export class HomePage extends LandingPage {
 
   // Navigation for home-page flows
   override async navigate(baseUrl: string, source?: string, eventData?: Record<string, string>): Promise<void> {
-    const welcomeUrl = `${baseUrl}/welcome`;
-    console.log(`🌍 [HomePage] Navigating to Welcome page: ${welcomeUrl}`);
-    await this.page.goto(welcomeUrl, { waitUntil: 'domcontentloaded' });
+    const homeUrl = `${baseUrl}/home`;
+    console.log(`🌍 [HomePage] Navigating directly to Home page: ${homeUrl}`);
+    await this.page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
     await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
+    
+    console.log(`🍪 [HomePage] Waiting for cookies and clicking Accept...`);
     await this.dismissConsentIfPresent();
-
-    console.log(`✅ [HomePage] Welcome page loaded: ${this.page.url()}`);
-    await this.clickExplore();
 
     console.log(`✅ [HomePage] Home page loaded: ${this.page.url()}`);
 
