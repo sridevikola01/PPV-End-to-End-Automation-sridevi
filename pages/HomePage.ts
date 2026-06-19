@@ -29,37 +29,7 @@ export class HomePage extends LandingPage {
   }
 
   protected async clickExplore(): Promise<void> {
-    console.log('🔍 Looking for "Explore" button on welcome page...');
-
-    const exploreSelectors = [
-      'a:has-text("Explore")',
-      'button:has-text("Explore")',
-      'a[href*="/home" i]',
-      'a:has-text("Explore DAZN")',
-      'a:has-text("Explore without subscribing")',
-      'a:has-text("Explore for free")',
-      '[class*="explore" i]',
-    ];
-
-    const combinedSelector = exploreSelectors.join(', ');
-    const anyExplore = this.page.locator(combinedSelector).first();
-    const found = await anyExplore.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
-
-    if (found) {
-      console.log(`📍 Found Explore button`);
-      await anyExplore.scrollIntoViewIfNeeded().catch(() => { });
-      await anyExplore.click({ force: true });
-      await this.page.waitForURL((url: URL) => url.toString().includes('/home'), { timeout: 15000 }).catch(() => { });
-    } else {
-      console.log('⚠️ Explore button not found — trying direct navigation to /home');
-      const currentUrl = this.page.url();
-      const baseMatch = currentUrl.match(/(https:\/\/[a-z0-9.-]*dazn\.com\/en-[A-Z]+)/i);
-      const base = baseMatch?.[1] || this.getFallbackBaseUrl();
-      await this.page.goto(`${base}/home`, { waitUntil: 'domcontentloaded' });
-    }
-
-    // Wait for Home page to be visually ready before next action
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
+    console.log('ℹ️ [clickExplore] Skipped explore click since direct home page navigation is used');
   }
 
   // Find container logic:
