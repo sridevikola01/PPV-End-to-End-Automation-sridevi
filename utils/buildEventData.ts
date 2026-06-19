@@ -557,11 +557,6 @@ export function buildEventData(
     }
   }
 
-  if (base.UPSELL_PRICE) {
-    base.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE = base.UPSELL_PRICE;
-    base.TODAY_YOU_PAY_ULTIMATE_APM = base.UPSELL_PRICE;
-  }
-
   const upsellPrice = base.UPSELL_PRICE || '';
   const ppvPrice = base.PPV_PRICE || '';
   const offerAvailable = base.OFFER_AVAILABLE === 'true';

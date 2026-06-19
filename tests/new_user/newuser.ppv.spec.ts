@@ -314,8 +314,8 @@ async function runFlow(
         const bundleHeading = page.locator('text=/Save with a fight bundle/i').first();
         const getStartedBtn = page.locator('button:has-text("Get Started"), a:has-text("Get Started")').first();
 
-        const hasBundleHeading = await bundleHeading.isVisible({ timeout: 3000 }).catch(() => false);
-        const hasGetStarted = await getStartedBtn.isVisible({ timeout: 1500 }).catch(() => false);
+        const hasBundleHeading = await bundleHeading.isVisible({ timeout: 5000 }).catch(() => false);
+        const hasGetStarted = await getStartedBtn.isVisible({ timeout: 2000 }).catch(() => false);
 
         if (!hasBundleHeading && !hasGetStarted) {
           console.log(`ℹ️  [Bundle Check] Bundle section not found on page. Skipping bundle flow: "${name}"`);
@@ -402,15 +402,15 @@ async function runFlow(
 
     await page.waitForURL(
       (url: URL) => url.toString().includes('PlanDetails') || url.toString().includes('signup'),
-      { timeout: 5000 }
+      { timeout: 10000 }
     ).catch(async () => {
       await page.waitForURL(
         (url: URL) => !url.toString().includes('/welcome'),
-        { timeout: 3000 }
+        { timeout: 5000 }
       ).catch(() => { });
     });
 
-    await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
+    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
 
     // ── Step 3: Detect variant ───────────────────────────────
     console.log('landed on:', page.url());
@@ -456,16 +456,16 @@ async function runFlow(
 
             if (fieldLower === 'page title') {
               // Try h1 first, then h2, then look for text containing 'enter the code' or 'verify'
-              const h1 = await page.locator('h1').first().textContent({ timeout: 3000 }).catch(() => '');
+              const h1 = await page.locator('h1').first().textContent({ timeout: 5000 }).catch(() => '');
               if (h1 && h1.trim()) {
                 actual = h1.trim();
               } else {
-                const h2 = await page.locator('h2').first().textContent({ timeout: 2000 }).catch(() => '');
+                const h2 = await page.locator('h2').first().textContent({ timeout: 3000 }).catch(() => '');
                 if (h2 && h2.trim()) {
                   actual = h2.trim();
                 } else {
                   // Fallback: search body text for heading-like text
-                  const bodyText = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+                  const bodyText = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
                   const lines = bodyText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 10 && l.length < 100);
                   for (const line of lines) {
                     if (/enter.*code|verify|verification/i.test(line)) { actual = line; break; }
@@ -475,11 +475,11 @@ async function runFlow(
             } else if (fieldLower === 'page description') {
               // Look for description text containing 'sent' or 'code' or phone number
               const desc = await page.locator('h1 + p, h2 + p, h1 ~ p, [class*="subtitle"], [class*="description"]')
-                .first().textContent({ timeout: 2000 }).catch(() => '');
+                .first().textContent({ timeout: 3000 }).catch(() => '');
               if (desc && desc.trim()) {
                 actual = desc.trim();
               } else {
-                const bodyText = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+                const bodyText = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
                 const lines = bodyText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 15 && l.length < 200);
                 for (const line of lines) {
                   if (/sent.*code|code.*to|digit.*code/i.test(line)) { actual = line; break; }
@@ -499,7 +499,7 @@ async function runFlow(
               const btn = page.locator(
                 'button:has-text("Verify"), button:has-text("Submit"), button:has-text("Confirm"), button[type="submit"]'
               ).first();
-              const text = await btn.textContent({ timeout: 2000 }).catch(() => '');
+              const text = await btn.textContent({ timeout: 3000 }).catch(() => '');
               actual = (text || '').trim() || 'N/A';
             } else if (fieldLower === 'resend code link') {
               const resend = page.locator(
@@ -507,7 +507,7 @@ async function runFlow(
                 'button:has-text("Send again"), a:has-text("Send again"), ' +
                 '*:has-text("Resend code"), *:has-text("resend code")'
               ).first();
-              actual = (await resend.isVisible({ timeout: 2000 }).catch(() => false)) ? 'Yes' : 'No';
+              actual = (await resend.isVisible({ timeout: 3000 }).catch(() => false)) ? 'Yes' : 'No';
             }
 
             const actualNorm = actual.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -553,16 +553,16 @@ async function runFlow(
             const fieldLower = field.toLowerCase();
 
             if (fieldLower === 'page title') {
-              const h1 = await page.locator('h1').first().textContent({ timeout: 3000 }).catch(() => '');
+              const h1 = await page.locator('h1').first().textContent({ timeout: 5000 }).catch(() => '');
               actual = (h1 || '').trim() || 'N/A';
             } else if (fieldLower === 'page description') {
               const desc = await page.locator('h1 + p, h1 ~ p, [class*="subtitle"], [class*="description"]')
-                .first().textContent({ timeout: 2000 }).catch(() => '');
+                .first().textContent({ timeout: 3000 }).catch(() => '');
               if (desc && desc.trim()) {
                 actual = desc.trim();
               } else {
                 // Fallback: find text containing "recover" or "locked out"
-                const body = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+                const body = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
                 const lines = body.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 20 && l.length < 200);
                 for (const line of lines) {
                   if (/recover|locked out|verify/i.test(line)) { actual = line; break; }
@@ -570,14 +570,14 @@ async function runFlow(
               }
             } else if (fieldLower === 'phone input present') {
               const input = page.locator('input[type="tel"], input[name*="phone" i], input[placeholder*="phone" i]').first();
-              actual = (await input.isVisible({ timeout: 2000 }).catch(() => false)) ? 'Yes' : 'No';
+              actual = (await input.isVisible({ timeout: 3000 }).catch(() => false)) ? 'Yes' : 'No';
             } else if (fieldLower === 'continue button') {
               const btn = page.locator('button:has-text("Continue"), button[type="submit"]').first();
-              const text = await btn.textContent({ timeout: 2000 }).catch(() => '');
+              const text = await btn.textContent({ timeout: 3000 }).catch(() => '');
               actual = (text || '').trim() || 'N/A';
             } else if (fieldLower === 'country code present') {
               const cc = page.locator('[class*="country" i], [class*="dial" i], select, [role="listbox"]').first();
-              actual = (await cc.isVisible({ timeout: 2000 }).catch(() => false)) ? 'Yes' : 'No';
+              actual = (await cc.isVisible({ timeout: 3000 }).catch(() => false)) ? 'Yes' : 'No';
             }
 
             const actualNorm = actual.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -764,7 +764,7 @@ async function runFlow(
             // For upsell flows, continue the loop to handle post-payment pages
             if (PPV_TYPE === 'upsell') {
               console.log('🔄 Upsell flow — continuing loop for post-payment pages...');
-              await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
+              await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
               continue;
             }
           } catch (paymentErr: any) {
@@ -854,6 +854,7 @@ async function runFlow(
           await signup.enterEmail(user.email);
           await signup.clickContinue();
           await page.waitForLoadState('domcontentloaded').catch(() => { });
+          await sleep(500);
         } else {
           console.log('ℹ️  Email input not visible or on personal details page — assuming directly on personal details page');
         }
@@ -862,7 +863,7 @@ async function runFlow(
         await page.waitForLoadState('domcontentloaded').catch(() => { });
 
         const firstNameEl = page.locator('[data-test-id="FIRST_NAME"], input[name="firstName"]').first();
-        const firstNameVisible = await firstNameEl.waitFor({ state: 'visible', timeout: 4000 }).then(() => true).catch(() => false);
+        const firstNameVisible = await firstNameEl.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
         if (firstNameVisible) {
           const signup2 = new SignupPage(page);
           try {
@@ -871,7 +872,7 @@ async function runFlow(
 
             // Robust phone validation fallback: retry different formats if stuck with error message
             const errorMsg = page.locator('text=/valid phone number|valid number/i').first();
-            if (await errorMsg.isVisible({ timeout: 1000 }).catch(() => false)) {
+            if (await errorMsg.isVisible({ timeout: 1500 }).catch(() => false)) {
               console.log(`⚠️ Phone validation error detected: "${await errorMsg.textContent()}"`);
 
               // Country code flag is read-only and prepopulated by locale. Try alternative phone formats directly.
@@ -896,8 +897,8 @@ async function runFlow(
                 // Re-trigger validation with click
                 await signup2.clickPersonalDetailsContinue();
                 await Promise.race([
-                  page.waitForURL((url: URL) => !url.toString().includes('page=personalDetails'), { timeout: 1500 }),
-                  errorMsg.waitFor({ state: 'hidden', timeout: 1500 })
+                  page.waitForURL((url: URL) => !url.toString().includes('page=personalDetails'), { timeout: 2000 }),
+                  errorMsg.waitFor({ state: 'hidden', timeout: 2000 })
                 ]).catch(() => { });
 
                 if (!(await errorMsg.isVisible().catch(() => false)) && !page.url().includes('page=personalDetails')) {
@@ -930,8 +931,8 @@ async function runFlow(
 
         await page.waitForLoadState('domcontentloaded').catch(() => { });
 
-        // After personal details Continue, wait for navigation to payment
-        await page.waitForURL((url: URL) => url.toString().includes('payment'), { timeout: 5000 }).catch(() => { });
+        // After personal details Continue, wait and check if we moved to payment
+        await sleep(2000);
         if (page.url().includes('paymentDetails')) {
           console.log('💳 Navigated to payment page after personal details');
         }
@@ -1145,7 +1146,7 @@ async function runFlow(
           } else {
             tierBtn = page.locator('button:has-text("Continue with Standard"), button:has-text("Continue with DAZN Standard")').first();
           }
-          if (await tierBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          if (await tierBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
             await safeScrollToElement(page, tierBtn);
             await clickAndWaitForNav(page, tierBtn, `TierPlans Selection (${tier})`);
             await setupPage(page, 500);
@@ -1170,7 +1171,7 @@ async function runFlow(
             const upfrontCard = page.locator(
               'label:has-text("Annual - Pay Upfront"), label:has-text("Pay Upfront"), [role="radio"]:has-text("Upfront")'
             ).first();
-            if (await upfrontCard.isVisible({ timeout: 1500 }).catch(() => false)) {
+            if (await upfrontCard.isVisible({ timeout: 2000 }).catch(() => false)) {
               await safeScrollToElement(page, upfrontCard);
               await upfrontCard.click({ force: true }).catch(() => { });
               console.log('✅ Clicked Ultimate Upfront Card/Label by text selector');
@@ -1193,7 +1194,7 @@ async function runFlow(
               }
               if (!clicked) {
                 const radio = count > 2 ? radios.nth(2) : radios.nth(1);
-                if (await radio.isVisible({ timeout: 1000 }).catch(() => false)) {
+                if (await radio.isVisible({ timeout: 1500 }).catch(() => false)) {
                   await safeScrollToElement(page, radio);
                   await radio.click({ force: true }).catch(() => { });
                   console.log('✅ Selected Upfront radio (nth index fallback)');
@@ -1204,7 +1205,7 @@ async function runFlow(
             const monthlyCard = page.locator(
               'label:has-text("Annual - Pay Monthly"), label:has-text("Pay Monthly"), [role="radio"]:has-text("Pay Monthly")'
             ).first();
-            if (await monthlyCard.isVisible({ timeout: 1500 }).catch(() => false)) {
+            if (await monthlyCard.isVisible({ timeout: 2000 }).catch(() => false)) {
               await safeScrollToElement(page, monthlyCard);
               await monthlyCard.click({ force: true }).catch(() => { });
               console.log('✅ Clicked Ultimate Monthly Card/Label by text selector');
@@ -1227,7 +1228,7 @@ async function runFlow(
               }
               if (!clicked) {
                 const radio = radios.first();
-                if (await radio.isVisible({ timeout: 1000 }).catch(() => false)) {
+                if (await radio.isVisible({ timeout: 1500 }).catch(() => false)) {
                   await safeScrollToElement(page, radio);
                   await radio.click({ force: true }).catch(() => { });
                   console.log('✅ Selected Monthly radio (first index fallback)');
@@ -1239,7 +1240,7 @@ async function runFlow(
           const planBtn = page.locator(
             'button:has-text("Continue with DAZN Ultimate"), button:has-text("Continue")'
           ).first();
-          await planBtn.waitFor({ state: 'visible', timeout: 3000 }).catch(() => { });
+          await planBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
           await clickAndWaitForNav(page, planBtn, 'Ultimate Plan Continue');
         } else {
           if (ratePlan === 'annual pay monthly') {
@@ -1247,13 +1248,13 @@ async function runFlow(
               'label:has-text("Annual - pay over time"), label:has-text("Annual - Pay Monthly")'
             ).first();
 
-            if (await annualCard.isVisible({ timeout: 2000 }).catch(() => false)) {
+            if (await annualCard.isVisible({ timeout: 3000 }).catch(() => false)) {
               await safeScrollToElement(page, annualCard);
               await annualCard.click({ force: true }).catch(() => { });
               console.log('✅ Clicked Annual card');
             } else {
               const radio = page.locator('input[type="radio"]').nth(1);
-              if (await radio.isVisible({ timeout: 1000 }).catch(() => false)) {
+              if (await radio.isVisible({ timeout: 1500 }).catch(() => false)) {
                 await safeScrollToElement(page, radio);
                 await radio.click({ force: true }).catch(() => { });
                 console.log('✅ Selected Annual radio nth(1)');
@@ -1265,7 +1266,7 @@ async function runFlow(
               'button:has-text("Continue with Annual"), ' +
               'button:has-text("Continue")'
             ).first();
-            await planBtn.waitFor({ state: 'visible', timeout: 3000 }).catch(() => { });
+            await planBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
 
             // Validate CTA text changed after selecting APM
             const ctaText = await planBtn.textContent().catch(() => '') || '';
@@ -1284,7 +1285,7 @@ async function runFlow(
             await clickAndWaitForNav(page, planBtn, 'Standard Annual Plan Continue');
           } else {
             const trialRadio = page.locator('input[type="radio"]').first();
-            if (await trialRadio.isVisible({ timeout: 1000 }).catch(() => false)) {
+            if (await trialRadio.isVisible({ timeout: 1500 }).catch(() => false)) {
               await safeScrollToElement(page, trialRadio);
               await trialRadio.click({ force: true }).catch(() => { });
               console.log('✅ Selected Flex/Trial radio');
@@ -1296,7 +1297,7 @@ async function runFlow(
               'button:has-text("Continue with PPV"), ' +
               'button:has-text("Continue")'
             ).first();
-            await planBtn.waitFor({ state: 'visible', timeout: 3000 }).catch(() => { });
+            await planBtn.waitFor({ state: 'visible', timeout: 5000 }).catch(() => { });
             await clickAndWaitForNav(page, planBtn, 'Standard Plan Continue');
           }
         }
@@ -1307,7 +1308,7 @@ async function runFlow(
 
       stuckCount++;
       console.log(`⚠️  Unknown page — waiting... (${stuckCount}/20) | URL: ${page.url()}`);
-      await sleep(500);
+      await sleep(800);
       if (stuckCount >= 20) {
         const bodyPreview = await page.locator('body').innerText()
           .catch(() => 'N/A')
