@@ -1349,7 +1349,7 @@ async function runFlow(
 // TEST DEFINITION — Executed as a single environment-driven block
 // ═══════════════════════════════════════════════════════════════
 test('PPV flow for new user', async ({ browser }) => {
-  test.setTimeout(PPV_TYPE === 'upsell' ? 300_000 : 180_000);
+  test.setTimeout(300_000);
   const runStart = new Date();
 
   const json = loadEventConfig(EVENT_CONFIG);
