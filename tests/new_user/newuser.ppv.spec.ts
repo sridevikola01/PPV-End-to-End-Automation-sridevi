@@ -854,7 +854,6 @@ async function runFlow(
           await signup.enterEmail(user.email);
           await signup.clickContinue();
           await page.waitForLoadState('domcontentloaded').catch(() => { });
-          await sleep(500);
         } else {
           console.log('ℹ️  Email input not visible or on personal details page — assuming directly on personal details page');
         }
@@ -931,8 +930,8 @@ async function runFlow(
 
         await page.waitForLoadState('domcontentloaded').catch(() => { });
 
-        // After personal details Continue, wait and check if we moved to payment
-        await sleep(2000);
+        // After personal details Continue, wait for navigation to payment
+        await page.waitForURL((url: URL) => url.toString().includes('payment'), { timeout: 5000 }).catch(() => { });
         if (page.url().includes('paymentDetails')) {
           console.log('💳 Navigated to payment page after personal details');
         }
@@ -1308,7 +1307,7 @@ async function runFlow(
 
       stuckCount++;
       console.log(`⚠️  Unknown page — waiting... (${stuckCount}/20) | URL: ${page.url()}`);
-      await sleep(800);
+      await sleep(500);
       if (stuckCount >= 20) {
         const bodyPreview = await page.locator('body').innerText()
           .catch(() => 'N/A')
