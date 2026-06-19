@@ -97,11 +97,11 @@ jobs:
     name: ${{ matrix.dazn_env }} | ${{ matrix.plan }}
     needs: setup
     runs-on: self-hosted
-    timeout-minutes: 45
+    timeout-minutes: 10
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     env:
