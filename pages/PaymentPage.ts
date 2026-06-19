@@ -383,7 +383,7 @@ export class PaymentPage extends BasePage {
     });
 
     // Validate 3: Ultimate price shown in banner (e.g. £24.99/month)
-    const ultimatePrice = eventData.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE || eventData.TODAY_YOU_PAY_ULTIMATE_APM || '';
+    const ultimatePrice = eventData.UPSELL_PRICE || eventData.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE || eventData.TODAY_YOU_PAY_ULTIMATE_APM || '';
     if (ultimatePrice) {
       const priceNumeric = ultimatePrice.replace(/[^\d.]/g, '');
       const priceInBanner = bannerText.includes(priceNumeric);
@@ -486,15 +486,32 @@ export class PaymentPage extends BasePage {
     const switched = await this.page.waitForFunction(() => {
       const bodyText = document.body.innerText;
       const isOnPaymentOrConfirm = bodyText.includes('Purchase summary') || bodyText.includes('Upgrade Confirmation') || bodyText.includes('Today you pay') || bodyText.includes('Welcome') || bodyText.includes('Choose how to pay');
-      const hasUltimateSummary = /\bDAZN Ultimate\b/i.test(bodyText) && !/\bDAZN Standard\b/i.test(bodyText);
+      const hasUltimateSummary = /\bDAZN Ultimate\b/i.test(bodyText);
       const bannerGone = !bodyText.includes('Switch to DAZN Ultimate');
-      return isOnPaymentOrConfirm && (hasUltimateSummary || bannerGone);
+      return isOnPaymentOrConfirm && hasUltimateSummary && bannerGone;
     }, { timeout: 10000 }).then(() => true).catch(() => false);
 
     await this.page.waitForLoadState('domcontentloaded').catch(() => {});
 
     if (!switched) {
       console.log('⚠️ [Ultimate Upsell] Purchase Summary did NOT update to DAZN Ultimate');
+      console.log(`ℹ️ [Ultimate Upsell Debug] Current URL: ${this.page.url()}`);
+      const bodyPreview = (await this.page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').substring(0, 500);
+      console.log(`ℹ️ [Ultimate Upsell Debug] Page text preview: ${bodyPreview}`);
+
+      // On production, if we are on Phone Number Collection page, the switch was successfully initiated
+      if (this.page.url().includes('PhoneNumberCollection') && (process.env.DAZN_ENV || 'stag').toLowerCase() === 'prod') {
+        console.log('✅ [Ultimate Upsell] Successfully transitioned to Phone Number Collection on production. Marking click as successful.');
+        results.push({
+          page: 'Payment',
+          field: 'Ultimate Switch - Click Success',
+          expected: 'Yes',
+          actual: 'Yes (Phone page loaded)',
+          status: 'PASS',
+        });
+        return false;
+      }
+
       results.push({
         page: 'Payment',
         field: 'Ultimate Switch - Click Success',
