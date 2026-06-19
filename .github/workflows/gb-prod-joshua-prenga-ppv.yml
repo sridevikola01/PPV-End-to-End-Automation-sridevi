@@ -1,4 +1,4 @@
-name: Joshua vs Prenga PPV Matrix
+name: GB home page don't miss PPV New User
 
 on:
   workflow_dispatch:
@@ -14,6 +14,7 @@ on:
           - US
           - AE
           - BR
+
       DAZN_ENV:
         description: 'Environment to run'
         required: true
@@ -24,10 +25,11 @@ on:
           - stag
           - beta
           - all
+
       PLAN:
         description: 'Plan to run'
         required: true
-        default: 'all'
+        default: 'standard_monthly'
         type: choice
         options:
           - all
@@ -35,10 +37,11 @@ on:
           - standard_apm
           - ultimate_apm
           - ultimate_upfront
+
       SOURCE:
         description: 'Surfacing point to run'
         required: true
-        default: 'all'
+        default: 'home-page-dont-miss'
         type: choice
         options:
           - all
@@ -59,6 +62,7 @@ on:
           - my-account
           - schedule
           - search
+
       PAYMENT_METHOD:
         description: 'Payment method (only used for stag environment)'
         required: true
@@ -67,6 +71,20 @@ on:
         options:
           - credit_card
           - gpay
+
+      SWITCH:
+        description: 'Switch to Ultimate'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+      PPV_CONFIG:
+        description: 'PPV config filename/key'
+        required: true
+        default: 'aj_joshua_prenga.json'
 
 permissions:
   contents: read
@@ -82,26 +100,32 @@ jobs:
         run: |
           ENVS='["stag", "prod", "beta"]'
           PLANS='["standard_monthly", "standard_apm", "ultimate_apm", "ultimate_upfront"]'
-          
+          SOURCES='["boxing-page-banner", "boxing-page-bundle", "boxing-upcoming-fights", "home-biggest-fights", "home-boxing-banner", "home-boxing-tile", "home-boxing-upcoming", "home-kickboxing-tile", "home-page-banner", "home-page-dazntile", "home-page-dont-miss", "home-page-get-started", "landing-page-banner", "landing-page-dont-miss-live", "my-account", "schedule", "search"]'
+
           if [ "${{ inputs.DAZN_ENV }}" != "all" ]; then
             ENVS='["${{ inputs.DAZN_ENV }}"]'
           fi
           if [ "${{ inputs.PLAN }}" != "all" ]; then
             PLANS='["${{ inputs.PLAN }}"]'
           fi
-          
-          MATRIX_JSON="{\"dazn_env\":$ENVS,\"plan\":$PLANS}"
+          if [ "${{ inputs.SOURCE }}" != "all" ]; then
+            SOURCES='["${{ inputs.SOURCE }}"]'
+          fi
+
+          MATRIX_JSON="{\"dazn_env\":$ENVS,\"plan\":$PLANS,\"source\":$SOURCES}"
           echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
 
-  prod-matrix:
-    name: ${{ matrix.dazn_env }} | ${{ matrix.plan }}
+  run-tests:
+    name: "${{ matrix.dazn_env }} | ${{ matrix.plan }} | ${{ matrix.source }}"
     needs: setup
-    runs-on: self-hosted
-    timeout-minutes: 10
+    runs-on:
+      - self-hosted
+      - macOS
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     env:
@@ -109,40 +133,51 @@ jobs:
       HEADLESS: 'true'
       DAZN_REGION: ${{ inputs.DAZN_REGION }}
       DAZN_ENV: ${{ matrix.dazn_env }}
-      PPV_EVENT: 'aj_joshua_prenga'
+      PPV_CONFIG: ${{ inputs.PPV_CONFIG }}
+      PLAN: ${{ matrix.plan }}
+      SOURCE: ${{ matrix.source }}
       PAYMENT_METHOD: ${{ matrix.dazn_env == 'stag' && inputs.PAYMENT_METHOD || '' }}
-      SWITCH: 'false'
+      SWITCH: ${{ inputs.SWITCH }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          clean: false
 
-      - name: Run Web PPV Flow (4 local workers)
+      - name: Show Runner
         run: |
-          SOURCES_PARAM=""
-          if [ "${{ inputs.SOURCE }}" != "all" ]; then
-            SOURCES_PARAM="--sources=${{ inputs.SOURCE }}"
-          fi
-          npx ts-node scripts/run_sharded_tests.ts --plans=${{ matrix.plan }} $SOURCES_PARAM --concurrency=2
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          hostname
 
-      - name: Upload Playwright HTML report
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Playwright
+        run: npx playwright --version
+
+      - name: Run PPV Flow
+        run: npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
+
+      - name: Upload Playwright Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.dazn_env }}-${{ matrix.plan }}
+          name: playwright-report-${{ matrix.dazn_env }}-${{ matrix.plan }}-${{ matrix.source }}
           path: playwright-report/
           if-no-files-found: ignore
-          retention-days: 30
 
-      - name: Upload test results and reports
+      - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.dazn_env }}-${{ matrix.plan }}
+          name: test-results-${{ matrix.dazn_env }}-${{ matrix.plan }}-${{ matrix.source }}
           path: |
             test-results/
             reports/
           if-no-files-found: ignore
-          retention-days: 30

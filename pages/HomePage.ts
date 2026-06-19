@@ -11,14 +11,13 @@ export class HomePage extends LandingPage {
 
   // Navigation for home-page flows
   override async navigate(baseUrl: string, source?: string, eventData?: Record<string, string>): Promise<void> {
-    const welcomeUrl = `${baseUrl}/welcome`;
-    console.log(`🌍 [HomePage] Navigating to Welcome page: ${welcomeUrl}`);
-    await this.page.goto(welcomeUrl, { waitUntil: 'domcontentloaded' });
+    const homeUrl = `${baseUrl}/home`;
+    console.log(`🌍 [HomePage] Navigating directly to Home page: ${homeUrl}`);
+    await this.page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
     await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
+    
+    console.log(`🍪 [HomePage] Waiting for cookies and clicking Accept...`);
     await this.dismissConsentIfPresent();
-
-    console.log(`✅ [HomePage] Welcome page loaded: ${this.page.url()}`);
-    await this.clickExplore();
 
     console.log(`✅ [HomePage] Home page loaded: ${this.page.url()}`);
 
@@ -27,40 +26,6 @@ export class HomePage extends LandingPage {
     await bannerLocator.waitFor({ state: 'visible', timeout: 10000 }).catch((e) => {
       console.log('⚠️ [HomePage] Timeout waiting for hero banner/swiper: ' + e.message);
     });
-  }
-
-  protected async clickExplore(): Promise<void> {
-    console.log('🔍 Looking for "Explore" button on welcome page...');
-
-    const exploreSelectors = [
-      'a:has-text("Explore")',
-      'button:has-text("Explore")',
-      'a[href*="/home" i]',
-      'a:has-text("Explore DAZN")',
-      'a:has-text("Explore without subscribing")',
-      'a:has-text("Explore for free")',
-      '[class*="explore" i]',
-    ];
-
-    const combinedSelector = exploreSelectors.join(', ');
-    const anyExplore = this.page.locator(combinedSelector).first();
-    const found = await anyExplore.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
-
-    if (found) {
-      console.log(`📍 Found Explore button`);
-      await anyExplore.scrollIntoViewIfNeeded().catch(() => { });
-      await anyExplore.click({ force: true });
-      await this.page.waitForURL((url: URL) => url.toString().includes('/home'), { timeout: 15000 }).catch(() => { });
-    } else {
-      console.log('⚠️ Explore button not found — trying direct navigation to /home');
-      const currentUrl = this.page.url();
-      const baseMatch = currentUrl.match(/(https:\/\/[a-z0-9.-]*dazn\.com\/en-[A-Z]+)/i);
-      const base = baseMatch?.[1] || this.getFallbackBaseUrl();
-      await this.page.goto(`${base}/home`, { waitUntil: 'domcontentloaded' });
-    }
-
-    // Wait for Home page to be visually ready before next action
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
   }
 
   // Find container logic:
@@ -80,15 +45,15 @@ export class HomePage extends LandingPage {
       const sectionHeading = this.page.locator('h2').filter({ hasText: /The Biggest Fights/i }).first();
 
       let foundHeading = false;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 15; i++) {
         if (await sectionHeading.isVisible().catch(() => false)) {
           foundHeading = true;
           break;
         }
         await this.page.evaluate((pos: number) => {
           window.scrollTo({ top: pos, behavior: 'instant' });
-        }, (i + 1) * 600);
-        foundHeading = await sectionHeading.waitFor({ state: 'attached', timeout: 300 })
+        }, (i + 1) * 500);
+        foundHeading = await sectionHeading.waitFor({ state: 'attached', timeout: 400 })
           .then(() => true).catch(() => false);
         if (foundHeading) break;
       }
@@ -217,15 +182,15 @@ export class HomePage extends LandingPage {
         .filter({ hasText: /Coming [Uu]p/i }).first();
 
       let foundComingUp = false;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 10; i++) {
         if (await comingUpHeading.isVisible().catch(() => false)) {
           foundComingUp = true;
           break;
         }
         await this.page.evaluate((pos: number) => {
           window.scrollTo({ top: pos, behavior: 'instant' });
-        }, (i + 1) * 500);
-        foundComingUp = await comingUpHeading.waitFor({ state: 'attached', timeout: 200 })
+        }, (i + 1) * 400);
+        foundComingUp = await comingUpHeading.waitFor({ state: 'attached', timeout: 300 })
           .then(() => true).catch(() => false);
         if (foundComingUp) break;
       }
@@ -306,7 +271,7 @@ export class HomePage extends LandingPage {
       const railHeader = this.page.getByText(sectionPattern).first();
 
       let foundHeading = false;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 8; i++) {
         if (await railHeader.isVisible().catch(() => false)) {
           foundHeading = true;
           break;

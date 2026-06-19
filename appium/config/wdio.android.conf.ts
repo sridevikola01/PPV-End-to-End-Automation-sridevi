@@ -52,7 +52,6 @@ export const config = {
           address:         '127.0.0.1',
           port:            4723,
           relaxedSecurity: true,
-          // chromedriverAutodownload is set per-capability below
         },
       },
     ],
@@ -66,16 +65,16 @@ export const config = {
     {
       platformName:                      'Android',
       'appium:deviceName':               process.env.DEVICE_NAME       || 'Galaxy Z Fold5',
-      'appium:platformVersion':          process.env.PLATFORM_VERSION   || '16.0',
+      'appium:platformVersion':          process.env.PLATFORM_VERSION   || '16',
       'appium:automationName':           'UiAutomator2',
       'appium:appPackage':               process.env.APP_PACKAGE        || 'com.dazn',
       'appium:appActivity':              process.env.APP_ACTIVITY       || 'com.dazn.splash.view.SplashScreenActivity',
-      'appium:noReset':                  true,          // keep existing login session
-      'appium:forceAppLaunch':           true,          // always cold-start the app
-      'appium:autoGrantPermissions':     true,          // auto-allow OS permission dialogs
+      'appium:noReset':                  true,
+      'appium:forceAppLaunch':           true,
+      'appium:autoGrantPermissions':     true,
       'appium:chromeOptions':            { androidPackage: 'com.android.chrome' },
-      'appium:chromedriverAutodownload': true,          // match Chrome version on device
-      'appium:newCommandTimeout':        300,           // 5 min — enough for slow PPV screens
+      'appium:chromedriverAutodownload': true,
+      'appium:newCommandTimeout':        300,
       'appium:uiautomator2ServerInstallTimeout': 60000,
     } as WebdriverIO.Capabilities,
   ],
@@ -90,7 +89,7 @@ export const config = {
   reporters: ['spec'],
   mochaOpts: {
     ui:      'bdd',
-    timeout: 300000,   // 5 min per test
+    timeout: 300000,
   },
 
   before() {
