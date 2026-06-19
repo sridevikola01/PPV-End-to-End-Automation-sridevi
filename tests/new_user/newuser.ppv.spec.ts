@@ -931,7 +931,7 @@ async function runFlow(
         await page.waitForLoadState('domcontentloaded').catch(() => { });
 
         // After personal details Continue, wait and check if we moved to payment
-        await page.waitForURL(url => url.toString().includes('paymentDetails'), { timeout: 2000 }).catch(() => { });
+        await page.waitForURL(/paymentDetails/, { timeout: 2000 }).catch(() => { });
         if (page.url().includes('paymentDetails')) {
           console.log('💳 Navigated to payment page after personal details');
         }
