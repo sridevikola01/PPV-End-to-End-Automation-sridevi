@@ -30,7 +30,7 @@ export default defineConfig({
     navigationTimeout: 30_000,
 
     video: {
-      mode: process.env.CI ? 'on' : 'retain-on-failure',
+      mode: 'retain-on-failure',
       size: { width: 1920, height: 1080 },
     },
 

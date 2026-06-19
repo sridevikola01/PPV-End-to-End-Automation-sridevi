@@ -42,11 +42,11 @@ jobs:
       - macOS
       - ARM64
 
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         plan:
           - standard_monthly
@@ -117,11 +117,11 @@ jobs:
       - macOS
       - ARM64
 
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         plan:
           - standard_monthly

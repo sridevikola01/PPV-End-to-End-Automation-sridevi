@@ -125,7 +125,7 @@ jobs:
           if [ "${{ inputs.SOURCE }}" != "all" ]; then
             SOURCES_PARAM="--sources=${{ inputs.SOURCE }}"
           fi
-          npx ts-node scripts/run_sharded_tests.ts --plans=${{ matrix.plan }} $SOURCES_PARAM --concurrency=4
+          npx ts-node scripts/run_sharded_tests.ts --plans=${{ matrix.plan }} $SOURCES_PARAM --concurrency=2
 
       - name: Upload Playwright HTML report
         if: always()
