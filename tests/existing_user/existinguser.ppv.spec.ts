@@ -167,11 +167,11 @@ test('PPV flow via existing user my account', async ({ browser }) => {
   // ── Clean context ─────────────────────────────────────────────
   const recordVideo = process.env.RECORD_VIDEO !== 'false' ? {
     dir: 'test-results/videos/',
-    size: { width: 1280, height: 720 },
+    size: { width: 1920, height: 1080 },
   } : undefined;
 
   const context = await browser.newContext({
-    viewport: null,
+    viewport: { width: 1920, height: 1080 },
     colorScheme: 'dark',
     reducedMotion: 'no-preference',
     timezoneId: 'Asia/Kolkata',

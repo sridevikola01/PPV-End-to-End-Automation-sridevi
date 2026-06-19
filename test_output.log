@@ -1,0 +1,319 @@
+
+Running 1 test using 1 worker
+
+📅 Navigating to schedule page...
+✅ Schedule page loaded
+🥊 Selecting Boxing...
+✅ Boxing selected
+🔍 Searching for event: Wardley vs. Dubois
+✅ Event found
+🖱️ Clicking event...
+✅ Modal opened & Buy button located
+💳 Clicking Buy Now CTA...
+✅ Buy Now clicked
+landed on: https://www.dazn.com/en-AU/account/addon/purchase?contextualPpvId=ppv_e_wardley_dubois
+🔍 Detecting variant...
+✅ variant1
+🎯 variant: variant1
+step 1 {
+  url: [32m'https://www.dazn.com/en-AU/account/addon/purchase?contextualPpvId=ppv_e_wardley_dubois'[39m,
+  isPPV: [33mtrue[39m,
+  isPlan: [33mfalse[39m
+}
+👉 PPV page
+🧾 Validating PPV page...
+🧠 Variant: variant1
+📊 FINAL DATA: [33m37[39m
+clicking: PPV Continue
+navigated to: https://www.dazn.com/en-AU/account/content/DAZN/signup?contextualPpvId=ppv_e_wardley_dubois&page=PlanDetails&upsellTierSkipped=true
+step 2 {
+  url: [32m'https://www.dazn.com/en-AU/account/content/DAZN/signup?contextualPpvId=ppv_e_wardley_dubois&page=PlanDetails&upsellTierSkipped=true'[39m,
+  isPPV: [33mtrue[39m,
+  isPlan: [33mfalse[39m
+}
+👉 PPV page
+clicking: PPV Continue
+navigated to: https://www.dazn.com/en-AU/account/content/DAZN/signup?contextualPpvId=ppv_e_wardley_dubois&page=emailDetails&upsellTierSkipped=true
+✅ reached email page
+✅ payment page
+🧾 Validating payment page fields...
+Checking visibility for Page Title
+Element not visible for Page Title, trying alternative strategies
+   • Payment field checked: Page title
+Checking visibility for Header
+Element not visible for Header, trying alternative strategies
+   • Payment field checked: Header
+   • Payment field checked: Dazn tier
+   • Payment field checked: plan change cta
+Checking visibility for PPV Name
+Element not visible for PPV Name, trying alternative strategies
+   • Payment field checked: PPV name
+Checking visibility for Price Field
+Element not visible for Price Field, trying alternative strategies
+   • Payment field checked: PPV price
+   • Payment field checked: 7 day free text
+   • Payment field checked: Today you pay text
+Checking visibility for Price Field
+Element not visible for Price Field, trying alternative strategies
+   • Payment field checked: Today you pay price
+   • Payment field checked: Next payment date
+Checking visibility for Cancellation Text
+Element not visible for Cancellation Text, trying alternative strategies
+   • Payment field checked: cancellation text
+
+════════════════════════════════════════════════════════════
+📊 TEST SUMMARY
+════════════════════════════════════════════════════════════
+┌─────────┬────────────┬───────┬────────┬────────┬─────────┐
+│ (index) │ Variant    │ Total │ Passed │ Failed │ Pass %  │
+├─────────┼────────────┼───────┼────────┼────────┼─────────┤
+│ 0       │ [32m'variant1'[39m │ [33m48[39m    │ [33m3[39m      │ [33m45[39m     │ [32m'6.25%'[39m │
+└─────────┴────────────┴───────┴────────┴────────┴─────────┘
+════════════════════════════════════════════════════════════
+
+❌ FAILED FIELDS:
+┌─────────┬────────────┬───────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────┐
+│ (index) │ Page       │ Field                                 │ Expected                                                                                                                    │ Actual                          │
+├─────────┼────────────┼───────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────┤
+│ 0       │ [32m'variant1'[39m │ [32m'Header Sub Text'[39m                     │ [32m'Buy Wardley vs. Dubois with DAZN Standard or get it included in DAZN Ultimate.'[39m                                            │ [32m'N/A'[39m                           │
+│ 1       │ [32m'variant1'[39m │ [32m'Header Highlight Text1'[39m              │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 2       │ [32m'variant1'[39m │ [32m'Header Highlight Text2'[39m              │ [32m'get it included in DAZN Ultimate.'[39m                                                                                         │ [32m'N/A'[39m                           │
+│ 3       │ [32m'variant1'[39m │ [32m'Hero Image'[39m                          │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 4       │ [32m'variant1'[39m │ [32m'Event Name'[39m                          │ [32m'Wardley vs. Dubois PPV'[39m                                                                                                    │ [32m'N/A'[39m                           │
+│ 5       │ [32m'variant1'[39m │ [32m'PPV Price'[39m                           │ [32m'$49.99'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 6       │ [32m'variant1'[39m │ [32m'DAZN Tier'[39m                           │ [32m'+DAZN Standard'[39m                                                                                                            │ [32m'N/A'[39m                           │
+│ 7       │ [32m'variant1'[39m │ [32m'PPV Name'[39m                            │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 8       │ [32m'variant1'[39m │ [32m'PPV Image Present'[39m                   │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 9       │ [32m'variant1'[39m │ [32m'PPV Date and TimeText'[39m               │ [32m'Saturday at 11:30 PM'[39m                                                                                                      │ [32m'N/A'[39m                           │
+│ 10      │ [32m'variant1'[39m │ [32m'Radio Selected'[39m                      │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 11      │ [32m'variant1'[39m │ [32m'Upsell Label'[39m                        │ [32m'Pay-per-views included'[39m                                                                                                    │ [32m'N/A'[39m                           │
+│ 12      │ [32m'variant1'[39m │ [32m'Upsell Plan Name'[39m                    │ [32m'DAZN Ultimate'[39m                                                                                                             │ [32m'Annual contract. Auto renews.'[39m │
+│ 13      │ [32m'variant1'[39m │ [32m'Upsell Price text'[39m                   │ [32m'From'[39m                                                                                                                      │ [32m'N/A'[39m                           │
+│ 14      │ [32m'variant1'[39m │ [32m'Upsell Price'[39m                        │ [32m'MISSING_UPSELL_PRICE'[39m                                                                                                      │ [32m'$49.99'[39m                        │
+│ 15      │ [32m'variant1'[39m │ [32m'Upsell Price length'[39m                 │ [32m'/ month'[39m                                                                                                                   │ [32m'N/A'[39m                           │
+│ 16      │ [32m'variant1'[39m │ [32m'Upsell Billing Text'[39m                 │ [32m'Annual contract. Auto renews.'[39m                                                                                             │ [32m'N/A'[39m                           │
+│ 17      │ [32m'variant1'[39m │ [32m'Included PPV1 Name'[39m                  │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 18      │ [32m'variant1'[39m │ [32m'PPV1 Image Present on ultimate tier'[39m │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 19      │ [32m'variant1'[39m │ [32m'PPV1 Date Text on ultimate tier'[39m     │ [32m'Saturday at 11:30 PM'[39m                                                                                                      │ [32m'N/A'[39m                           │
+│ 20      │ [32m'variant1'[39m │ [32m'PPV1 Included tag'[39m                   │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 21      │ [32m'variant1'[39m │ [32m'Included PPV2 Name'[39m                  │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 22      │ [32m'variant1'[39m │ [32m'PPV2 Image Present on ultimate tier'[39m │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 23      │ [32m'variant1'[39m │ [32m'PPV2 Date Text on ultimate tier'[39m     │ [32m'Sat 9th May at 11:30 PM'[39m                                                                                                   │ [32m'N/A'[39m                           │
+│ 24      │ [32m'variant1'[39m │ [32m'PPV2 Included tag'[39m                   │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 25      │ [32m'variant1'[39m │ [32m'Upsell Feature 1'[39m                    │ [32m'Pay-per-views included at no extra cost. Minimum of 12 events per year including Wardley vs. Dubois & Wardley vs. Dubois.'[39m │ [32m'N/A'[39m                           │
+│ 26      │ [32m'variant1'[39m │ [32m'Upsell Highlight text'[39m               │ [32m'Wardley vs. Dubois & Wardley vs. Dubois.'[39m                                                                                  │ [32m'N/A'[39m                           │
+│ 27      │ [32m'variant1'[39m │ [32m'Upsell Feature 2'[39m                    │ [32m'HDR and Dolby 5.1 surround sound on select events.'[39m                                                                        │ [32m'N/A'[39m                           │
+│ 28      │ [32m'variant1'[39m │ [32m'Upsell Feature 3'[39m                    │ [32m'185+ fights a year from the best promoters'[39m                                                                                │ [32m'N/A'[39m                           │
+│ 29      │ [32m'variant1'[39m │ [32m'CTA Button'[39m                          │ [32m'Continue'[39m                                                                                                                  │ [32m'N/A'[39m                           │
+│ 30      │ [32m'variant1'[39m │ [32m'CTA without PPV'[39m                     │ [32m'Subscribe without a pay-per-view'[39m                                                                                          │ [32m'N/A'[39m                           │
+│ 31      │ [32m'variant1'[39m │ [32m'Gold Highlight 1'[39m                    │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 32      │ [32m'variant1'[39m │ [32m'Gold Highlight 2'[39m                    │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 33      │ [32m'variant1'[39m │ [32m'Gold Highlight 3'[39m                    │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 34      │ [32m'Payment'[39m  │ [32m'Page title'[39m                          │ [32m'Choose how to pay after your free trial'[39m                                                                                   │ [32m'N/A'[39m                           │
+│ 35      │ [32m'Payment'[39m  │ [32m'Header'[39m                              │ [32m'Your payment is encrypted and you can change how you pay at any time.'[39m                                                     │ [32m'N/A'[39m                           │
+│ 36      │ [32m'Payment'[39m  │ [32m'Dazn tier'[39m                           │ [32m'DAZN Standard'[39m                                                                                                             │ [32m'N/A'[39m                           │
+│ 37      │ [32m'Payment'[39m  │ [32m'plan change cta'[39m                     │ [32m'Change'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 38      │ [32m'Payment'[39m  │ [32m'PPV name'[39m                            │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 39      │ [32m'Payment'[39m  │ [32m'PPV price'[39m                           │ [32m'$49.99'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 40      │ [32m'Payment'[39m  │ [32m'7 day free text'[39m                     │ [32m'7-days free'[39m                                                                                                               │ [32m'N/A'[39m                           │
+│ 41      │ [32m'Payment'[39m  │ [32m'Today you pay text'[39m                  │ [32m'Today you pay'[39m                                                                                                             │ [32m'N/A'[39m                           │
+│ 42      │ [32m'Payment'[39m  │ [32m'Today you pay price'[39m                 │ [32m'$49.99'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 43      │ [32m'Payment'[39m  │ [32m'Next payment date'[39m                   │ [32m'Thursday 23 April'[39m                                                                                                         │ [32m'N/A'[39m                           │
+│ 44      │ [32m'Payment'[39m  │ [32m'cancellation text'[39m                   │ [32m"Monthly subscription. Cancel with 30 days' notice. Your subscription auto-renews unless you cancel."[39m                       │ [32m'N/A'[39m                           │
+└─────────┴────────────┴───────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────┘
+📊 Excel Report Generated: test-results/reports/ppv-report-1776324089456.xlsx
+
+═══════════════════════════════════════
+🎯 Variant: variant1
+📊 Total: 48
+✅ Passed: 3
+📁 Report: test-results/reports/ppv-report-1776324089456.xlsx
+═══════════════════════════════════════
+
+  ✘  1 [chromium] › tests/new_user/schedule.spec.ts:24:5 › PPV flow via schedule (2.0m)
+📅 Navigating to schedule page...
+✅ Schedule page loaded
+🥊 Selecting Boxing...
+✅ Boxing selected
+🔍 Searching for event: Wardley vs. Dubois
+✅ Event found
+🖱️ Clicking event...
+✅ Modal opened & Buy button located
+💳 Clicking Buy Now CTA...
+✅ Buy Now clicked
+landed on: https://www.dazn.com/en-AU/account/addon/purchase?contextualPpvId=ppv_e_wardley_dubois
+🔍 Detecting variant...
+✅ variant1
+🎯 variant: variant1
+step 1 {
+  url: [32m'https://www.dazn.com/en-AU/account/addon/purchase?contextualPpvId=ppv_e_wardley_dubois'[39m,
+  isPPV: [33mtrue[39m,
+  isPlan: [33mfalse[39m
+}
+👉 PPV page
+🧾 Validating PPV page...
+🧠 Variant: variant1
+📊 FINAL DATA: [33m37[39m
+clicking: PPV Continue
+navigated to: https://www.dazn.com/en-AU/account/content/DAZN/signup?contextualPpvId=ppv_e_wardley_dubois&page=PlanDetails&upsellTierSkipped=true
+step 2 {
+  url: [32m'https://www.dazn.com/en-AU/account/content/DAZN/signup?contextualPpvId=ppv_e_wardley_dubois&page=PlanDetails&upsellTierSkipped=true'[39m,
+  isPPV: [33mtrue[39m,
+  isPlan: [33mfalse[39m
+}
+👉 PPV page
+clicking: PPV Continue
+navigated to: https://www.dazn.com/en-AU/account/content/DAZN/signup?contextualPpvId=ppv_e_wardley_dubois&page=emailDetails&upsellTierSkipped=true
+✅ reached email page
+✅ payment page
+🧾 Validating payment page fields...
+Checking visibility for Page Title
+Element not visible for Page Title, trying alternative strategies
+   • Payment field checked: Page title
+Checking visibility for Header
+Element not visible for Header, trying alternative strategies
+   • Payment field checked: Header
+   • Payment field checked: Dazn tier
+   • Payment field checked: plan change cta
+Checking visibility for PPV Name
+Element not visible for PPV Name, trying alternative strategies
+   • Payment field checked: PPV name
+Checking visibility for Price Field
+Element not visible for Price Field, trying alternative strategies
+   • Payment field checked: PPV price
+   • Payment field checked: 7 day free text
+   • Payment field checked: Today you pay text
+Checking visibility for Price Field
+Element not visible for Price Field, trying alternative strategies
+   • Payment field checked: Today you pay price
+   • Payment field checked: Next payment date
+Checking visibility for Cancellation Text
+Element not visible for Cancellation Text, trying alternative strategies
+   • Payment field checked: cancellation text
+
+════════════════════════════════════════════════════════════
+📊 TEST SUMMARY
+════════════════════════════════════════════════════════════
+┌─────────┬────────────┬───────┬────────┬────────┬─────────┐
+│ (index) │ Variant    │ Total │ Passed │ Failed │ Pass %  │
+├─────────┼────────────┼───────┼────────┼────────┼─────────┤
+│ 0       │ [32m'variant1'[39m │ [33m48[39m    │ [33m2[39m      │ [33m46[39m     │ [32m'4.17%'[39m │
+└─────────┴────────────┴───────┴────────┴────────┴─────────┘
+════════════════════════════════════════════════════════════
+
+❌ FAILED FIELDS:
+┌─────────┬────────────┬───────────────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬─────────────────────────────────┐
+│ (index) │ Page       │ Field                                 │ Expected                                                                                                                    │ Actual                          │
+├─────────┼────────────┼───────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────┤
+│ 0       │ [32m'variant1'[39m │ [32m'Page Title'[39m                          │ [32m'Choose your plan'[39m                                                                                                          │ [32m'Choose how to buy​'[39m             │
+│ 1       │ [32m'variant1'[39m │ [32m'Header Sub Text'[39m                     │ [32m'Buy Wardley vs. Dubois with DAZN Standard or get it included in DAZN Ultimate.'[39m                                            │ [32m'N/A'[39m                           │
+│ 2       │ [32m'variant1'[39m │ [32m'Header Highlight Text1'[39m              │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 3       │ [32m'variant1'[39m │ [32m'Header Highlight Text2'[39m              │ [32m'get it included in DAZN Ultimate.'[39m                                                                                         │ [32m'N/A'[39m                           │
+│ 4       │ [32m'variant1'[39m │ [32m'Hero Image'[39m                          │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 5       │ [32m'variant1'[39m │ [32m'Event Name'[39m                          │ [32m'Wardley vs. Dubois PPV'[39m                                                                                                    │ [32m'N/A'[39m                           │
+│ 6       │ [32m'variant1'[39m │ [32m'PPV Price'[39m                           │ [32m'$49.99'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 7       │ [32m'variant1'[39m │ [32m'DAZN Tier'[39m                           │ [32m'+DAZN Standard'[39m                                                                                                            │ [32m'N/A'[39m                           │
+│ 8       │ [32m'variant1'[39m │ [32m'PPV Name'[39m                            │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 9       │ [32m'variant1'[39m │ [32m'PPV Image Present'[39m                   │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 10      │ [32m'variant1'[39m │ [32m'PPV Date and TimeText'[39m               │ [32m'Saturday at 11:30 PM'[39m                                                                                                      │ [32m'N/A'[39m                           │
+│ 11      │ [32m'variant1'[39m │ [32m'Radio Selected'[39m                      │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 12      │ [32m'variant1'[39m │ [32m'Upsell Label'[39m                        │ [32m'Pay-per-views included'[39m                                                                                                    │ [32m'N/A'[39m                           │
+│ 13      │ [32m'variant1'[39m │ [32m'Upsell Plan Name'[39m                    │ [32m'DAZN Ultimate'[39m                                                                                                             │ [32m'Annual contract. Auto renews.'[39m │
+│ 14      │ [32m'variant1'[39m │ [32m'Upsell Price text'[39m                   │ [32m'From'[39m                                                                                                                      │ [32m'N/A'[39m                           │
+│ 15      │ [32m'variant1'[39m │ [32m'Upsell Price'[39m                        │ [32m'MISSING_UPSELL_PRICE'[39m                                                                                                      │ [32m'$49.99'[39m                        │
+│ 16      │ [32m'variant1'[39m │ [32m'Upsell Price length'[39m                 │ [32m'/ month'[39m                                                                                                                   │ [32m'N/A'[39m                           │
+│ 17      │ [32m'variant1'[39m │ [32m'Upsell Billing Text'[39m                 │ [32m'Annual contract. Auto renews.'[39m                                                                                             │ [32m'N/A'[39m                           │
+│ 18      │ [32m'variant1'[39m │ [32m'Included PPV1 Name'[39m                  │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 19      │ [32m'variant1'[39m │ [32m'PPV1 Image Present on ultimate tier'[39m │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 20      │ [32m'variant1'[39m │ [32m'PPV1 Date Text on ultimate tier'[39m     │ [32m'Saturday at 11:30 PM'[39m                                                                                                      │ [32m'N/A'[39m                           │
+│ 21      │ [32m'variant1'[39m │ [32m'PPV1 Included tag'[39m                   │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 22      │ [32m'variant1'[39m │ [32m'Included PPV2 Name'[39m                  │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 23      │ [32m'variant1'[39m │ [32m'PPV2 Image Present on ultimate tier'[39m │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 24      │ [32m'variant1'[39m │ [32m'PPV2 Date Text on ultimate tier'[39m     │ [32m'Sat 9th May at 11:30 PM'[39m                                                                                                   │ [32m'N/A'[39m                           │
+│ 25      │ [32m'variant1'[39m │ [32m'PPV2 Included tag'[39m                   │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 26      │ [32m'variant1'[39m │ [32m'Upsell Feature 1'[39m                    │ [32m'Pay-per-views included at no extra cost. Minimum of 12 events per year including Wardley vs. Dubois & Wardley vs. Dubois.'[39m │ [32m'N/A'[39m                           │
+│ 27      │ [32m'variant1'[39m │ [32m'Upsell Highlight text'[39m               │ [32m'Wardley vs. Dubois & Wardley vs. Dubois.'[39m                                                                                  │ [32m'N/A'[39m                           │
+│ 28      │ [32m'variant1'[39m │ [32m'Upsell Feature 2'[39m                    │ [32m'HDR and Dolby 5.1 surround sound on select events.'[39m                                                                        │ [32m'N/A'[39m                           │
+│ 29      │ [32m'variant1'[39m │ [32m'Upsell Feature 3'[39m                    │ [32m'185+ fights a year from the best promoters'[39m                                                                                │ [32m'N/A'[39m                           │
+│ 30      │ [32m'variant1'[39m │ [32m'CTA Button'[39m                          │ [32m'Continue'[39m                                                                                                                  │ [32m'N/A'[39m                           │
+│ 31      │ [32m'variant1'[39m │ [32m'CTA without PPV'[39m                     │ [32m'Subscribe without a pay-per-view'[39m                                                                                          │ [32m'N/A'[39m                           │
+│ 32      │ [32m'variant1'[39m │ [32m'Gold Highlight 1'[39m                    │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 33      │ [32m'variant1'[39m │ [32m'Gold Highlight 2'[39m                    │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 34      │ [32m'variant1'[39m │ [32m'Gold Highlight 3'[39m                    │ [32m'Yes'[39m                                                                                                                       │ [32m'N/A'[39m                           │
+│ 35      │ [32m'Payment'[39m  │ [32m'Page title'[39m                          │ [32m'Choose how to pay after your free trial'[39m                                                                                   │ [32m'N/A'[39m                           │
+│ 36      │ [32m'Payment'[39m  │ [32m'Header'[39m                              │ [32m'Your payment is encrypted and you can change how you pay at any time.'[39m                                                     │ [32m'N/A'[39m                           │
+│ 37      │ [32m'Payment'[39m  │ [32m'Dazn tier'[39m                           │ [32m'DAZN Standard'[39m                                                                                                             │ [32m'N/A'[39m                           │
+│ 38      │ [32m'Payment'[39m  │ [32m'plan change cta'[39m                     │ [32m'Change'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 39      │ [32m'Payment'[39m  │ [32m'PPV name'[39m                            │ [32m'Wardley vs. Dubois'[39m                                                                                                        │ [32m'N/A'[39m                           │
+│ 40      │ [32m'Payment'[39m  │ [32m'PPV price'[39m                           │ [32m'$49.99'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 41      │ [32m'Payment'[39m  │ [32m'7 day free text'[39m                     │ [32m'7-days free'[39m                                                                                                               │ [32m'N/A'[39m                           │
+│ 42      │ [32m'Payment'[39m  │ [32m'Today you pay text'[39m                  │ [32m'Today you pay'[39m                                                                                                             │ [32m'N/A'[39m                           │
+│ 43      │ [32m'Payment'[39m  │ [32m'Today you pay price'[39m                 │ [32m'$49.99'[39m                                                                                                                    │ [32m'N/A'[39m                           │
+│ 44      │ [32m'Payment'[39m  │ [32m'Next payment date'[39m                   │ [32m'Thursday 23 April'[39m                                                                                                         │ [32m'N/A'[39m                           │
+│ 45      │ [32m'Payment'[39m  │ [32m'cancellation text'[39m                   │ [32m"Monthly subscription. Cancel with 30 days' notice. Your subscription auto-renews unless you cancel."[39m                       │ [32m'N/A'[39m                           │
+└─────────┴────────────┴───────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────┘
+📊 Excel Report Generated: test-results/reports/ppv-report-1776324155535.xlsx
+
+═══════════════════════════════════════
+🎯 Variant: variant1
+📊 Total: 48
+✅ Passed: 2
+📁 Report: test-results/reports/ppv-report-1776324155535.xlsx
+═══════════════════════════════════════
+
+  ✘  2 [chromium] › tests/new_user/schedule.spec.ts:24:5 › PPV flow via schedule (retry #1) (1.0m)
+
+
+  1) [chromium] › tests/new_user/schedule.spec.ts:24:5 › PPV flow via schedule ─────────────────────
+
+    Error: 45 validation(s) failed
+
+      225 |
+      226 |     if (passed < total) {
+    > 227 |       throw new Error(`${total - passed} validation(s) failed`);
+          |             ^
+      228 |     }
+      229 |
+      230 |   } finally {
+        at /Users/Hari.Prasad/jobbot/dazn-tests/tests/new_user/schedule.spec.ts:227:13
+
+    Error Context: test-results/new_user-schedule-PPV-flow-via-schedule-chromium/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/new_user-schedule-PPV-flow-via-schedule-chromium/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/new_user-schedule-PPV-flow-via-schedule-chromium/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Retry #1 ───────────────────────────────────────────────────────────────────────────────────────
+
+    Error: 46 validation(s) failed
+
+      225 |
+      226 |     if (passed < total) {
+    > 227 |       throw new Error(`${total - passed} validation(s) failed`);
+          |             ^
+      228 |     }
+      229 |
+      230 |   } finally {
+        at /Users/Hari.Prasad/jobbot/dazn-tests/tests/new_user/schedule.spec.ts:227:13
+
+    Error Context: test-results/new_user-schedule-PPV-flow-via-schedule-chromium-retry1/error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/new_user-schedule-PPV-flow-via-schedule-chromium-retry1/trace.zip
+    Usage:
+
+        npx playwright show-trace test-results/new_user-schedule-PPV-flow-via-schedule-chromium-retry1/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests/new_user/schedule.spec.ts:24:5 › PPV flow via schedule ──────────────────────
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

@@ -170,7 +170,7 @@ async function runFlow(
   const regionUpper = region.toUpperCase();
   // Create fresh context — viewport null to match --start-maximized
   const context = await browser.newContext({
-    viewport: null,
+    viewport: { width: 1920, height: 1080 },
     colorScheme: 'dark',
     reducedMotion: 'no-preference',
     timezoneId: 'Asia/Kolkata',
@@ -931,7 +931,7 @@ async function runFlow(
         await page.waitForLoadState('domcontentloaded').catch(() => { });
 
         // After personal details Continue, wait and check if we moved to payment
-        await page.waitForURL(url => url.toString().includes('paymentDetails'), { timeout: 2000 }).catch(() => { });
+        await page.waitForURL(/paymentDetails/, { timeout: 2000 }).catch(() => { });
         if (page.url().includes('paymentDetails')) {
           console.log('💳 Navigated to payment page after personal details');
         }
