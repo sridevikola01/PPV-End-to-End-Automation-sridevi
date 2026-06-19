@@ -236,7 +236,7 @@ async function runFlow(
     if (isSchedule) {
       const schedule = new SchedulePage(page);
       await schedule.navigate(baseUrl);
-      await setupPage(page, 8000);
+      await setupPage(page, 500);
       assertCountryMatch(page, region);
 
       const sport = json.SPORT || 'Boxing';
@@ -257,7 +257,7 @@ async function runFlow(
     } else if (isSearch) {
       const searchPage = new SearchPage(page);
       await searchPage.navigate(baseUrl);
-      await setupPage(page, 8000);
+      await setupPage(page, 500);
       assertCountryMatch(page, region);
       let searchQuery = eventData.PPV_NAME;
       if (eventData.PPV_NAME && eventData.PPV_NAME.includes(':')) {
@@ -305,7 +305,7 @@ async function runFlow(
             ? new BoxingPage(page)
             : new LandingPage(page);
       await landing.navigate(baseUrl, source, eventData);
-      await setupPage(page, 8000);
+      await setupPage(page, 500);
       assertCountryMatch(page, region);
 
       // If it's a bundle flow, check if the bundle section/product is present on the page.
@@ -854,7 +854,6 @@ async function runFlow(
           await signup.enterEmail(user.email);
           await signup.clickContinue();
           await page.waitForLoadState('domcontentloaded').catch(() => { });
-          await sleep(500);
         } else {
           console.log('ℹ️  Email input not visible or on personal details page — assuming directly on personal details page');
         }
@@ -932,7 +931,7 @@ async function runFlow(
         await page.waitForLoadState('domcontentloaded').catch(() => { });
 
         // After personal details Continue, wait and check if we moved to payment
-        await sleep(2000);
+        await page.waitForURL(url => url.toString().includes('paymentDetails'), { timeout: 2000 }).catch(() => { });
         if (page.url().includes('paymentDetails')) {
           console.log('💳 Navigated to payment page after personal details');
         }
