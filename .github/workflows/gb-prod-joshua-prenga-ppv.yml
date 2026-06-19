@@ -110,7 +110,7 @@ jobs:
       DAZN_REGION: ${{ inputs.DAZN_REGION }}
       DAZN_ENV: ${{ matrix.dazn_env }}
       PPV_EVENT: 'aj_joshua_prenga'
-      PAYMENT_METHOD: ${{ matrix.dazn_env == 'stag' && inputs.PAYMENT_METHOD || 'credit_card' }}
+      PAYMENT_METHOD: ${{ matrix.dazn_env == 'stag' && inputs.PAYMENT_METHOD || '' }}
       SWITCH: 'false'
 
     steps:
