@@ -28,10 +28,6 @@ export class HomePage extends LandingPage {
     });
   }
 
-  protected async clickExplore(): Promise<void> {
-    console.log('ℹ️ [clickExplore] Skipped explore click since direct home page navigation is used');
-  }
-
   // Find container logic:
   // For home-page-banner: uses LandingPage.findPPVInBanner
   // For home-page-dont-miss: finds tile, clicks it to open modal, and returns the modal popup!
