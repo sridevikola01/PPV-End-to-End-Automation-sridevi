@@ -53,8 +53,9 @@ import {
   handlePopupModal,
   assertCountryMatch,
 } from '../../utils/testHelpers';
+import { getGeolocationRegion } from '../../utils/geoHelper';
 
-const REGION = process.env.DAZN_REGION || 'GB';
+let REGION = process.env.DAZN_REGION || 'GB';
 const EVENT_CONFIG = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
 const SOURCE = process.env.SOURCE || 'my-account';
 
@@ -70,6 +71,13 @@ test('PPV flow via existing user my account', async ({ browser }) => {
   test.setTimeout(300_000);
 
   const json = loadEventConfig(EVENT_CONFIG);
+  const dynamicRegion = await getGeolocationRegion();
+  let regionToUse = dynamicRegion;
+  if (!json.regions?.[regionToUse] && !(regionToUse === 'GB' && json.regions?.UK)) {
+    console.log(`⚠️ Geolocated region "${dynamicRegion}" is not supported by event config. Falling back to default region "GB"`);
+    regionToUse = 'GB';
+  }
+  REGION = regionToUse;
   const PPV_TYPE = (process.env.PPV_TYPE || json.PPV_TYPE || 'normal').toLowerCase();
   configureExcelPathForEvent(json.eventKey || '');
   const eventData = buildEventData(json, REGION);

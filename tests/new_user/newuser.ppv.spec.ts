@@ -52,8 +52,9 @@ import {
   handlePopupModal,
   assertCountryMatch,
 } from '../../utils/testHelpers';
+import { getGeolocationRegion } from '../../utils/geoHelper';
 
-const REGION = process.env.DAZN_REGION || 'GB';
+let REGION = process.env.DAZN_REGION || 'GB';
 const EVENT_CONFIG = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
 const PLAN = process.env.PLAN || 'standard_monthly';
 const SOURCE = process.env.SOURCE || 'landing-page-banner';
@@ -1626,6 +1627,13 @@ test('PPV flow for new user', async ({ browser }) => {
 
   try {
     const json = loadEventConfig(EVENT_CONFIG);
+    const dynamicRegion = await getGeolocationRegion();
+    let regionToUse = dynamicRegion;
+    if (!json.regions?.[regionToUse] && !(regionToUse === 'GB' && json.regions?.UK)) {
+      console.log(`⚠️ Geolocated region "${dynamicRegion}" is not supported by event config. Falling back to default region "GB"`);
+      regionToUse = 'GB';
+    }
+    REGION = regionToUse;
 
     const plansPath = path.resolve(process.cwd(), 'config/DaznPlan.json');
     const plans = JSON.parse(fs.readFileSync(plansPath, 'utf-8'));
