@@ -57,9 +57,30 @@ export class SchedulePage {
     await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
     // Wait for networkidle so OneTrust's async cookie script has time to load
     await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
-    // Use longer timeout to wait for cookie banner to appear and dismiss it
-    await handleCookies(this.page, 8000);
-    await this.page.waitForSelector('body', { timeout: 15000 });
+    // Use shorter timeout for cookie banner — if it takes too long, the page
+    // or context may have been closed by the test runner (e.g. timeout abortion).
+    await handleCookies(this.page, 5000);
+
+    // Check if page/context is still open before proceeding (the test runner
+    // may have closed it due to a timeout or external navigation).
+    if (this.page.isClosed()) {
+      console.warn('⚠️ Page was closed during schedule navigation — stopping navigate()');
+      return;
+    }
+
+    await this.page.waitForSelector('body', { timeout: 8000 }).catch(() => {
+      if (this.page.isClosed()) {
+        console.warn('⚠️ Page was closed while waiting for body — stopping navigate()');
+        return;
+      }
+      console.warn('⚠️ Body selector timed out but page is still open — continuing...');
+    });
+
+    // Check again after the potentially-failing body wait
+    if (this.page.isClosed()) {
+      console.warn('⚠️ Page was closed after body wait — stopping navigate()');
+      return;
+    }
 
     console.log('✅ Schedule page loaded');
     await this.page.waitForTimeout(1000); // Wait a brief moment for any popup to animate in
