@@ -3,6 +3,15 @@ name: AU PROD Schedule PPV
 on:
   workflow_dispatch:
     inputs:
+      RUNNER_TYPE:
+        description: 'Choose Runner Architecture (ARM64 for Hari, X64 for SriDevi)'
+        required: true
+        default: 'ARM64'
+        type: choice
+        options:
+          - ARM64
+          - X64
+
       PPV_CONFIG:
         description: 'PPV config filename/key'
         required: true
@@ -36,13 +45,12 @@ jobs:
     runs-on:
       - self-hosted
       - macOS
-      - ARM64
-
+      - ${{ inputs.RUNNER_TYPE }}
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         plan:
           - standard_monthly
@@ -79,7 +87,21 @@ jobs:
       - name: Install dependencies if needed
         run: |
           if [ ! -d node_modules ]; then
-            npm ci
+            # Search parent directories for an existing node_modules folder to save setup time
+            for path in ../../../.. ../../../../../.. ../..; do
+              if [ -d "$path/node_modules" ]; then
+                echo "✅ Found local node_modules at: $path/node_modules"
+                echo "Symlinking to workspace..."
+                ln -s "$path/node_modules" node_modules
+                break
+              fi
+            done
+
+            # Fallback to fresh install if no local node_modules found
+            if [ ! -d node_modules ]; then
+              echo "⚠️ No local node_modules found. Running fresh npm ci..."
+              npm ci
+            fi
           fi
 
       - name: Verify Playwright
@@ -92,7 +114,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-prod-${{ matrix.plan }}
+          name: playwright-report-schedule-${{ github.run_id }}-${{ github.job }}
           path: playwright-report/
           if-no-files-found: ignore
 
@@ -100,7 +122,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-prod-${{ matrix.plan }}
+          name: test-results-schedule-${{ github.run_id }}-${{ github.job }}
           path: |
             test-results/
             reports/
