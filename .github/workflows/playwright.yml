@@ -13,9 +13,9 @@ on:
         default: 'GB'
         type: choice
         options:
-          - AU
+          - AE
           - GB
-          - UAE
+          - AU
           - US
           - BR
       PLAN:

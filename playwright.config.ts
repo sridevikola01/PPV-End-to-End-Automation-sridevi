@@ -4,7 +4,7 @@ export default defineConfig({
   testDir:   './tests',
   timeout:   300_000,
   retries:   0,
-  workers:   process.env.CI ? 4 : 1,
+  workers:   process.env.CI ? 8 : 1,
   outputDir: 'test-results',
 
   use: {

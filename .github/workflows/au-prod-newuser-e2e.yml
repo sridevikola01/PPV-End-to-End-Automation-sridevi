@@ -42,7 +42,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix:
         source:
           - home-page-get-started
@@ -113,6 +113,7 @@ jobs:
           path: playwright-report/
           if-no-files-found: ignore
 
+          retention-days: 3
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -122,3 +123,5 @@ jobs:
             test-results/
             reports/
           if-no-files-found: ignore
+
+          retention-days: 3

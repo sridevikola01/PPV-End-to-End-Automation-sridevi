@@ -9,11 +9,11 @@ on:
         default: 'GB'
         type: choice
         options:
-          - AU
           - GB
-          - UAE
+          - AU
           - US
           - BR
+          - AE
 
       DAZN_ENV:
         description: 'Environment to run'
@@ -125,7 +125,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     env:
@@ -172,6 +172,7 @@ jobs:
           path: playwright-report/
           if-no-files-found: ignore
 
+          retention-days: 3
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -181,3 +182,5 @@ jobs:
             test-results/
             reports/
           if-no-files-found: ignore
+
+          retention-days: 3
