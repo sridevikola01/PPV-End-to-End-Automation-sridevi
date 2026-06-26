@@ -34,6 +34,14 @@ export class BasePage {
    */
   async getPageTitle(): Promise<string> {
     try {
+      const h1s = this.page.locator('h1');
+      const count = await h1s.count().catch(() => 0);
+      for (let i = 0; i < count; i++) {
+        const text = ((await h1s.nth(i).textContent({ timeout: 2000 }).catch(() => '')) || '').trim();
+        if (text && text.toLowerCase() !== 'dazn') {
+          return text;
+        }
+      }
       const h1 = await this.page.locator('h1').first().textContent({ timeout: 2000 });
       return (h1 || '').trim();
     } catch {

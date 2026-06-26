@@ -1,0 +1,78 @@
+{
+  "eventKey": "zayas_boots",
+  "PPV_NAME": "Zayas vs. Boots",
+  "PPV_DISPLAY_NAME": "Zayas vs. Boots",
+  "SPORT": "Boxing",
+  "PPV_TYPE": "normal",
+  "global": {
+    "PPV_PROMOTER": "DAZN Boxing",
+    "PPV_DESCRIPTION": "Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.",
+    "PPV_UTC_DATE": "2025-06-27T20:30:00Z",
+    "PPV_LOCATION": "Barclays Center, Brooklyn",
+    "PPV_DATE": "Sat 27th Jun at 16:30",
+    "PPV_TIME": "16:30",
+    "PPV_CARD_TITLE": "Zayas vs. Boots",
+    "PPV_CARD_DESCRIPTION": "Just the fight - plus 7 days of DAZN Standard, free.",
+    "BOXING_BANNER_SUBTITLE": "Main Event • 27 Jun • 16:30"
+  },
+  "regions": {
+    "GB": {
+      "LANDING_PAGE_PPV_DATE": "27 June",
+      "PPV_PRICE": "£24.99",
+      "TODAY_YOU_PAY_PRICE": "£24.99",
+      "UPSELL_PRICE_LENGTH": "/month",
+      "PPV1_UPSELL_TILE_DATE": "",
+      "offers": []
+    },
+    "US": {
+      "LANDING_PAGE_PPV_DATE": "27 June",
+      "PPV_PRICE": "$59.99",
+      "TODAY_YOU_PAY_PRICE": "$59.99",
+      "UPSELL_PRICE": "",
+      "UPSELL_CROSSED_PRICE": "",
+      "UPSELL_PRICE_LENGTH": "/month",
+      "PPV1_UPSELL_TILE_DATE": "",
+      "offers": []
+    },
+    "AU": {
+      "LANDING_PAGE_PPV_DATE": "28 June",
+      "PPV_PRICE": "$49.99",
+      "TODAY_YOU_PAY_PRICE": "$49.99",
+      "UPSELL_PRICE": "$39.99",
+      "UPSELL_CROSSED_PRICE": "N/A",
+      "UPSELL_PRICE_LENGTH": "/month",
+      "PPV1_UPSELL_TILE_DATE": "",
+      "offers": []
+    },
+    "AE": {
+      "LANDING_PAGE_PPV_DATE": "27 June",
+      "PPV_PRICE": "AED 72.99",
+      "TODAY_YOU_PAY_PRICE": "AED 72.99",
+      "UPSELL_PRICE": "AED 72.99",
+      "UPSELL_CROSSED_PRICE": "N/A",
+      "UPSELL_PRICE_LENGTH": "/month",
+      "PPV1_UPSELL_TILE_DATE": "",
+      "offers": []
+    }
+  },
+  "variants": {
+    "variant1": {
+      "detection": "to watch your pay-per-view",
+      "ppvSelector": "input[type='radio']",
+      "ctaText": "Continue with pay-per-view"
+    },
+    "variant2": {
+      "detection": "choose your subscription",
+      "ppvSelector": "input[type='checkbox']",
+      "ctaText": "Continue with PPV + 7-day free trial"
+    }
+  },
+  "pages": {
+    "ppv": {
+      "detection": "to watch your pay-per-view"
+    },
+    "plan": {
+      "detection": "choose a plan that's right for you"
+    }
+  }
+}

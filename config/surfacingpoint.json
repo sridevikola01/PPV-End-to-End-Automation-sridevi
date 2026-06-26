@@ -4,6 +4,11 @@
     "endPage": "payment",
     "defaultSignup": true
   },
+  "home-page-dazntile": {
+    "source": "home-page-dazntile",
+    "endPage": "payment",
+    "defaultSignup": true
+  },
   "landing-page-banner": {
     "source": "landing-page-banner",
     "endPage": "payment"
@@ -11,6 +16,11 @@
   "landing-page-dont-miss-live": {
     "source": "landing-page-dont-miss-live",
     "endPage": "payment"
+  },
+  "landing-page-dont-miss-live-switch": {
+    "source": "landing-page-dont-miss-live",
+    "endPage": "payment",
+    "enableDevMode": true
   },
   "boxing-page-banner": {
     "source": "boxing-page-banner",
@@ -62,6 +72,29 @@
   },
   "home-biggest-fights": {
     "source": "home-biggest-fights",
+    "endPage": "payment"
+  },
+  "boxing-banner-ultimate": {
+    "source": "boxing-banner-ultimate",
+    "endPage": "payment"
+  },
+  "boxing-ultimate-subscription": {
+    "source": "boxing-ultimate-subscription",
+    "endPage": "payment",
+    "defaultSignup": true
+  },
+  "boxing-standard-subscription": {
+    "source": "boxing-standard-subscription",
+    "endPage": "payment",
+    "defaultSignup": true
+  },
+  "boxing-join-the-club": {
+    "source": "boxing-join-the-club",
+    "endPage": "payment",
+    "defaultSignup": true
+  },
+  "glory": {
+    "source": "glory",
     "endPage": "payment"
   }
 }

@@ -3,6 +3,48 @@ import { Page } from '@playwright/test';
 import { validateVariant } from '../flows/validateVariant';
 
 export class StandalonePPVPage extends BasePage {
+
+  /**
+   * Wait until the standalone PPV page has rendered its primary content.
+   * This prevents validation from reading the transition/loading DOM.
+   */
+  async waitUntilPPVPageReady(): Promise<void> {
+    const title = this.page
+      .getByText(/choose the right plan for you/i)
+      .first();
+
+    await title.waitFor({ state: 'visible', timeout: 20000 });
+
+    await title.scrollIntoViewIfNeeded().catch(() => {});
+
+    let previousText = '';
+    let stableReads = 0;
+
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const currentText = (
+        await title.innerText({ timeout: 2000 }).catch(() => '')
+      ).replace(/\s+/g, ' ').trim();
+
+      if (currentText && currentText === previousText) {
+        stableReads += 1;
+        if (stableReads >= 3) {
+          console.log(`✅ [PPV Ready] ${currentText}`);
+          await this.page.waitForTimeout(500);
+          return;
+        }
+      } else {
+        stableReads = 0;
+        previousText = currentText;
+      }
+
+      await this.page.waitForTimeout(300);
+    }
+
+    throw new Error(
+      `PPV page did not stabilise. Last title text: "${previousText}"`
+    );
+  }
+
   constructor(page: Page) {
     super(page);
   }

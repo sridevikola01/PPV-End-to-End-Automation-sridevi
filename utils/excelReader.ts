@@ -120,7 +120,37 @@ export const getPaymentDataByTierAndPlan = (
   const normalize = (val: any) =>
     val?.toString().trim().toLowerCase();
 
-  // If no Tier column exists, return all rows (backward compatible)
+  const rawRatePlan = normalize(ratePlan);
+
+  const ratePlanAliases: Record<string, string> = {
+    monthly: 'monthly',
+
+    standard_monthly: 'monthly',
+    ultimate_monthly: 'monthly',
+
+    standard_apm: 'annual pay monthly',
+    ultimate_apm: 'annual pay monthly',
+    annual_pay_monthly: 'annual pay monthly',
+
+    standard_apu: 'annual pay upfront',
+    ultimate_apu: 'annual pay upfront',
+    ultimate_upfront: 'annual pay upfront',
+    annual_pay_upfront: 'annual pay upfront',
+
+    standard_monthly_bundle: 'monthly bundle',
+    ultimate_monthly_bundle: 'monthly bundle',
+
+    standard_apm_bundle: 'annual pay monthly bundle',
+    ultimate_apm_bundle: 'annual pay monthly bundle',
+    annual_pay_monthly_bundle: 'annual pay monthly bundle',
+
+    standard_apu_bundle: 'annual pay upfront bundle',
+    ultimate_apu_bundle: 'annual pay upfront bundle',
+    annual_pay_upfront_bundle: 'annual pay upfront bundle',
+  };
+
+  const resolvedRatePlan = ratePlanAliases[rawRatePlan] ?? rawRatePlan;
+
   if (data.length > 0 && !('Tier' in data[0])) {
     console.log('ℹ️  No Tier column in Payment page — returning all rows');
     return data;
@@ -131,18 +161,16 @@ export const getPaymentDataByTierAndPlan = (
     return data.filter((d: any) => normalize(d.Tier) === normalize(tier));
   }
 
-  // Common rows (apply to all tier/plan combos)
   const commonData = data.filter(
     (d: any) =>
       normalize(d.Tier) === 'common' &&
       normalize(d['Rate Plan']) === 'all'
   );
 
-  // Specific rows for this tier + rate plan
   const tierPlanData = data.filter(
     (d: any) =>
       normalize(d.Tier) === normalize(tier) &&
-      normalize(d['Rate Plan']) === normalize(ratePlan)
+      normalize(d['Rate Plan']) === resolvedRatePlan
   );
 
   if (!tierPlanData.length) {
@@ -153,19 +181,24 @@ export const getPaymentDataByTierAndPlan = (
           .map((d: any) => `${d.Tier} - ${d['Rate Plan']}`)
       ),
     ].join(', ');
+
     throw new Error(
-      `❌ No data found for tier: "${tier}" + rate plan: "${ratePlan}"\n` +
+      `❌ No data found for tier: "${tier}" + rate plan: "${ratePlan}"
+` +
+      `   Resolved Excel rate plan: "${resolvedRatePlan}"
+` +
       `   Available combinations: ${available}`
     );
   }
 
   const combined = [...commonData, ...tierPlanData];
 
-  console.log(`💎 Tier          : ${tier}`);
-  console.log(`📋 Rate Plan     : ${ratePlan}`);
-  console.log(`📊 Common rows   : ${commonData.length}`);
-  console.log(`📊 Specific rows : ${tierPlanData.length}`);
-  console.log(`📊 Total rows    : ${combined.length}`);
+  console.log(`💎 Tier              : ${tier}`);
+  console.log(`📋 Raw Rate Plan     : ${ratePlan}`);
+  console.log(`📋 Excel Rate Plan   : ${resolvedRatePlan}`);
+  console.log(`📊 Common rows       : ${commonData.length}`);
+  console.log(`📊 Specific rows     : ${tierPlanData.length}`);
+  console.log(`📊 Total rows        : ${combined.length}`);
 
   return combined;
 };

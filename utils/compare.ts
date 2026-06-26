@@ -3,7 +3,11 @@ export function compare(
   expected: string,
   type?:    string
 ): boolean {
-  if (!expected) return true;
+  if (!expected) {
+    // Empty expected: pass only if actual is also empty or N/A
+    const aTrimmed = actual.trim();
+    return aTrimmed === '' || aTrimmed.toUpperCase() === 'N/A';
+  }
 
   // ── N/A expected ───────────────────────────────────────────────
   if (expected.trim().toUpperCase() === 'N/A') {
@@ -12,7 +16,7 @@ export function compare(
 
   const norm = (s: string) =>
     s.replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u00A0]/g, '')
-     .replace(/[£$€₹]/g, '')
+     .replace(/[£$€₹]|AED\s?/g, '')
      .replace(/'/gi, "'")
      .replace(/&#39;/gi, "'")
      .replace(/&apos;/gi, "'")
@@ -25,7 +29,7 @@ export function compare(
      .replace(/[\u2018\u2019\u201A\u201B\u2032\u0060\u00B4]/g, "'")
      .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
      .replace(/\bppv\b/gi, '')
-     .replace(/[:\-–]/g, ' ')
+     .replace(/[\-–—\u2014\u2013]/g, ' ')
      .replace(/\s+/g, ' ')
      .trim()
      .toLowerCase()
@@ -33,6 +37,19 @@ export function compare(
 
   const a = norm(actual);
   const e = norm(expected);
+
+  // ── Price duplication check ─────────────────────────────────────
+  const priceRegex = /\d+(?:\.\d{2})?/;
+  const expectedPrices = e.match(new RegExp(priceRegex.source, 'g')) || [];
+  const actualPrices = a.match(new RegExp(priceRegex.source, 'g')) || [];
+  if (expectedPrices.length === 1 && actualPrices.length > 1) {
+    const singleExpected = expectedPrices[0];
+    const occurrences = actualPrices.filter(p => p === singleExpected).length;
+    if (occurrences > 1) {
+      console.log(`❌ [Compare] Price duplication detected: "${singleExpected}" appears ${occurrences} times in actual "${actual}"`);
+      return false;
+    }
+  }
 
   // ── Matchups Substring Match (e.g. "Beauty and The Beast: Fury vs. Hall" <-> "Fury vs. Hall") ──
   if (a.includes('vs') && e.includes('vs')) {
@@ -79,7 +96,7 @@ export function compare(
 
   // ── Price comparison ───────────────────────────────────────────
   const normPrice = (s: string) =>
-    s.replace(/[£$€₹,\s]/g, '').trim();
+    s.replace(/[£$€₹,\s]|AED\s?/g, '').trim();
   const aPrice = normPrice(actual);
   const ePrice = normPrice(expected);
   if (aPrice && ePrice && aPrice === ePrice) return true;
@@ -89,10 +106,51 @@ export function compare(
     return true;
   }
 
-  // ── Contains with length guard ─────────────────────────────────
-  if (a.includes(e) && actual.length < expected.length * 10) {
+  // ── Contains with length guard ─────────────────────────────
+  // Only allow substring match for very close-length strings to avoid false positives
+  // where a short expected matches inside a large page-text dump.
+  if (
+    a.includes(e) &&
+    e.length >= 10 &&
+    actual.length < expected.length * 1.5 &&
+    actual.length <= expected.length + 30
+  ) {
     if (a.includes('not ' + e) || a.includes('not' + e)) return false;
     return true;
+  }
+
+  // ── PPV Name: Abbreviated promotion prefix matching ─────────────
+  // Config may use abbreviated names like "AEW: Forbidden Door" or "PFL: Champions"
+  // but the live site displays "All Elite Wrestling Forbidden Door" or "Professional Fighters League Champions".
+  // Match if the part after the colon appears in the actual text and the actual text is
+  // genuinely longer (full name expansion), NOT just the colon removed.
+  if (expected.includes(':')) {
+    const beforeColon = norm(expected.split(':')[0].trim());
+    const afterColon = norm(expected.split(':').slice(1).join(':').trim());
+    // Only match if: (a) the part after colon appears in actual,
+    // (b) the actual text is genuinely longer than expected (suggesting full name expansion),
+    // (c) the prefix before the colon is NOT present as-is in actual (it was expanded).
+    if (
+      afterColon.length >= 5 &&
+      a.includes(afterColon) &&
+      actual.length > expected.length * 1.1 &&
+      !a.includes(beforeColon + ' ' + afterColon)
+    ) {
+      return true;
+    }
+  }
+  // Reverse: actual has colon, expected doesn't — only if expected is genuinely longer
+  if (actual.includes(':') && !expected.includes(':')) {
+    const beforeColonActual = norm(actual.split(':')[0].trim());
+    const afterColonActual = norm(actual.split(':').slice(1).join(':').trim());
+    if (
+      afterColonActual.length >= 5 &&
+      e.includes(afterColonActual) &&
+      expected.length > actual.length * 1.1 &&
+      !e.includes(beforeColonActual + ' ' + afterColonActual)
+    ) {
+      return true;
+    }
   }
 
   // ── Date flexibility ───────────────────────────────────────────
@@ -109,11 +167,17 @@ export function compare(
   const aParts = extractDateParts(a);
   const eParts = extractDateParts(e);
 
+  // Date-only flexibility: only use when NEITHER string contains a time component.
+  // If the actual has time info (e.g. "Sun 26th Jul at 00:30") but expected doesn't
+  // (e.g. "26 Jul"), this should NOT pass — the expected should include the time.
+  const actualHasTime = /\b\d{1,2}:\d{2}\b/.test(actual);
+  const expectedHasTime = /\b\d{1,2}:\d{2}\b/.test(expected);
   if (
     aParts.month && eParts.month &&
     aParts.day   && eParts.day   &&
     aParts.month === eParts.month &&
-    aParts.day   === eParts.day
+    aParts.day   === eParts.day &&
+    !actualHasTime && !expectedHasTime
   ) return true;
 
   // ── Time match flexibility ─────────────────────────────────────

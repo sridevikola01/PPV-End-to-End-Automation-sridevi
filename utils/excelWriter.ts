@@ -131,9 +131,15 @@ export const writeResults = async (
     const scheduleRows     = byPage(/^schedule$/i);
     const landingRows      = byPage(/^landing$/i);
     const homeOfBoxingRows = byPage(/^home of boxing$/i);
+    const homePageRows     = byPage(/^home page$/i);
+    const searchRows       = byPage(/^search$/i);
+    const standalonePPVRows= byPage(/^standalone ppv$/i);
+    const phoneRows        = byPage(/^phone number$/i);
 
     // ── Both specs — PPV page ─────────────────────────────────
     const ppvRows          = byPage(/^ppv$/i,                  true,  false, false);
+    const defaultSignupRows= byPage(/^default signup$/i,       true,  false, false);
+    const bundlePpvRows    = byPage(/^bundle ppv$/i,           true,  false, false);
 
     // ── Both specs — Plan page ────────────────────────────────
     const planRows         = byPage(/^dazn plan$/i,            false, true,  false);
@@ -147,18 +153,32 @@ export const writeResults = async (
     const ppvPaymentRows   = byPage(/^ppv payment$/i,          false, false, true);
     const confirmationRows = byPage(/^upgrade confirmation$/i, false, true,  false);
 
+    // ── Upsell flow pages ─────────────────────────────────────
+    const upsellFirstSuccessRows  = byPage(/^upsell first success$/i);
+    const upsellSecondSuccessRows = byPage(/^upsell second success$/i);
+    const upsellPaymentRows       = byPage(/^upsell payment$/i);
+
     // ── All rows for summary ──────────────────────────────────
     const allRows = [
       ...scheduleRows,
       ...landingRows,
       ...homeOfBoxingRows,
+      ...homePageRows,
+      ...searchRows,
+      ...standalonePPVRows,
+      ...phoneRows,
       ...ppvRows,
+      ...defaultSignupRows,
+      ...bundlePpvRows,
       ...planRows,
       ...paymentRows,
       ...myAccountRows,
       ...chooseBuyRows,
       ...ppvPaymentRows,
       ...confirmationRows,
+      ...upsellFirstSuccessRows,
+      ...upsellSecondSuccessRows,
+      ...upsellPaymentRows,
     ];
 
     const total     = allRows.length;
@@ -181,13 +201,22 @@ export const writeResults = async (
       { name: 'Schedule',            rows: scheduleRows     },
       { name: 'Landing',             rows: landingRows      },
       { name: 'Home of Boxing',      rows: homeOfBoxingRows },
+      { name: 'Home Page',           rows: homePageRows     },
+      { name: 'Search',              rows: searchRows       },
+      { name: 'Standalone PPV',      rows: standalonePPVRows},
+      { name: 'Phone Number',        rows: phoneRows        },
       { name: 'My Account',          rows: myAccountRows    },
       { name: 'Choose How To Buy',   rows: chooseBuyRows    },
       { name: 'PPV',                 rows: ppvRows          },
+      { name: 'Default Signup',      rows: defaultSignupRows},
+      { name: 'Bundle PPV',          rows: bundlePpvRows    },
       { name: 'DAZN Plan',           rows: planRows         },
       { name: 'Payment',             rows: paymentRows      },
       { name: 'PPV Payment',         rows: ppvPaymentRows   },
       { name: 'Upgrade Confirmation',rows: confirmationRows },
+      { name: 'Upsell First Success',rows: upsellFirstSuccessRows  },
+      { name: 'Upsell Second Success',rows: upsellSecondSuccessRows },
+      { name: 'Upsell Payment',      rows: upsellPaymentRows       },
     ].filter(g => g.rows.length > 0);
 
     const pageSummary = pageGroups.map(p => ({
@@ -250,6 +279,14 @@ export const writeResults = async (
       addSheet('Landing page',   landingRows,   LANDING_HEADERS);
     if (homeOfBoxingRows.length)
       addSheet('Home of Boxing', homeOfBoxingRows, LANDING_HEADERS);
+    if (homePageRows.length)
+      addSheet('Home Page',      homePageRows,  LANDING_HEADERS);
+    if (searchRows.length)
+      addSheet('Search page',    searchRows,    LANDING_HEADERS);
+    if (standalonePPVRows.length)
+      addSheet('Standalone PPV', standalonePPVRows, LANDING_HEADERS);
+    if (phoneRows.length)
+      addSheet('Phone Number',   phoneRows,     LANDING_HEADERS);
 
     // ── Existing user spec sheets ────────────────────────────
     if (myAccountRows.length)
@@ -260,6 +297,10 @@ export const writeResults = async (
     // ── Shared sheets ────────────────────────────────────────
     if (ppvRows.length)
       addSheet('PPV page',       ppvRows,       PPV_HEADERS);
+    if (defaultSignupRows.length)
+      addSheet('Default Signup', defaultSignupRows, PPV_HEADERS);
+    if (bundlePpvRows.length)
+      addSheet('Bundle PPV',     bundlePpvRows, PPV_HEADERS);
     if (planRows.length)
       addSheet('Dazn Plan page', planRows,      PLAN_HEADERS);
     if (paymentRows.length)
@@ -268,6 +309,14 @@ export const writeResults = async (
       addSheet('PPV Payment',    ppvPaymentRows, PPV_PAYMENT_HEADERS);
     if (confirmationRows.length)
       addSheet('Confirmation',   confirmationRows, CONFIRMATION_HEADERS);
+
+    // ── Upsell flow sheets ───────────────────────────────────
+    if (upsellFirstSuccessRows.length)
+      addSheet('Upsell 1st Success', upsellFirstSuccessRows, LANDING_HEADERS);
+    if (upsellSecondSuccessRows.length)
+      addSheet('Upsell 2nd Success', upsellSecondSuccessRows, LANDING_HEADERS);
+    if (upsellPaymentRows.length)
+      addSheet('Upsell Payment',     upsellPaymentRows, LANDING_HEADERS);
 
     // ── Write file ───────────────────────────────────────────
     const timestamp = new Date()

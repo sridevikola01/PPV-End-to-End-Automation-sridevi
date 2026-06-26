@@ -84,7 +84,7 @@ jobs:
           node -v
           npm -v
 
-      - name: Install dependencies if needed
+      - name: Install dependencies
         run: |
           if [ ! -d node_modules ]; then
             # Search parent directories for an existing node_modules folder to save setup time

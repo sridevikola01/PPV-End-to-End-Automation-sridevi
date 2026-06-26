@@ -133,29 +133,55 @@ export class SignupPage extends BasePage {
         'div.LeLwX, img[alt*="flag" i], div[tabindex="0"]'
       ).first();
 
-      if (await countrySelector.isVisible({ timeout: 1500 }).catch(() => false)) {
-        let text = await countrySelector.innerText().catch(() => '');
-        console.log(`ℹ️  Country selector text: "${text.trim()}"`);
-        
-        if (!text.includes(targetDial) && !text.toLowerCase().includes(targetCountry.toLowerCase())) {
-          console.log(`⚠️  Dial code or flag not loaded. Clicking selector to set "${targetCountry}"...`);
-          await countrySelector.click({ force: true }).catch(() => {});
+      const countrySelectorVisible = await countrySelector.isVisible({ timeout: 3000 }).catch(() => false);
+      if (!countrySelectorVisible) {
+        throw new Error('❌ Phone country selector/flag dropdown is not visible on the signup page.');
+      }
 
-          const option = this.page.locator(
-            `[role="option"]:has-text("${targetCountry}"), [role="option"]:has-text("${targetDial}"), ` +
-            `li:has-text("${targetCountry}"), option:has-text("${targetCountry}"), ` +
-            `button:has-text("${targetCountry}"), div:has-text("${targetCountry}"), span:has-text("${targetCountry}")`
-          ).first();
+      let text = await countrySelector.innerText().catch(() => '');
+      console.log(`ℹ️  Country selector text: "${text.trim()}"`);
+      
+      if (!text.includes(targetDial) && !text.toLowerCase().includes(targetCountry.toLowerCase())) {
+        console.log(`⚠️  Dial code or flag not loaded. Clicking selector to set "${targetCountry}"...`);
+        await countrySelector.click({ force: true }).catch(() => {});
 
-          if (await option.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await option.click({ force: true });
-            console.log(`✅ Selected country option: ${targetCountry}`);
-          } else {
-            console.warn(`⚠️  Country option "${targetCountry}" not found in list. Dismissing dropdown.`);
-            await this.page.keyboard.press('Escape').catch(() => {});
-          }
+        const option = this.page.locator(
+          `[role="option"]:has-text("${targetCountry}"), [role="option"]:has-text("${targetDial}"), ` +
+          `li:has-text("${targetCountry}"), option:has-text("${targetCountry}"), ` +
+          `button:has-text("${targetCountry}"), div:has-text("${targetCountry}"), span:has-text("${targetCountry}")`
+        ).first();
+
+        if (await option.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await option.click({ force: true });
+          console.log(`✅ Selected country option: ${targetCountry}`);
+        } else {
+          console.warn(`⚠️  Country option "${targetCountry}" not found in list. Dismissing dropdown.`);
+          await this.page.keyboard.press('Escape').catch(() => {});
         }
       }
+
+      // ── Verify country code and flag are fully loaded after selection ──
+      const finalSelectorText = await countrySelector.innerText().catch(() => '');
+      console.log(`ℹ️  Final Country selector text: "${finalSelectorText.trim()}"`);
+      
+      const hasDial = finalSelectorText.includes('+') || finalSelectorText.includes(targetDial);
+      if (!hasDial) {
+        throw new Error(`❌ Phone country dial code (${targetDial}) is missing or failed to load. Selector text: "${finalSelectorText}"`);
+      }
+
+      const flagImg = countrySelector.locator('img').first();
+      const hasImg = await flagImg.count().catch(() => 0) > 0;
+      if (!hasImg) {
+        throw new Error('❌ Country flag image element not found in the country selector.');
+      }
+      const flagLoaded = await flagImg.evaluate((img: HTMLImageElement) => {
+        return img.complete && img.naturalWidth > 0;
+      }).catch(() => false);
+
+      if (!flagLoaded) {
+        throw new Error('❌ Country flag image is broken or failed to load on the phone input field.');
+      }
+      console.log('✅ Phone country code and flag verified successfully.');
 
       // Fill the phone number directly
       const isStag = this.page.url().includes('stag') || this.page.url().includes('dev') || this.page.url().includes('beta');

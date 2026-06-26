@@ -17,10 +17,22 @@ export class BoxingPage extends LandingPage {
     await this.dismissConsentIfPresent();
     const isStag = url.includes('stag') || (process.env.DAZN_ENV || '').toLowerCase() === 'stag';
     const waitTimeout = isStag ? 2000 : 15000;
-    await this.page.waitForSelector(
-      'button:has-text("Buy this fight"), button:has-text("Get included")',
-      { state: 'visible', timeout: waitTimeout }
-    ).catch(() => { });
+    const isSubscriptionSource =
+      source === 'boxing-ultimate-subscription' ||
+      source === 'boxing-standard-subscription' ||
+      source === 'boxing-join-the-club';
+    if (isSubscriptionSource) {
+      // Subscription sources don't require PPV buttons — wait for any main content
+      await this.page.waitForSelector(
+        'main, [class*="hero"], [class*="banner"], [class*="ultimate" i], button',
+        { state: 'visible', timeout: waitTimeout }
+      ).catch(() => { });
+    } else {
+      await this.page.waitForSelector(
+        'button:has-text("Buy this fight"), button:has-text("Get included")',
+        { state: 'visible', timeout: waitTimeout }
+      ).catch(() => { });
+    }
     console.log(`✅ Landed on: ${this.page.url()}`);
   }
 
@@ -313,13 +325,18 @@ export class BoxingPage extends LandingPage {
       // "Buy now" inside it. Throws if section or PPV not found.
       return this.findUpcomingFightsPPV(eventData);
     }
-    if (src === 'boxing-page-banner' || src === 'boxing-buy' || src === 'boxing-ultimate') {
+    if (src === 'boxing-page-banner' || src === 'boxing-buy' || src === 'boxing-ultimate' || src === 'boxing-banner-ultimate') {
       const banner = await this.findPPVInBanner(eventData);
       if (!banner) {
         console.log(`❌ [BoxingPage Banner] PPV "${eventData.PPV_NAME}" not found on hero banner.`);
         return null;
       }
       return banner;
+    }
+    if (src === 'boxing-ultimate-subscription' || src === 'boxing-standard-subscription' || src === 'boxing-join-the-club') {
+      // Subscription-only flows — no PPV container needed.
+      console.log(`ℹ️ [BoxingPage] Subscription source "${src}" — returning page body as container`);
+      return this.page.locator('body').first();
     }
     return this.page.locator('body').first();
   }
@@ -353,11 +370,136 @@ export class BoxingPage extends LandingPage {
       } else {
         btn = this.page.locator('button:has-text("Get Started"), a:has-text("Get Started")').first();
       }
+    } else if (source === 'boxing-ultimate-subscription') {
+      // ── "Introducing DAZN Ultimate" section — "Continue with DAZN Ultimate" CTA ──
+      // This CTA appears in the subscription section of /p/boxing (Image 3/4 reference).
+      // It takes the user directly to TierPlans or PlanDetails for Ultimate plan only.
+      console.log('💎 [boxing-ultimate-subscription] Looking for "Continue with DAZN Ultimate" CTA...');
+      const ultimateSubSelectors = [
+        'button:has-text("Continue with DAZN Ultimate")',
+        'a:has-text("Continue with DAZN Ultimate")',
+        'button:has-text("Join the club")',
+        'a:has-text("Join the club")',
+        'button:has-text("Join Club")',
+        'a:has-text("Join Club")',
+      ];
+      let found = false;
+      for (const sel of ultimateSubSelectors) {
+        const el = this.page.locator(sel).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          btn = el;
+          found = true;
+          console.log(`✅ [boxing-ultimate-subscription] CTA found via: ${sel}`);
+          break;
+        }
+      }
+      if (!found) {
+        // Scroll down to find the "Introducing DAZN Ultimate" section
+        for (let i = 0; i < 6; i++) {
+          await this.page.evaluate(() => window.scrollBy(0, 500));
+          await this.page.waitForTimeout(300);
+          for (const sel of ultimateSubSelectors) {
+            const el = this.page.locator(sel).first();
+            if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+              btn = el;
+              found = true;
+              console.log(`✅ [boxing-ultimate-subscription] CTA found after scroll via: ${sel}`);
+              break;
+            }
+          }
+          if (found) break;
+        }
+      }
+      if (!found || !btn) {
+        throw new Error('❌ [boxing-ultimate-subscription] "Continue with DAZN Ultimate" or "Join the club" CTA not found on boxing page.');
+      }
+    } else if (source === 'boxing-standard-subscription') {
+      // ── "Introducing DAZN Ultimate" section — "Continue with Standard" CTA ──
+      console.log('🔵 [boxing-standard-subscription] Looking for "Continue with Standard" CTA...');
+      const standardSubSelectors = [
+        'button:has-text("Continue with Standard")',
+        'a:has-text("Continue with Standard")',
+        'button:has-text("Continue with DAZN Standard")',
+        'a:has-text("Continue with DAZN Standard")',
+      ];
+      let foundStd = false;
+      for (const sel of standardSubSelectors) {
+        const el = this.page.locator(sel).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          btn = el;
+          foundStd = true;
+          console.log(`✅ [boxing-standard-subscription] CTA found via: ${sel}`);
+          break;
+        }
+      }
+      if (!foundStd) {
+        // Scroll down to find the section
+        for (let i = 0; i < 6; i++) {
+          await this.page.evaluate(() => window.scrollBy(0, 500));
+          await this.page.waitForTimeout(300);
+          for (const sel of standardSubSelectors) {
+            const el = this.page.locator(sel).first();
+            if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+              btn = el;
+              foundStd = true;
+              console.log(`✅ [boxing-standard-subscription] CTA found after scroll via: ${sel}`);
+              break;
+            }
+          }
+          if (foundStd) break;
+        }
+      }
+      if (!foundStd || !btn) {
+        throw new Error('❌ [boxing-standard-subscription] "Continue with Standard" CTA not found on boxing page.');
+      }
+    } else if (source === 'boxing-join-the-club') {
+      // ── "Introducing DAZN Ultimate" section — "Join the club" CTA ──
+      // Distinct button from "Continue with DAZN Ultimate" — this is the
+      // subscription tile CTA that takes the user directly to TierPlans/PlanDetails.
+      console.log('🌟 [boxing-join-the-club] Looking for "Join the club" CTA...');
+      const joinSelectors = [
+        'button:has-text("Join the club")',
+        'a:has-text("Join the club")',
+        'button:has-text("Join Club")',
+        'a:has-text("Join Club")',
+        'button:has-text("Join the Club")',
+        'a:has-text("Join the Club")',
+      ];
+      let foundJoin = false;
+      for (const sel of joinSelectors) {
+        const el = this.page.locator(sel).first();
+        if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+          btn = el;
+          foundJoin = true;
+          console.log(`✅ [boxing-join-the-club] CTA found via: ${sel}`);
+          break;
+        }
+      }
+      if (!foundJoin) {
+        // Scroll down to find the "Introducing DAZN Ultimate" section
+        for (let i = 0; i < 8; i++) {
+          await this.page.evaluate(() => window.scrollBy(0, 500));
+          await this.page.waitForTimeout(300);
+          for (const sel of joinSelectors) {
+            const el = this.page.locator(sel).first();
+            if (await el.isVisible({ timeout: 500 }).catch(() => false)) {
+              btn = el;
+              foundJoin = true;
+              console.log(`✅ [boxing-join-the-club] CTA found after scroll via: ${sel}`);
+              break;
+            }
+          }
+          if (foundJoin) break;
+        }
+      }
+      if (!foundJoin || !btn) {
+        throw new Error('❌ [boxing-join-the-club] "Join the club" CTA not found on boxing page.');
+      }
     } else {
       let btnSelector = '';
       if (source === 'boxing-buy' || source === 'boxing-page-banner') {
         btnSelector = 'button:has-text("Buy this fight"), a:has-text("Buy this fight")';
-      } else if (source === 'boxing-ultimate') {
+      } else if (source === 'boxing-ultimate' || source === 'boxing-banner-ultimate') {
         btnSelector = 'button:has-text("Get included in DAZN Ultimate"), a:has-text("Get included in DAZN Ultimate")';
       } else if (source === 'boxing-upcoming-fights') {
         // container IS the specific PPV card — find "Buy now" inside it

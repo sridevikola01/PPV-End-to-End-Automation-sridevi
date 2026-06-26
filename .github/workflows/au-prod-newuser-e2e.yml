@@ -1,4 +1,4 @@
-name: AU PROD New User End-to-End Flows
+name: New User E2E - AU - PROD
 
 on:
   workflow_dispatch:
@@ -41,7 +41,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 8
       matrix:
         source:
           - home-page-get-started
@@ -50,6 +50,11 @@ jobs:
           - boxing-page-banner
           - boxing-page-bundle
           - boxing-upcoming-fights
+          - home-page-dazntile
+          - boxing-standard-subscription
+          - boxing-banner-ultimate
+          - boxing-ultimate-subscription
+          - boxing-join-the-club
           - home-boxing-banner
           - home-boxing-tile
           - home-boxing-upcoming
@@ -65,6 +70,19 @@ jobs:
           - standard_apm
           - ultimate_apm
           - ultimate_upfront
+        exclude:
+          - source: boxing-banner-ultimate
+            plan: standard_monthly
+          - source: boxing-banner-ultimate
+            plan: standard_apm
+          - source: boxing-ultimate-subscription
+            plan: standard_monthly
+          - source: boxing-ultimate-subscription
+            plan: standard_apm
+          - source: boxing-join-the-club
+            plan: standard_monthly
+          - source: boxing-join-the-club
+            plan: standard_apm
 
     env:
       CI: 'true'
@@ -92,11 +110,10 @@ jobs:
           node -v
           npm -v
 
-      - name: Install dependencies if needed
+      - name: Install dependencies
         run: |
-          if [ ! -d node_modules ]; then
-            npm ci
-          fi
+          rm -rf node_modules
+          npm ci
 
       - name: Verify Playwright
         run: npx playwright --version
@@ -108,7 +125,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-prod-${{ matrix.plan }}
+          name: playwright-report-${{ matrix.plan }}-${{ github.run_id }}-${{ github.job }}
           path: playwright-report/
           if-no-files-found: ignore
 
@@ -116,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-prod-${{ matrix.plan }}
+          name: test-results-${{ matrix.plan }}-${{ github.run_id }}-${{ github.job }}
           path: |
             test-results/
             reports/

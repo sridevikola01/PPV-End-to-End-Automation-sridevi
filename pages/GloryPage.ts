@@ -3,7 +3,6 @@ import { BasePage } from './BasePage';
 import { StandalonePPVPage } from './StandalonePPVPage';
 import { SignupPage } from './SignupPage';
 import { PaymentPage } from './PaymentPage';
-import { PaymentFillPage } from './PaymentFillPage';
 import { createTestUser } from '../utils/testDataBuilder';
 
 /**
@@ -16,7 +15,6 @@ export class GloryPage extends BasePage {
   private standalonePPV: StandalonePPVPage;
   private signup: SignupPage;
   private payment: PaymentPage;
-  private paymentFill: PaymentFillPage;
 
   constructor(page: Page) {
     super(page);
@@ -25,7 +23,6 @@ export class GloryPage extends BasePage {
     this.standalonePPV = new StandalonePPVPage(page);
     this.signup        = new SignupPage(page);
     this.payment       = new PaymentPage(page);
-    this.paymentFill   = new PaymentFillPage(page);
   }
 
   // ─────────────────────────────
@@ -495,9 +492,9 @@ export class GloryPage extends BasePage {
         if (env === 'stag') {
           console.log('💳 Environment is stag — filling credit card payment details...');
           try {
-            await this.paymentFill.fillPaymentAndSubmit();
-            await this.paymentFill.verifyPaymentSuccess();
-            await this.paymentFill.clickSuccessContinue();
+            await this.payment.fillPaymentAndSubmit();
+            await this.payment.verifyPaymentSuccess();
+            await this.payment.clickSuccessContinue();
             console.log('✅ Payment details submitted successfully on staging!');
             results.push({
               page: 'Payment Success',

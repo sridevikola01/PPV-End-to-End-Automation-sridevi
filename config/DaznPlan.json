@@ -18,8 +18,8 @@
         "UPFRONT_SAVE_AMOUNT": "49.89",
         "ANNUAL_SAVINGS_BADGE": "SAVE £135.99 A YEAR",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged £25.99/month. Cancel anytime before the end of the trial.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then £15.99/month for 11 months (£175.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_ANNUAL": "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically at the price applicable on that date. Cancel auto-renewal anytime in My Account.",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "Every match from Lega Serie A, and highlights from LALIGA, Bundesliga and the Saudi Pro League.",
@@ -38,7 +38,7 @@
             "DISCOUNT_BADGE": "81% OFF for your first month",
             "PLAN_LABEL": "Flex – Pay Monthly - First Month Only",
             "OFFER_DESCRIPTION": "Pay for the fight and get your first month of DAZN Standard for only £4.99. Monthly subscription. Cancel any time.",
-            "CANCELLATION_TEXT": "£4.99 for your first month, then £25.99/month. Monthly subscription. Cancel anytime with 30 days notice.",
+            "CANCELLATION_TEXT": "{{CURRENCY}}{{OFFER_PRICE}} for your first month, then {{CURRENCY}}{{ORIGINAL_PRICE}}/month. Monthly subscription. Cancel anytime with 30 days notice.",
             "TODAY_YOU_PAY": "19.98",
             "TODAY_YOU_PAY_ORIGINAL": "40.98"
           }
@@ -59,8 +59,8 @@
         "UPFRONT_SAVE_AMOUNT": "149.89",
         "ANNUAL_SAVINGS_BADGE": "SAVE $140.99 A YEAR",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $30.99/month. Cancel anytime before the end of the trial.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $20.99/month for 11 months ($230.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_ANNUAL": "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically at the price applicable on that date. Cancel auto-renewal anytime in My Account.",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "185+ fights a year from the world's best promoters.",
@@ -83,8 +83,8 @@
         "UPFRONT_SAVE_AMOUNT": "79.89",
         "ANNUAL_SAVINGS_BADGE": "SAVE $196.99 A YEAR",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $31.99/month. Cancel anytime before the end of the trial.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $16.99/month for 11 months ($186.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_ANNUAL": "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically at the price applicable on that date. Cancel auto-renewal anytime in My Account.",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Monthly Saver plan will renew automatically on {{RENEWAL_DATE}}. Cancel this auto-renewal in My Account.",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "185+ fights a year from the world's best promoters.",
@@ -109,8 +109,8 @@
         "UPFRONT_SAVE_AMOUNT": "140.89",
         "ANNUAL_SAVINGS_BADGE": "SAVE AED 140.89 A YEAR",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged AED 54.99/month. Cancel anytime before the end of the trial.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then AED 54.99/month for 11 months. 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}} {{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_ANNUAL": "First month free, then {{CURRENCY}} {{MONTHLY_PRICE}}/month for 11 months. 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically at the price applicable on that date. Cancel auto-renewal anytime in My Account.",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ULTIMATE_FEATURE_2": "185+ fights a year from the world's best promoters.",
@@ -137,8 +137,9 @@
         "ANNUAL_MONTHS": "11",
         "NEXT_PAYMENT_PRICE": "£25.99",
         "TRIAL_MONTHLY_PRICE": "£25.99",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then £15.99/month for 11 months (£175.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged £25.99/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_ANNUAL": "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically at the price applicable on that date. Cancel auto-renewal anytime in My Account.",
+        "CANCELLATION_TEXT_STANDARD_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "ANNUAL_SAVINGS_BADGE": "SAVE £135.99 A YEAR",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
@@ -158,8 +159,9 @@
         "ANNUAL_MONTHS": "11",
         "NEXT_PAYMENT_PRICE": "$20.99",
         "TRIAL_MONTHLY_PRICE": "$30.99",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $20.99/month for 11 months ($230.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $30.99/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_ANNUAL": "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically at the price applicable on that date. Cancel auto-renewal anytime in My Account.",
+        "CANCELLATION_TEXT_STANDARD_APM": "12 Month Contract plan will renew automatically on {{RENEWAL_DATE}}. Cancel this auto-renewal in My Account.",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "ANNUAL_SAVINGS_BADGE": "SAVE $140.99 A YEAR",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
@@ -180,8 +182,9 @@
         "NEXT_PAYMENT_PRICE": "$16.99",
         "ANNUAL_SAVINGS_BADGE": "SAVE $196.99 A YEAR",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $31.99/month. Cancel anytime before the end of the trial.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $16.99/month for 11 months ($186.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_STANDARD_APM": "Your Monthly Saver plan will renew automatically on {{RENEWAL_DATE}}. Cancel this auto-renewal in My Account.",
+        "CANCELLATION_TEXT_ANNUAL": "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically at the price applicable on that date. Cancel auto-renewal anytime in My Account.",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Monthly Saver plan will renew automatically on {{RENEWAL_DATE}}. Cancel this auto-renewal in My Account.",
         "ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE": "$39.99",
         "TODAY_YOU_PAY_ULTIMATE_APM": "$39.99",
@@ -210,7 +213,6 @@
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "ANNUAL_SAVINGS_BADGE": "SAVE £135.99 A YEAR",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then £15.99/month for 11 months (£175.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
         "offers": [
           {
             "name": "ultimate_offer",
@@ -228,7 +230,7 @@
             "DISCOUNT_BADGE": "20% OFF for 12 months",
             "PLAN_LABEL": "Pay Monthly (First 12 months)",
             "OFFER_DESCRIPTION": "Offer for your first 12 months, standard price £24.99/month after that. Annual contract. Auto-renews.",
-            "CANCELLATION_TEXT": "Promotional price of £19.99/month for 12 months. Your subscription will automatically renew at the full price on {{RENEWAL_DATE}}. Manage or cancel your ren"
+            "CANCELLATION_TEXT": "Promotional price of {{CURRENCY}}{{OFFER_PRICE}}/month for 12 months. Your subscription will automatically renew at the full price on {{RENEWAL_DATE}}. Manage or cancel your ren"
           }
         ]
       },
@@ -248,7 +250,6 @@
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "ANNUAL_SAVINGS_BADGE": "SAVE $140.99 A YEAR",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $20.99/month for 11 months ($230.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
         "offers": []
       },
       "AU": {
@@ -264,7 +265,6 @@
         "NEXT_PAYMENT_PRICE": "$39.99",
         "ANNUAL_SAVINGS_BADGE": "SAVE $196.99 A YEAR",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $16.99/month for 11 months ($186.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Monthly Saver plan will renew automatically on {{RENEWAL_DATE}}. Cancel this auto-renewal in My Account.",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "offers": [
@@ -284,7 +284,7 @@
             "DISCOUNT_BADGE": "25% OFF for 12 months",
             "PLAN_LABEL": "Pay Monthly (First 12 months)",
             "OFFER_DESCRIPTION": "Offer for your first 12 months, standard price $39.99/month after that. Annual contract. Auto-renews.",
-            "CANCELLATION_TEXT": "Promotional price of $29.99/month for 12 months. Your subscription will automatically renew at the full price on {{RENEWAL_DATE}}. Manage or cancel your ren"
+            "CANCELLATION_TEXT": "Promotional price of {{CURRENCY}}{{OFFER_PRICE}}/month for 12 months. Your subscription will automatically renew at the full price on {{RENEWAL_DATE}}. Manage or cancel your ren"
           }
         ],
         "TRIAL_MONTHLY_PRICE": "$31.99"
@@ -305,7 +305,6 @@
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "ANNUAL_SAVINGS_BADGE": "SAVE AED 140.89 A YEAR",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then AED 54.99/month for 11 months. 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
         "offers": []
       }
     }
@@ -327,8 +326,7 @@
         "NEXT_PAYMENT_PRICE": "£25.99",
         "TRIAL_MONTHLY_PRICE": "£25.99",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then £15.99/month for 11 months (£175.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged £25.99/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
         "ANNUAL_SAVINGS_BADGE": "SAVE £135.99 A YEAR",
         "UPFRONT_SAVE_AMOUNT": "49.89",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
@@ -347,8 +345,7 @@
         "NEXT_PAYMENT_PRICE": "$449.99",
         "TRIAL_MONTHLY_PRICE": "$30.99",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $20.99/month for 11 months ($230.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $30.99/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
         "ANNUAL_SAVINGS_BADGE": "SAVE $140.99 A YEAR",
         "UPFRONT_SAVE_AMOUNT": "149.89",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
@@ -369,8 +366,7 @@
         "ANNUAL_SAVINGS_BADGE": "SAVE $79.89",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then $16.99/month for 11 months ($186.89 total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged $31.99/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
         "offers": [],
         "TRIAL_MONTHLY_PRICE": "$31.99"
       },
@@ -387,8 +383,7 @@
         "NEXT_PAYMENT_PRICE": "AED 734.99",
         "TRIAL_MONTHLY_PRICE": "AED 54.99",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
-        "CANCELLATION_TEXT_ANNUAL": "First month free, then AED 54.99/month for 11 months. 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically",
-        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged AED 54.99/month. Cancel anytime before the end of the trial.",
+        "CANCELLATION_TEXT_TRIAL": "In 7 days, you'll be charged {{CURRENCY}} {{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.",
         "ANNUAL_SAVINGS_BADGE": "SAVE AED 140.89",
         "UPFRONT_SAVE_AMOUNT": "140.89",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",

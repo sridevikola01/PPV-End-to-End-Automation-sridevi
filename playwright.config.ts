@@ -1,17 +1,17 @@
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
-  testDir:   './tests',
-  timeout:   300_000,
-  retries:   0,
-  workers:   process.env.CI ? 4 : 1,
+  testDir: './tests',
+  timeout: 300_000,
+  retries: 0,
+  workers: process.env.CI ? 8 : 8,
   outputDir: 'test-results',
 
   use: {
-    headless:  process.env.HEADLESS === 'true',
-    viewport:  null,
+    headless: process.env.HEADLESS === 'true',
+    viewport: null,
     timezoneId: 'Asia/Kolkata',
-    locale:    'en-IN',
+    locale: 'en-IN',
 
     launchOptions: {
       args: [
@@ -26,7 +26,7 @@ export default defineConfig({
       ],
     },
 
-    actionTimeout:     15_000,
+    actionTimeout: 15_000,
     navigationTimeout: 30_000,
 
     video: {
@@ -35,18 +35,18 @@ export default defineConfig({
     },
 
     screenshot: 'only-on-failure',
-    trace:      'retain-on-failure',
+    trace: 'retain-on-failure',
   },
 
   projects: [
     {
       name: 'chromium',
       use: {
-        channel:  'chrome',
+        channel: 'chrome',
         headless: process.env.HEADLESS === 'true',
         viewport: null,
         timezoneId: 'Asia/Kolkata',
-        locale:    'en-IN',
+        locale: 'en-IN',
 
         launchOptions: {
           args: [

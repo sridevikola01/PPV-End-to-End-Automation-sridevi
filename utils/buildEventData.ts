@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  getNow,
+  getNowIST,
   formatNextPaymentDate,
   formatNextPaymentDateMonthly,
   formatNextPaymentDateYearly,
@@ -64,10 +66,20 @@ const GLOBAL_DEFAULTS: Record<string, string> = {
   CANCELLATION_TEXT_ANNUAL: "First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months ({{CURRENCY}}{{ANNUAL_TOTAL}} total over 12 months). 12-month minimum term. On {{RENEWAL_DATE}} your plan renews automatically|First month free, then {{CURRENCY}}{{ANNUAL_PRICE}}/month for 11 months",
   CANCELLATION_TEXT_ULTIMATE_APM: "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
   CANCELLATION_TEXT_ULTIMATE_APU: "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
+  ULTIMATE_FEATURE_1: "Minimum 12 pay-per-views a year included at no extra cost.",
   ULTIMATE_FEATURE_2: "Every match from Lega Serie A, and highlights from LALIGA, Bundesliga and the Saudi Pro League.",
   ULTIMATE_FEATURE_3: "HDR and Dolby 5.1 surround sound on select events.",
   UPSELL_CROSSED_PRICE: "N/A",
-  BUNDLE_MONTHLY_PRICE: "N/A"
+  UPSELL_PRICE_LENGTH: "month for 12 months",
+  PPV1_UPSELL_TILE_DATE: "{{LANDING_PAGE_PPV_DATE}}",
+  BUNDLE_MONTHLY_PRICE: "N/A",
+  // ── Plan Details card descriptions (shown when no promotional offer is active) ──
+  PLAN_DETAILS_FLEX_DESC: "Billed monthly. Cancel anytime.",
+  PLAN_DETAILS_ANNUAL_MONTHLY_DESC: "Annual contract. Auto renews.",
+  PLAN_DETAILS_ANNUAL_UPFRONT_DESC: "Annual contract. Auto renews. Pay for a year upfront to get the best value deal.",
+  // ── Payment page legal / cancel notice lines (no-offer fallback) ──
+  PAYMENT_FLEX_CANCEL_NOTICE: "Cancel with 30 days' notice.",
+  PAYMENT_FLEX_LEGAL_TEXT: "Monthly subscription. Cancel with 30 days' notice. Your subscription auto-renews unless you cancel.",
 };
 
 export function buildEventData(
@@ -101,14 +113,35 @@ export function buildEventData(
 
   const base: Record<string, any> = {
     PPV_NAME:      merged.PPV_NAME,
+    PPV_FULL_NAME: merged.PPV_FULL_NAME || merged.PPV_NAME,
     SECONDARY_PPV: merged.SECONDARY_PPV,
     ...merged.global,
     ...regional,
   };
 
-  // OFFER_TYPE comes from regional data (DaznPlan.json per region) — not all countries have 7-day trial
+  // OFFER_TYPE priority: DaznPlan.json (per plan+region) → event config → default
+  // Plan-level OFFER_TYPE is already merged by configLoader.ts (deepMerge(planData, eventData)).
+  // Since event configs no longer define OFFER_TYPE, the plan value flows through.
+  // This fallback handles the case where neither plan nor event defines it.
   if (!base.OFFER_TYPE) {
     base.OFFER_TYPE = '1_month_free';
+  }
+
+  // PPV1_UPSELL_TILE_DATE: fallback to LANDING_PAGE_PPV_DATE (same short-date format)
+  if (!base.PPV1_UPSELL_TILE_DATE && base.LANDING_PAGE_PPV_DATE) {
+    base.PPV1_UPSELL_TILE_DATE = base.LANDING_PAGE_PPV_DATE;
+  }
+
+  // Auto-compute NEXT_PAYMENT_DAYS_OFFSET from OFFER_TYPE if not explicitly set
+  if (!base.NEXT_PAYMENT_DAYS_OFFSET) {
+    const ot = (base.OFFER_TYPE || '1_month_free').toLowerCase();
+    if (ot === '7_day_trial') {
+      base.NEXT_PAYMENT_DAYS_OFFSET = 7;
+    } else if (ot === 'no_offer' || ot === 'none') {
+      base.NEXT_PAYMENT_DAYS_OFFSET = 30; // No trial/free period, next payment in ~1 month
+    } else {
+      base.NEXT_PAYMENT_DAYS_OFFSET = 30;
+    }
   }
 
   const env = (process.env.DAZN_ENV || 'stag').toLowerCase();
@@ -271,8 +304,8 @@ export function buildEventData(
 
       // Dynamic Annual Savings Badge calculation
       const flexOfferPriceNum = parseFloat(activeOffer.OFFER_PRICE);
-      const flexOrigPriceNum = parseFloat(activeOffer.ORIGINAL_PRICE || base.MONTHLY_PRICE || '25.99');
-      const annualPriceNum = parseFloat(base.ANNUAL_PRICE || '15.99');
+      const flexOrigPriceNum = parseFloat(activeOffer.ORIGINAL_PRICE || base.MONTHLY_PRICE || '');
+      const annualPriceNum = parseFloat(base.ANNUAL_PRICE || '');
       if (!isNaN(flexOfferPriceNum) && !isNaN(flexOrigPriceNum) && !isNaN(annualPriceNum)) {
         const savingsVal = flexOfferPriceNum + (flexOrigPriceNum * 11) - (annualPriceNum * 11);
         base.ANNUAL_SAVINGS_BADGE = `SAVE ${base.CURRENCY}${savingsVal.toFixed(2).replace('.00', '')} A YEAR`;
@@ -315,7 +348,21 @@ export function buildEventData(
   if (regional.DAZN_TIER           ?? merged.DAZN_TIER)           base.DAZN_TIER           = regional.DAZN_TIER           ?? merged.DAZN_TIER;
 
   // Resolve userState values from central userstatus.json file
-  const userStateKey = process.env.USER_STATE || 'freemium';
+  
+const userStateKey = process.env.USER_STATE || 'freemium';
+
+const isActiveStandard = [
+  'active_standard',
+  'active_standard_monthly',
+  'active_standard_apm',
+].includes(userStateKey);
+
+const isActiveUltimate = [
+  'active_ultimate',
+  'active_ultimate_apm',
+  'active_ultimate_upfront',
+].includes(userStateKey);
+
   const userStatesPath = path.resolve(process.cwd(), 'config/userstatus.json');
   let userStates: Record<string, any> = {};
   if (fs.existsSync(userStatesPath)) {
@@ -355,18 +402,18 @@ export function buildEventData(
 
   // Ultimate entitlement logic: active_ultimate on included PPVs is Purchased, otherwise Buy now.
   let ppvStatus = base.PPV_STATUS || "Buy now";
-  if (userStateKey === 'active_ultimate') {
+  if (isActiveUltimate) {
     const ppvType = merged.PPV_TYPE || json.PPV_TYPE;
     if (ppvType === 'included') {
       ppvStatus = 'Purchased';
-    } else {
+    } else if (!base.PPV_STATUS) {
       ppvStatus = 'Buy now';
     }
   }
   base.PPV_STATUS = ppvStatus;
 
   // Active standard user: Choose How To Buy page shows different feature text
-  if (userStateKey === 'active_standard') {
+  if (isActiveStandard) {
     base.UPSELL_FEATURE_1 = 'Pay-per-views included at no extra cost. Minimum of 12 events per year.';
     base.UPSELL_FEATURE_2 = "185+ fights a year from the best promoters.|185+ fights a year from the best promotors.|185+ fights a year from the world's best promoters.";
     base.UPSELL_FEATURE_3 = "HDR and Dolby 5.1 surround sound on select events.";
@@ -435,12 +482,19 @@ export function buildEventData(
   }
 
   // Active standard user: CTA must be set AFTER directFields to avoid being clobbered
-  if (userStateKey === 'active_standard') {
+  if (isActiveStandard) {
     base.PPV_CTA_TEXT = `Continue with ${base.PPV_NAME} only|Continue with pay-per-view`;
   }
 
   const isUSRegion = (base.BASE_URL || '').includes('/en-US');
   const ratePlanLower = base.RATE_PLAN.toLowerCase();
+
+  // Today's date for Upgrade Confirmation legal text
+  const todayIST = getNowIST();
+  const dd = String(todayIST.getDate()).padStart(2, '0');
+  const mm = String(todayIST.getMonth() + 1).padStart(2, '0');
+  const yyyy = todayIST.getFullYear();
+  base.TODAY_DATE = isUSRegion ? `${mm}/${dd}/${yyyy}` : `${dd}/${mm}/${yyyy}`;
 
   if (ratePlanLower === 'annual pay upfront') {
     base.NEXT_PAYMENT_DATE = isUSRegion
@@ -476,7 +530,7 @@ export function buildEventData(
     const monthly = parseFloat(base.ANNUAL_PAY_MONTHLY_PRICE.replace(/[^0-9.]/g, ''));
     const upfront = parseFloat(base.ANNUAL_UPFRONT_PRICE.replace(/[^0-9.]/g, ''));
     if (!isNaN(monthly) && !isNaN(upfront)) {
-      const saved = monthly * 12 - upfront;
+      const saved = Math.round((monthly * 12 - upfront) * 100) / 100;
       base.UPFRONT_SAVE_AMOUNT = saved % 1 === 0 ? saved.toFixed(0) : saved.toFixed(2);
     }
   }
@@ -492,6 +546,22 @@ export function buildEventData(
   const offerType = (base.OFFER_TYPE || '1_month_free').toLowerCase();
   if (offerType === '7_day_trial') {
     base.FLEX_FUTURE_DATE = formatFlexFutureDate(7);
+    // Trial payment page shows trial cancellation text, not legacy "Cancel with 30 days' notice"
+    base.PAYMENT_FLEX_CANCEL_NOTICE = 'N/A';
+    base.PAYMENT_FLEX_LEGAL_TEXT = 'N/A';
+  } else if (offerType === '1_month_free') {
+    const futureDate = getNow();
+    futureDate.setMonth(futureDate.getMonth() + 1);
+    const day = futureDate.getDate();
+    const month = futureDate.toLocaleString('en-GB', { month: 'long' });
+    const year = futureDate.getFullYear();
+    base.FLEX_FUTURE_DATE = `In 1 month • ${day} ${month} ${year}`;
+    // 1-month free also uses different cancellation text, not "Cancel with 30 days' notice"
+    base.PAYMENT_FLEX_CANCEL_NOTICE = 'N/A';
+    base.PAYMENT_FLEX_LEGAL_TEXT = 'N/A';
+  } else if (offerType === 'no_offer' || offerType === 'none') {
+    // No offer — keep default "Cancel with 30 days' notice" messaging
+    base.FLEX_FUTURE_DATE = 'N/A';
   } else {
     const futureDate = new Date();
     futureDate.setMonth(futureDate.getMonth() + 1);
@@ -499,6 +569,44 @@ export function buildEventData(
     const month = futureDate.toLocaleString('en-GB', { month: 'long' });
     const year = futureDate.getFullYear();
     base.FLEX_FUTURE_DATE = `In 1 month • ${day} ${month} ${year}`;
+  }
+
+  // ── Dynamic calculations for non-1-month-free plans ──
+  // When the event overrides OFFER_TYPE away from 1_month_free, recalculate
+  // savings badge and Today You Pay price dynamically.
+  if (offerType !== '1_month_free') {
+    const isAnnualFreeMonth = (base.ANNUAL_FREE_BADGE || base.ANNUAL_BADGE || '').toLowerCase().includes('1 month free') || (base.ANNUAL_FREE_BADGE || base.ANNUAL_BADGE || '').toLowerCase().includes('1 month');
+    // Annual Savings Badge:
+    // - With free month: (MONTHLY_PRICE * 12) - (ANNUAL_PRICE * 11)
+    // - Without free month: (MONTHLY_PRICE - ANNUAL_PRICE) * 12
+    // Recalculate for ALL plans since the DAZN Plan page shows both flex and annual options
+    const monthlyNum = parseFloat((base.MONTHLY_PRICE || '').replace(/[^0-9.]/g, ''));
+    const annualNum = parseFloat((base.ANNUAL_PRICE || '').replace(/[^0-9.]/g, ''));
+    if (!isNaN(monthlyNum) && !isNaN(annualNum) && monthlyNum > annualNum) {
+      const savings = isAnnualFreeMonth
+        ? Math.round(((monthlyNum * 12) - (annualNum * 11)) * 100) / 100
+        : Math.round((monthlyNum - annualNum) * 12 * 100) / 100;
+      const savingsStr = savings % 1 === 0 ? savings.toFixed(0) : savings.toFixed(2);
+      base.ANNUAL_SAVINGS_BADGE = `SAVE ${base.CURRENCY}${savingsStr} A YEAR`;
+      console.log(`💡 Recalculated ANNUAL_SAVINGS_BADGE (isAnnualFreeMonth: ${isAnnualFreeMonth}): ${base.ANNUAL_SAVINGS_BADGE}`);
+    }
+
+    // Today You Pay: depends on tier
+    // - Ultimate: PPV is included, so Today You Pay = plan price only
+    // - Standard: PPV + plan price (no free month discount)
+    const isAnnualPlan = base.RATE_PLAN && base.RATE_PLAN.toLowerCase().includes('annual');
+    if (isAnnualPlan && base.TIER !== 'ultimate') {
+      const ppvPriceNum = parseFloat((base.PPV_PRICE || '').replace(/[^0-9.]/g, ''));
+      const planPriceNum = parseFloat((base.ANNUAL_PRICE || base.ANNUAL_PAY_MONTHLY_PRICE || '').replace(/[^0-9.]/g, ''));
+      if (!isNaN(ppvPriceNum) && !isNaN(planPriceNum)) {
+        const totalPay = Math.round((ppvPriceNum + planPriceNum) * 100) / 100;
+        const totalPayStr = totalPay % 1 === 0 ? totalPay.toFixed(0) : totalPay.toFixed(2);
+        base.TODAY_YOU_PAY_PRICE = `${base.CURRENCY}${totalPayStr}`;
+        console.log(`💡 Recalculated TODAY_YOU_PAY_PRICE for standard annual: ${base.TODAY_YOU_PAY_PRICE}`);
+      }
+    }
+    // For ultimate plans, TODAY_YOU_PAY_PRICE stays as set from event/plan config (plan price only)
+    // For monthly plans, TODAY_YOU_PAY_PRICE stays as PPV_PRICE (set from event config)
   }
 
   // ── FLATTEN upsell_ppv SECTION ─────────────────────────────────────
@@ -545,7 +653,7 @@ export function buildEventData(
         base.UPSELL_OFFER_TEXT = ultimateOffer.OFFER_DESCRIPTION || '';
         console.log(`💡 Resolved dynamic UPSELL_PRICE from ultimate_offer: ${base.UPSELL_PRICE}`);
       } else {
-        const standardUltimatePrice = ultimateApmRegion.ANNUAL_PAY_MONTHLY_PRICE || '24.99';
+        const standardUltimatePrice = ultimateApmRegion.ANNUAL_PAY_MONTHLY_PRICE || '';
         base.UPSELL_PRICE = getPriceWithCurrency(standardUltimatePrice);
         base.UPSELL_ORIGINAL_PRICE = getPriceWithCurrency(standardUltimatePrice);
         base.UPSELL_CROSSED_PRICE = 'N/A';
@@ -643,6 +751,49 @@ export function buildEventData(
   if (!base.BUNDLE_MONTHLY_PRICE || base.BUNDLE_MONTHLY_PRICE === 'N/A') {
     if (base.BUNDLE_PRICE && base.BUNDLE_PRICE !== 'N/A') {
       base.BUNDLE_MONTHLY_PRICE = base.BUNDLE_PRICE;
+    }
+  }
+
+  // Prepend currency to raw price fields if currency is missing in expected event data
+  const currencySymbol = base.CURRENCY || '';
+  if (currencySymbol) {
+    const priceKeysToPrepend = [
+      'MONTHLY_PRICE',
+      'ANNUAL_PRICE',
+      'ANNUAL_PAY_MONTHLY_PRICE',
+      'ANNUAL_UPFRONT_PRICE',
+      'PPV_PRICE',
+      'TODAY_YOU_PAY_PRICE',
+      'UPSELL_PRICE',
+      'UPSELL_CROSSED_PRICE',
+      'BUNDLE_PRICE',
+      'BUNDLE_ORIGINAL_PRICE',
+      'FLEX_OFFER_PRICE',
+      'FLEX_ORIGINAL_PRICE',
+      'ANNUAL_PAY_MONTHLY_ORIGINAL_PRICE',
+      'UPSELL_ORIGINAL_PRICE',
+      'NEXT_PAYMENT_PRICE',
+      'TRIAL_MONTHLY_PRICE',
+      'BUNDLE_MONTHLY_PRICE',
+      'ANNUAL_TOTAL',
+      'ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE',
+      'TODAY_YOU_PAY_ULTIMATE_APM',
+      'OFFER_PRICE',
+      'ORIGINAL_PRICE',
+      'TODAY_YOU_PAY',
+      'TODAY_YOU_PAY_ORIGINAL'
+    ];
+
+    for (const key of priceKeysToPrepend) {
+      if (base[key] && typeof base[key] === 'string' && base[key] !== 'N/A' && base[key] !== '') {
+        const val = base[key].trim();
+        if (!val.startsWith(currencySymbol)) {
+          if (currencySymbol === 'AED' && val.startsWith('AED')) {
+            continue;
+          }
+          base[key] = `${currencySymbol}${val}`;
+        }
+      }
     }
   }
 

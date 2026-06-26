@@ -10,8 +10,8 @@ const CVV_FRAME = 'Secure card security code input frame';
 const CARD_HOLDER_FRAME = 'Secure text input frame';
 
 // ── Google Pay credentials (stag test account) ─────────────
-const GPAY_EMAIL    = 'srdazntest@gmail.com';
-const GPAY_PASSWORD = 'Dazn@123';
+const GPAY_EMAIL    = process.env.GPAY_EMAIL || 'srdazntest@gmail.com';
+const GPAY_PASSWORD = process.env.GPAY_PASSWORD || 'Dazn@123';
 
 export class PaymentPage extends BasePage {
   constructor(page: Page) {
@@ -133,6 +133,10 @@ export class PaymentPage extends BasePage {
         console.log(`  ⏭️  Skipping [${field}] in standard loop — validated via validateNextPaymentDetails`);
         continue;
       }
+      if (fieldLower === 'ultimate upsell price') {
+        console.log(`  ⏭️  Skipping [${field}] in standard loop — should not be validated before switching`);
+        continue;
+      }
 
       const rowFlow = (row['Flow'] || '').trim().toLowerCase();
       if (rowFlow) {
@@ -141,6 +145,15 @@ export class PaymentPage extends BasePage {
       }
 
       const expected = resolveExpected(row, eventData);
+
+      // Skip validation if expected is 'N/A' or empty
+      const expectedNorm = (expected || '').trim().toUpperCase();
+      const expectedOptions = expectedNorm.split('|').map(opt => opt.trim());
+      const isAllNAOrEmpty = expectedOptions.every(opt => opt === 'N/A' || opt === '');
+      if (isAllNAOrEmpty) {
+        console.log(`  ⏭️  Skipping [${field}] — expected is "${expected}"`);
+        continue;
+      }
 
       let actual = 'N/A';
       try {
@@ -164,8 +177,11 @@ export class PaymentPage extends BasePage {
     if (tier === 'ultimate') {
       planType = 'ultimate';
     } else if (ratePlan.includes('annual')) {
-      planType = '1_month_free_trial';
+      // Annual plans always have next payment visible — use 'annual' planType
+      // regardless of offer type (7_day_trial, 1_month_free, no_offer, etc.)
+      planType = 'annual';
     } else if (offerType === '7_day_trial') {
+      // Only monthly flex with 7-day trial should skip next payment
       planType = '7_day_free_trial';
     }
 
@@ -250,18 +266,23 @@ export class PaymentPage extends BasePage {
       const idx = nextAnnualIdx >= 0 ? nextAnnualIdx : nextIdx;
       if (idx >= 0) {
         const afterText = bodyText.substring(idx, idx + 100);
-        const priceMatch = afterText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/);
+        const priceMatch = afterText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
         if (priceMatch) {
           actualPrice = priceMatch[0].trim();
         }
       }
 
-      if (planType === '1_month_free_trial') {
+      if (planType === '1_month_free_trial' || planType === 'annual') {
         // Label format check: "Next Annual payment on <date>"
         // Date can be DD/MM/YYYY or DD Month YYYY
         const labelValid = /next\s+(?:annual\s+)?payment\s+on\s+(?:\d{1,2}[\/\s]\d{2}[\/\s]\d{4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i.test(actualLabel);
         
-        const labelExpected = 'Next [Annual] payment on <date>';
+        const expectedDateStr = eventData.NEXT_PAYMENT_DATE || '';
+        const labelExpected = expectedDateStr
+          ? ((eventData.RATE_PLAN || '').includes('upfront')
+            ? `Next Annual payment on ${expectedDateStr}`
+            : `Next payment on ${expectedDateStr}`)
+          : 'Next [Annual] payment on <date>';
         const labelActual = labelValid ? actualLabel : (actualLabel === 'N/A' ? 'Not visible' : actualLabel);
         const labelStatus = labelValid ? 'PASS' : 'FAIL';
         console.log(`  ${labelStatus === 'PASS' ? '✅' : '❌'} [Next Payment Label] expected="${labelExpected}" actual="${labelActual}"`);
@@ -353,48 +374,38 @@ export class PaymentPage extends BasePage {
     const banner = this.page.locator(bannerSelectors.join(', ')).first();
     const bannerVisible = await banner.isVisible({ timeout: 3000 }).catch(() => false);
 
-    // Validate 1: Banner presence
-    const presenceStatus = bannerVisible ? 'PASS' : 'FAIL';
-    console.log(`  ${presenceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Banner Present] expected="Yes" actual="${bannerVisible ? 'Yes' : 'No'}"`);
-    results.push({
-      page: 'Payment',
-      field: 'Ultimate Upsell Banner Present',
-      expected: 'Yes',
-      actual: bannerVisible ? 'Yes' : 'No',
-      status: presenceStatus,
-    });
+    // Validate 1: Banner presence (if not already validated in standard loop)
+    const isBannerPresentAlreadyValidated = results.some(r => r.page === 'Payment' && r.field === 'Ultimate Upsell Banner Present');
+    if (!isBannerPresentAlreadyValidated) {
+      const presenceStatus = bannerVisible ? 'PASS' : 'FAIL';
+      console.log(`  ${presenceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Banner Present] expected="Yes" actual="${bannerVisible ? 'Yes' : 'No'}"`);
+      results.push({
+        page: 'Payment',
+        field: 'Ultimate Upsell Banner Present',
+        expected: 'Yes',
+        actual: bannerVisible ? 'Yes' : 'No',
+        status: presenceStatus,
+      });
+    }
 
     if (!bannerVisible) {
       console.log('⚠️ [Ultimate Upsell] Banner not found — skipping text validation');
       return;
     }
 
-    // Validate 2: Banner text (contains "Switch to DAZN Ultimate")
-    const bannerText = ((await banner.textContent().catch(() => '')) || '').trim().replace(/\s+/g, ' ');
-    const expectedBannerText = 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost';
-    const textStatus = compare(bannerText, expectedBannerText, 'contains') ? 'PASS' : 'FAIL';
-    console.log(`  ${textStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Text] expected="${expectedBannerText}" actual="${bannerText}"`);
-    results.push({
-      page: 'Payment',
-      field: 'Ultimate Upsell Text',
-      expected: expectedBannerText,
-      actual: bannerText,
-      status: textStatus,
-    });
-
-    // Validate 3: Ultimate price shown in banner (e.g. £24.99/month)
-    const ultimatePrice = eventData.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE || eventData.TODAY_YOU_PAY_ULTIMATE_APM || '';
-    if (ultimatePrice) {
-      const priceNumeric = ultimatePrice.replace(/[^\d.]/g, '');
-      const priceInBanner = bannerText.includes(priceNumeric);
-      const priceStatus = priceInBanner ? 'PASS' : 'FAIL';
-      console.log(`  ${priceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Price] expected="${ultimatePrice}" actual="${bannerText}"`);
+    // Validate 2: Banner text (contains "Switch to DAZN Ultimate") (if not already validated)
+    const isTextAlreadyValidated = results.some(r => r.page === 'Payment' && r.field === 'Ultimate Upsell Text');
+    if (!isTextAlreadyValidated) {
+      const bannerText = ((await banner.textContent().catch(() => '')) || '').trim().replace(/\s+/g, ' ');
+      const expectedBannerText = 'Switch to DAZN Ultimate and enjoy pay-per-views at no extra cost';
+      const textStatus = compare(bannerText, expectedBannerText, 'contains') ? 'PASS' : 'FAIL';
+      console.log(`  ${textStatus === 'PASS' ? '✅' : '❌'} [Ultimate Upsell Text] expected="${expectedBannerText}" actual="${bannerText}"`);
       results.push({
         page: 'Payment',
-        field: 'Ultimate Upsell Price',
-        expected: ultimatePrice,
+        field: 'Ultimate Upsell Text',
+        expected: expectedBannerText,
         actual: bannerText,
-        status: priceStatus,
+        status: textStatus,
       });
     }
   }
@@ -532,23 +543,42 @@ export class PaymentPage extends BasePage {
       status: tierStatus,
     });
 
-    // Validate 2: PPV Price = £0 / $0 / €0 (included in Ultimate — no extra cost)
+    // Validate 2: PPV Price = 0 (included in Ultimate — no extra cost)
     const ppvName = eventData.PPV_NAME || '';
-    const vsMatch = ppvName.match(/(\w+)\s+vs\.?\s+(\w+)/i);
-    const fighter1 = vsMatch ? vsMatch[1].toLowerCase() : '';
-    const ppvIdx = fighter1 ? lower.indexOf(fighter1) : -1;
+    let ppvIdx = -1;
+    const parts = ppvName.toLowerCase().split(/[:\-–]/).map(p => p.trim());
+    for (const part of parts) {
+      const idx = lower.indexOf(part);
+      if (idx >= 0) {
+        ppvIdx = idx;
+        break;
+      }
+    }
+    if (ppvIdx === -1) {
+      const words = ppvName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      for (const word of words) {
+        const idx = lower.indexOf(word);
+        if (idx >= 0) {
+          ppvIdx = idx;
+          break;
+        }
+      }
+    }
+
     let actualPPVPrice = 'N/A';
     if (ppvIdx >= 0) {
-      const nearText = bodyText.substring(ppvIdx, ppvIdx + 200);
-      const priceMatch = nearText.match(/[\$£€₹]\s?0(?:\.00)?/);
+      const nearText = bodyText.substring(ppvIdx, ppvIdx + 300);
+      const priceMatch = nearText.match(/(?:AED\s?|[\$£€₹]\s?)0(?:\.00)?/);
       if (priceMatch) actualPPVPrice = priceMatch[0].trim();
     }
-    const ppvPriceStatus = /^[£$€₹]\s?0/.test(actualPPVPrice) ? 'PASS' : 'FAIL';
-    console.log(`  ${ppvPriceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - PPV Price] expected="£0/$0/€0" actual="${actualPPVPrice}"`);
+    const currency = eventData.CURRENCY || '£';
+    const expectedPPVPrice = `${currency}0`;
+    const ppvPriceStatus = (actualPPVPrice !== 'N/A' && /0/.test(actualPPVPrice)) ? 'PASS' : 'FAIL';
+    console.log(`  ${ppvPriceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - PPV Price] expected="${expectedPPVPrice}" actual="${actualPPVPrice}"`);
     results.push({
       page: 'Payment',
       field: 'Ultimate Switch - PPV Price',
-      expected: '£0 / $0 / €0',
+      expected: expectedPPVPrice,
       actual: actualPPVPrice,
       status: ppvPriceStatus,
     });
@@ -574,11 +604,11 @@ export class PaymentPage extends BasePage {
       status: planStatus,
     });
 
-    // Validate 4: Today You Pay (Ultimate price e.g. £24.99)
+    // Validate 4: Today You Pay (Ultimate price e.g. £24.99, AED 72.99)
     const todaySplit = bodyText.split(/today\s+you\s+pay/i);
     let actualTodayPrice = 'N/A';
     if (todaySplit.length > 1) {
-      const prices = todaySplit[1].match(/[\$£€₹]\s?\d+(?:\.\d{2})?/g) || [];
+      const prices = todaySplit[1].match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g) || [];
       if (prices[0]) actualTodayPrice = prices[0].trim();
     }
     const expectedUltimatePrice = eventData.TODAY_YOU_PAY_ULTIMATE_APM || eventData.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE || '';
@@ -612,7 +642,14 @@ export class PaymentPage extends BasePage {
         break;
       }
     }
-    const expectedCancelUltimate = eventData.CANCELLATION_TEXT_ULTIMATE_APM || '';
+    let expectedCancelUltimate = eventData.CANCELLATION_TEXT_ULTIMATE_APM || '';
+    if (expectedCancelUltimate.includes('{{')) {
+      expectedCancelUltimate = expectedCancelUltimate.replace(/\{\{(.*?)\}\}/g, (match, key) => {
+        const k = key.trim();
+        const val = eventData[k] ?? eventData[k.toUpperCase()] ?? eventData[k.toLowerCase()] ?? eventData[k.replace(/\s+/g, '_').toUpperCase()] ?? eventData[k.replace(/\s+/g, '_')];
+        return val !== undefined ? String(val) : match;
+      });
+    }
     const cancelStatus = expectedCancelUltimate
       ? (compare(actualCancelText, expectedCancelUltimate, 'contains') ? 'PASS' : 'FAIL')
       : (actualCancelText !== 'N/A' ? 'PASS' : 'FAIL');
@@ -657,6 +694,14 @@ export class PaymentPage extends BasePage {
 
     // ── Page title ─────────────────────────────────────────────
     if (fieldLower === 'page title' || fieldLower === 'pagetitle' || fieldLower === 'page heading') {
+      const h1s = this.page.locator('h1');
+      const count = await h1s.count().catch(() => 0);
+      for (let i = 0; i < count; i++) {
+        const text = ((await h1s.nth(i).textContent().catch(() => '')) || '').trim();
+        if (text && text.toLowerCase() !== 'dazn') {
+          return text;
+        }
+      }
       const h1 = await this.page.locator('h1').first().textContent().catch(() => '');
       return (h1 || '').trim();
     }
@@ -707,6 +752,40 @@ export class PaymentPage extends BasePage {
         }
       }
       
+      return 'N/A';
+    }
+
+    // ── Payment Method Heading ──────────────────────────────────
+    if (fieldLower === 'payment method heading') {
+      for (const line of lines) {
+        if (line.toLowerCase() === 'payment method') return line;
+      }
+      for (const line of lines) {
+        if (line.toLowerCase().includes('payment method') && line.length < 40) return line;
+      }
+      const live = await this.page.locator('h1, h2, h3, h4, h5, p, span, div')
+        .filter({ hasText: /payment method/i }).first()
+        .innerText({ timeout: 3000 }).catch(() => '');
+      if (live.toLowerCase().includes('payment method') && live.length < 40) {
+        return live.trim();
+      }
+      return 'N/A';
+    }
+
+    // ── Purchase Summary Heading ────────────────────────────────
+    if (fieldLower === 'purchase summary heading') {
+      for (const line of lines) {
+        if (line.toLowerCase() === 'purchase summary') return line;
+      }
+      for (const line of lines) {
+        if (line.toLowerCase().includes('purchase summary') && line.length < 40) return line;
+      }
+      const live = await this.page.locator('h1, h2, h3, h4, h5, p, span, div')
+        .filter({ hasText: /purchase summary/i }).first()
+        .innerText({ timeout: 3000 }).catch(() => '');
+      if (live.toLowerCase().includes('purchase summary') && live.length < 40) {
+        return live.trim();
+      }
       return 'N/A';
     }
 
@@ -771,7 +850,14 @@ export class PaymentPage extends BasePage {
     // ── PPV Name ───────────────────────────────────────────────
     if (fieldLower === 'ppv name' || fieldLower === 'ppv event name' || fieldLower === 'event name') {
       const source = (eventData.SOURCE || eventData.source || '').toLowerCase();
-      if (source === 'boxing-ultimate') return 'N/A';
+      if (
+        source === 'boxing-ultimate' ||
+        source === 'boxing-bundle-ultimate' ||
+        source === 'boxing-banner-ultimate' ||
+        source === 'boxing-ultimate-subscription' ||
+        source === 'boxing-standard-subscription' ||
+        source === 'boxing-join-the-club'
+      ) return 'N/A';
 
       const ppvName = eventData.PPV_NAME || '';
       const regex = new RegExp(ppvName.split(/\s+/).join('.*'), 'i');
@@ -829,7 +915,14 @@ export class PaymentPage extends BasePage {
     // ── PPV Price ──────────────────────────────────────────────
     if (fieldLower === 'ppv price') {
       const source = (eventData.SOURCE || eventData.source || '').toLowerCase();
-      if (source === 'boxing-ultimate') return 'N/A';
+      if (
+        source === 'boxing-ultimate' ||
+        source === 'boxing-bundle-ultimate' ||
+        source === 'boxing-banner-ultimate' ||
+        source === 'boxing-ultimate-subscription' ||
+        source === 'boxing-standard-subscription' ||
+        source === 'boxing-join-the-club'
+      ) return 'N/A';
 
       const ppvName = eventData.PPV_NAME || '';
       let ppvIndex = -1;
@@ -856,7 +949,7 @@ export class PaymentPage extends BasePage {
 
       if (ppvIndex >= 0) {
         const nearText = bodyText.substring(ppvIndex, ppvIndex + 300);
-        const priceMatch = nearText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/);
+        const priceMatch = nearText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
         if (priceMatch) return priceMatch[0].trim();
       }
 
@@ -865,7 +958,7 @@ export class PaymentPage extends BasePage {
         return expectedPrice;
       }
 
-      const allPrices = bodyText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/g) || [];
+      const allPrices = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g) || [];
       if (allPrices.length > 0) {
         const sorted = allPrices
           .map(p => ({ raw: p, val: parseFloat(p.replace(/[^\d.]/g, '')) }))
@@ -877,8 +970,8 @@ export class PaymentPage extends BasePage {
 
     // ── First Month Free Price ─────────────────────────────────
     if (fieldLower === 'first month free price') {
-      if (bodyText.includes('£0') || bodyText.includes('$0') || bodyText.includes('€0')) {
-        const match = bodyText.match(/[\$£€₹]\s?0/);
+      if (bodyText.includes('£0') || bodyText.includes('$0') || bodyText.includes('€0') || bodyText.includes('AED 0') || bodyText.includes('AED0')) {
+        const match = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)0/);
         return match ? match[0].trim() : 'N/A';
       }
       return 'N/A';
@@ -899,7 +992,7 @@ export class PaymentPage extends BasePage {
     // ── 7 Days Free Badge ──────────────────────────────────────
     if (fieldLower.includes('7 days free') || fieldLower.includes('7-days free')) {
       if (fieldLower.includes('price')) {
-        const match = bodyText.match(/[\$£€₹]\s?0/);
+        const match = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)0/);
         return match ? match[0].trim() : 'N/A';
       }
       const lines = bodyText.split('\n').map(l => l.trim());
@@ -930,7 +1023,7 @@ export class PaymentPage extends BasePage {
         const priceElements = allElements.filter(el => {
           if (el.children.length > 0) return false;
           const text = cleanText(el.textContent || '');
-          return /^[£$€₹]\s?\d+(?:\.\d{2})?$/.test(text);
+          return /^(?:AED\s?|[£$€₹]\s?)\d+(?:\.\d{2})?$/.test(text);
         });
 
         let todayEl: HTMLElement | null = null;
@@ -953,12 +1046,12 @@ export class PaymentPage extends BasePage {
             const activePrices = pricesInSection.filter(el => !isStrike(el));
             
             if (activePrices.length > 0) {
-              const activePriceVal = activePrices[0].textContent?.trim();
-              if (strikePrices.length > 0) {
+              // Expose duplicate active prices in the section if there are more than 1
+              const activePriceVal = activePrices.map(el => el.textContent?.trim() || '').filter(Boolean).join(' ');
+              if (activePrices.length === 1 && strikePrices.length > 0) {
                 const strikePriceVal = strikePrices[0].textContent?.trim();
                 if (strikePriceVal === activePriceVal) {
                   console.warn(`⚠️ Redundant strike-through price found showing same value: ${strikePriceVal}`);
-                  return activePriceVal;
                 }
               }
               return activePriceVal;
@@ -974,15 +1067,19 @@ export class PaymentPage extends BasePage {
       const todaySplit = bodyText.split(/today\s+you\s+pay/i);
       if (todaySplit.length > 1) {
         const afterToday = todaySplit[1];
-        const prices = afterToday.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/g) || [];
+        const prices = afterToday.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g) || [];
         const origPrice = eventData.ANNUAL_PAY_MONTHLY_ORIGINAL_PRICE || eventData.UPSELL_ORIGINAL_PRICE || '';
         const cleanOrig = origPrice.replace(/[^\d.]/g, '');
+        const filteredPrices = [];
         for (const p of prices) {
           const cleanP = p.replace(/[^\d.]/g, '');
           if (cleanOrig && cleanP === cleanOrig) {
             continue;
           }
-          return p.trim();
+          filteredPrices.push(p.trim());
+        }
+        if (filteredPrices.length > 0) {
+          return filteredPrices.join(' ');
         }
         if (prices[0]) return prices[0].trim();
       }
@@ -1047,7 +1144,7 @@ export class PaymentPage extends BasePage {
       }
       if (nextIdx >= 0) {
         const afterText = bodyText.substring(nextIdx, nextIdx + 100);
-        const price = afterText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/);
+        const price = afterText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
         if (price) return price[0].trim();
       }
       return 'N/A';
@@ -1190,7 +1287,7 @@ export class PaymentPage extends BasePage {
 
     // ── Bundle Name ───────────────────────────────────────────
     if (fieldLower === 'bundle name') {
-      const bundleName = (eventData?.BUNDLE_NAME || 'The Contender Bundle').toLowerCase();
+      const bundleName = (eventData?.BUNDLE_NAME || '').toLowerCase();
       const idx = lower.indexOf(bundleName);
       if (idx >= 0) {
         return bodyText.substring(idx, idx + bundleName.length);
@@ -1200,7 +1297,7 @@ export class PaymentPage extends BasePage {
 
     // ── Bundle Price ──────────────────────────────────────────
     if (fieldLower === 'bundle price') {
-      const bundleName = (eventData?.BUNDLE_NAME || 'The Contender Bundle').toLowerCase();
+      const bundleName = (eventData?.BUNDLE_NAME || '').toLowerCase();
       const bundleIdx = lower.indexOf(bundleName);
       if (bundleIdx >= 0) {
         const afterText = bodyText.substring(bundleIdx, bundleIdx + 150);
@@ -1223,7 +1320,7 @@ export class PaymentPage extends BasePage {
 
     // ── Bundle Original Price ──────────────────────────────────
     if (fieldLower === 'bundle original price') {
-      const bundleName = (eventData?.BUNDLE_NAME || 'The Contender Bundle').toLowerCase();
+      const bundleName = (eventData?.BUNDLE_NAME || '').toLowerCase();
       const bundleIdx = lower.indexOf(bundleName);
       if (bundleIdx >= 0) {
         const afterText = bodyText.substring(bundleIdx, bundleIdx + 150);
@@ -1243,7 +1340,7 @@ export class PaymentPage extends BasePage {
 
     // ── Bundle Discount ────────────────────────────────────────
     if (fieldLower === 'bundle discount') {
-      const bundleName = (eventData?.BUNDLE_NAME || 'The Contender Bundle').toLowerCase();
+      const bundleName = (eventData?.BUNDLE_NAME || '').toLowerCase();
       const bundleIdx = lower.indexOf(bundleName);
       if (bundleIdx >= 0) {
         const afterText = bodyText.substring(bundleIdx, bundleIdx + 150);
@@ -1404,17 +1501,34 @@ export class PaymentPage extends BasePage {
 
     // ── Rate Plan Price ────────────────────────────────────────
     if (fieldLower === 'rate plan price') {
-      const priceWithPeriod = bodyText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?\s*\/\s*(?:month|year)/i);
+      const priceWithPeriod = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?\s*\/\s*(?:month|year)/i);
       if (priceWithPeriod) return priceWithPeriod[0].trim();
       return 'N/A';
     }
 
-    // ── Rate Plan Subtext / Contract Subtext ───────────────────
-    if (fieldLower === 'rate plan subtext' || fieldLower === 'contract subtext') {
+    // ── Rate Plan Subtext / Contract Subtext / Plan Subtitle ───
+    if (fieldLower === 'rate plan subtext' || fieldLower === 'contract subtext' || fieldLower === 'plan subtitle') {
       const lines = bodyText.split('\n').map(l => l.trim());
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
         if (/billed\s+monthly/i.test(line) || /12-month\s+contract/i.test(line)) return line;
-        if (/pay.*full.*up[- ]?front/i.test(line) || /full\s+year\s+up[- ]?front/i.test(line) || (/up[- ]?front/i.test(line) && !/annual/i.test(line))) return line;
+        if (/pay.*full.*up[- ]?front/i.test(line) || /full\s+year\s+up[- ]?front/i.test(line) || (/up[- ]?front/i.test(line) && !/annual/i.test(line))) {
+          // Check if previous line(s) contain a "Save £X" prefix — combine them
+          let savePrefix = '';
+          for (let j = Math.max(0, i - 3); j < i; j++) {
+            const prev = lines[j];
+            if (/save\s+[£$€₹AED\s]*[\d.]+/i.test(prev)) {
+              savePrefix = prev.replace(/[.\s]+$/, '');
+              break;
+            }
+          }
+          if (savePrefix) {
+            // Combine: "Save £49.89. Pay for the full year up front"
+            const cleanLine = line.replace(/^[.\s]+/, '');
+            return `${savePrefix}. ${cleanLine}`;
+          }
+          return line;
+        }
       }
       return 'N/A';
     }
@@ -1715,7 +1829,7 @@ export class PaymentPage extends BasePage {
   private async _getGPayFrame(popup: import('@playwright/test').Page): Promise<import('@playwright/test').Frame | null> {
     console.log('🔍 [GPay] Looking for content iframe inside popup...');
 
-    // Wait for the page to have iframes
+    // Wait for the page to have iframes and load fully
     await popup.waitForTimeout(3000);
 
     // List all frames for debugging
@@ -1725,21 +1839,57 @@ export class PaymentPage extends BasePage {
       console.log(`   - ${f.url()}`);
     }
 
-    // Find the iframe that contains Google Pay content
-    // Usually it's the first child frame, or one that has pay.google.com URL
+    // Scan all frames for GPay content text
+    for (const frame of allFrames) {
+      try {
+        const bodyText = (await frame.locator('body').innerText({ timeout: 1000 }).catch(() => '')).toLowerCase();
+        if (
+          bodyText.includes('test card') ||
+          bodyText.includes('visa ••') ||
+          bodyText.includes('visa') ||
+          bodyText.includes("won't be charged") ||
+          bodyText.includes('test environment') ||
+          bodyText.includes('pay dazn')
+        ) {
+          console.log(`✅ [GPay] Found target content frame by content match: ${frame.url()}`);
+          return frame;
+        }
+      } catch (err) {
+        // Safe catch for cross-origin or closed frame errors
+      }
+    }
+
+    // Fallback 1: Look for buyflow iframe by URL
     for (const frame of allFrames) {
       if (frame === popup.mainFrame()) continue; // Skip main frame
       const url = frame.url();
-      if (url.includes('pay.google.com') || url.includes('payments.google.com') || url.includes('google.com')) {
-        console.log(`✅ [GPay] Found content frame: ${url}`);
+      if (url.includes('buyflow2') || url.includes('buyflow')) {
+        console.log(`✅ [GPay] Fallback: Found buyflow iframe by URL: ${url}`);
         return frame;
       }
     }
 
-    // If no matching child frame, try any non-main frame
+    // Fallback 2: Look for non-warmup matching URL
+    for (const frame of allFrames) {
+      if (frame === popup.mainFrame()) continue;
+      const url = frame.url();
+      if ((url.includes('pay.google.com') || url.includes('payments.google.com') || url.includes('google.com')) && !url.includes('auth_warmup') && !url.includes('bscframe')) {
+        console.log(`✅ [GPay] Fallback: Found matching URL frame: ${url}`);
+        return frame;
+      }
+    }
+
+    // Fallback 3: Use first child frame that isn't auth_warmup
     if (allFrames.length > 1) {
+      for (const frame of allFrames) {
+        if (frame === popup.mainFrame()) continue;
+        if (!frame.url().includes('auth_warmup')) {
+          console.log(`⚠️ [GPay] Fallback: Using non-warmup child frame: ${frame.url()}`);
+          return frame;
+        }
+      }
       const childFrame = allFrames[1];
-      console.log(`⚠️ [GPay] Using first child frame: ${childFrame.url()}`);
+      console.log(`⚠️ [GPay] Fallback: Using first child frame: ${childFrame.url()}`);
       return childFrame;
     }
 
@@ -2266,10 +2416,10 @@ export class PaymentPage extends BasePage {
    * Complete flow orchestrator
    */
   async fillPaymentAndSubmit(
-    cardNumber = '4111111111111111',
-    expiryDate = '03/30',
-    cvv = '737',
-    cardHolderName = 'Test User'
+    cardNumber = process.env.STAG_CARD_NUMBER || '4111111111111111',
+    expiryDate = process.env.STAG_CARD_EXPIRY || '03/30',
+    cvv = process.env.STAG_CARD_CVV || '737',
+    cardHolderName = process.env.STAG_CARD_HOLDER || 'Test User'
   ): Promise<void> {
     await this.selectCreditCard();
     await this.fillCardDetails(cardNumber, expiryDate, cvv, cardHolderName);

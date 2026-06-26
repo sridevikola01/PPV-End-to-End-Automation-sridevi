@@ -57,8 +57,8 @@ export function displayResultsTable(
     const failed = pageResults.filter(r => r.status === 'FAIL');
     if (failed.length) {
       for (const f of failed) {
-        const exp = String(f.expected ?? '').slice(0, 50);
-        const act = String(f.actual   ?? '').slice(0, 50);
+        const exp = String(f.expected ?? '');
+        const act = String(f.actual   ?? '');
         console.log(`       ❌ ${f.field}`);
         console.log(`          expected : ${exp}`);
         console.log(`          actual   : ${act}`);
@@ -81,13 +81,10 @@ export function displayResultsTable(
 
   // ── File paths ───────────────────────────────────────────────
   if (meta?.excelPath) {
-    console.log(`  📊  Excel   : ${meta.excelPath}`);
   }
 
   if (meta?.videoPath) {
-    console.log(`  🎥  Video   : ${meta.videoPath}`);
   } else {
-    console.log(`  🎥  Video   : not found — check test-results/artifacts/`);
   }
 
   console.log(`${dline}\n`);

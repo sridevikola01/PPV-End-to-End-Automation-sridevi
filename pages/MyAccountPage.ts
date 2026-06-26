@@ -56,47 +56,44 @@ export class MyAccountPage {
 
     console.log('📺 Scrolling to Pay-Per-View section...');
 
-    // Wait up to 5 seconds for the PPV heading to be attached to the DOM
-    const headingLocator = this.page.locator('h1, h2, h3, h4, h5, span, div')
+    // Wait up to 2 seconds for the PPV heading to be attached to the DOM
+    const headingLocator = this.page.locator('h1, h2, h3, h4, h5, [class*="heading" i], [class*="title" i]')
       .filter({ hasText: /pay-per-view|pay per view|available to buy/i })
       .first();
-    await headingLocator.waitFor({ state: 'attached', timeout: 5000 }).catch(() => {
-      console.log('⚠️ Timeout waiting for PPV section heading to attach to DOM');
-    });
 
-    const targetScrollY = await this.page.evaluate(() => {
-      const allEls = Array.from(
-        document.querySelectorAll('h1,h2,h3,h4,h5,span,div')
-      );
-      // Look for PPV section heading — strict match only
-      // Do NOT include 'events' — too broad, matches home page
-      const ppvHeadings = ['pay-per-view', 'pay per view', 'available to buy'];
-      for (const el of allEls) {
-        const text = (el as HTMLElement).innerText?.trim().toLowerCase() || '';
-        if (ppvHeadings.some(h => text === h)) {
-          const rect = el.getBoundingClientRect();
-          const target = Math.max(0, window.scrollY + rect.top - 120);
-          window.scrollTo({ top: target, behavior: 'instant' });
-          return target;
-        }
-      }
-      return -1;
-    }).catch(() => -1);
+    const targetScrollY = await headingLocator.waitFor({ state: 'attached', timeout: 2000 })
+      .then(() => headingLocator.evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        const target = Math.max(0, window.scrollY + rect.top - 120);
+        window.scrollTo({ top: target, behavior: 'instant' });
+        return target;
+      }))
+      .catch(() => -1);
 
     if (targetScrollY >= 0) {
       console.log(`✅ Scrolled to PPV section at ${targetScrollY}px`);
 
-      // Lock scroll for 1.5s — prevents page snapping back
+      // Lock scroll for 2s — prevents page snapping back (DAZN scroll-hijacking)
       await this.page.evaluate((lockedY: number) => {
         const interval = setInterval(() => {
           if (Math.abs(window.scrollY - lockedY) > 50) {
             window.scrollTo({ top: lockedY, behavior: 'instant' });
           }
         }, 50);
-        setTimeout(() => clearInterval(interval), 800);
+        setTimeout(() => clearInterval(interval), 2000);
       }, targetScrollY);
 
-      await this.page.waitForTimeout(800);
+      await this.page.waitForTimeout(2200);
+
+      // Verify scroll position — re-scroll if page snapped back
+      const checkY = await this.page.evaluate(() => window.scrollY).catch(() => 0);
+      if (Math.abs(checkY - targetScrollY) > 100) {
+        console.log(`⚠️  Scroll drifted to ${checkY}px (expected ~${targetScrollY}px) — re-scrolling`);
+        await this.page.evaluate((y: number) => {
+          window.scrollTo({ top: y, behavior: 'instant' });
+        }, targetScrollY);
+        await this.page.waitForTimeout(500);
+      }
 
     } else {
       console.log('⚠️  PPV heading not found — scrolling to mid-page');
@@ -106,7 +103,7 @@ export class MyAccountPage {
           behavior: 'instant',
         })
       );
-      await this.page.waitForTimeout(200);
+      await this.page.waitForTimeout(500);
     }
 
     const finalY = await this.page
@@ -120,6 +117,30 @@ export class MyAccountPage {
   private async searchPPVInCurrentDOM(ppvName: string): Promise<Locator | null> {
     const regex = new RegExp(ppvName.split(/\s+/).join('.*'), 'i');
 
+    // Strategy 1: Find name title element first, and walk up to find its card
+    const titleLocator = this.page.locator('span, p, div, h2, h3, h4, h5, a')
+      .filter({ hasText: regex });
+    const titleCount = await titleLocator.count().catch(() => 0);
+    for (let i = 0; i < titleCount; i++) {
+      const el = titleLocator.nth(i);
+      const text = await el.textContent().catch(() => '');
+      if (!text || text.length > 120) continue;
+
+      let current = el;
+      for (let depth = 0; depth < 5; depth++) {
+        const parent = current.locator('xpath=..');
+        const parentText = (await parent.textContent().catch(() => '')) || '';
+        if (parentText.length > 350) break;
+        const ctas = parent.locator('div[role="button"], button, a').filter({ hasText: /buy|get|book|continue|subscribe|purchase|select|choose/i });
+        const ctaCount = await ctas.count().catch(() => 0);
+        const subCardsCount = await parent.locator('#addons-list-card, article, [class*="card" i]').count().catch(() => 0);
+        if (ctaCount > 1 || subCardsCount > 1) break;
+        current = parent;
+      }
+      return current;
+    }
+
+    // Strategy 2: Fallback to old candidate list-based scan
     const nameParts = ppvName
       .split(/[:\-–—,]+/)
       .flatMap(p => p.trim().split(/\s+/))
@@ -131,7 +152,6 @@ export class MyAccountPage {
       return matchCount >= Math.min(2, nameParts.length);
     };
 
-    // Candidates by full name regex
     const candidates = this.page.locator('div, li, article, section, a').filter({ hasText: regex });
     const count = await candidates.count().catch(() => 0);
 
@@ -140,7 +160,6 @@ export class MyAccountPage {
       const text = await el.textContent().catch(() => '');
       if (!text || text.length > 400) continue;
 
-      // Skip containers of multiple cards/events
       const ctas = el.locator('div[role="button"], button, a').filter({ hasText: /buy|get|book|continue|subscribe|purchase|select|choose/i });
       const ctaCount = await ctas.count().catch(() => 0);
       const subCardsCount = await el.locator('#addons-list-card, article, [class*="card" i]').count().catch(() => 0);
@@ -151,21 +170,15 @@ export class MyAccountPage {
       const tagName = await el.evaluate(node => node.tagName.toLowerCase()).catch(() => '');
       const role = await el.getAttribute('role').catch(() => null);
       const isSelfCTA = tagName === 'a' || tagName === 'button' || role === 'button';
-
       const hasCTA = isSelfCTA || ctaCount > 0;
-
-      if (hasCTA) {
-        return el;
-      }
+      if (hasCTA) return el;
 
       const elText = text.toLowerCase();
       const hasPurchasedText = elText.includes('purchased') || elText.includes('included');
-      if (hasPurchasedText && text.length < 200) {
-        return el;
-      }
+      if (hasPurchasedText && text.length < 200) return el;
     }
 
-    // Try partial matching on cards
+    // Strategy 3: Try partial matching on cards
     const cardSelectors = [
       '#addons-list-card',
       'div[id*="ppv-card" i]',
@@ -189,7 +202,6 @@ export class MyAccountPage {
       if (!cardText || cardText.length > 400) continue;
 
       if (matchesPartially(cardText)) {
-        // Skip containers of multiple cards/events
         const ctas = card.locator('div[role="button"], button, a').filter({ hasText: /buy|get|book|continue|subscribe|purchase|select|choose/i });
         const ctaCount = await ctas.count().catch(() => 0);
         const subCardsCount = await card.locator('#addons-list-card, article, [class*="card" i]').count().catch(() => 0);
@@ -200,17 +212,11 @@ export class MyAccountPage {
         const tagName = await card.evaluate(node => node.tagName.toLowerCase()).catch(() => '');
         const role = await card.getAttribute('role').catch(() => null);
         const isSelfCTA = tagName === 'a' || tagName === 'button' || role === 'button';
-
         const hasCTA = isSelfCTA || ctaCount > 0;
-
-        if (hasCTA) {
-          return card;
-        }
+        if (hasCTA) return card;
 
         const hasPurchased = cardText.toLowerCase().includes('purchased') || cardText.toLowerCase().includes('included');
-        if (hasPurchased && cardText.length < 200) {
-          return card;
-        }
+        if (hasPurchased && cardText.length < 200) return card;
       }
     }
 
@@ -226,15 +232,14 @@ export class MyAccountPage {
     // Wait for the My Account page sections/cards to load
     if (this.isOnMyAccountPage()) {
       console.log('⏳ Waiting for PPV section, cards, or Explore button to be attached to DOM...');
-      const exploreSelector = 'a[href*="/ppv"], a[href*="/pay-per-view"], text=/explore.*ppv/i, text=/explore.*pay-per-view/i';
-      const cardSelector = '[id*="ppv-card"], [class*="ppv-card"], article, [class*="card" i]';
-      const headingSelector = 'h1, h2, h3, h4, h5, span, div';
-      const combinedSelector = `${exploreSelector}, ${cardSelector}, ${headingSelector}`;
+      const exploreSelector = 'a[href*="/ppv"], a[href*="/pay-per-view"]';
+      const cardSelector = '[id*="ppv-card"], [class*="ppv-card"], article, [class*="card" i], h2, h3';
+      const combinedSelector = `${exploreSelector}, ${cardSelector}`;
 
-      await this.page.waitForSelector(combinedSelector, { state: 'attached', timeout: 8000 }).catch(() => {
+      await this.page.waitForSelector(combinedSelector, { state: 'attached', timeout: 3000 }).catch(() => {
         console.log('⚠️ Timeout waiting for PPV related elements to attach to DOM');
       });
-      await this.page.waitForTimeout(1000);
+      await this.page.waitForTimeout(200);
     }
 
     // 1. Search in current DOM (My Account PPV section or Listing Page if already navigated)
@@ -576,6 +581,25 @@ export class MyAccountPage {
 
     return 'N/A';
   }
+
+  async hasPPVImage(ppvName: string): Promise<boolean> {
+    console.log(`🔍 Checking PPV image presence for: ${ppvName}`);
+    const row = await this.findPPVRow(ppvName);
+    if (!row) {
+      console.log('⚠️ PPV row not found when checking image');
+      return false;
+    }
+    const img = row.locator('img').first();
+    const isVisible = await img.isVisible({ timeout: 2000 }).catch(() => false);
+    if (isVisible) {
+      console.log('✅ PPV image is visible in row');
+      return true;
+    }
+    const count = await row.locator('img').count().catch(() => 0);
+    console.log(`ℹ️ PPV image count in row: ${count}`);
+    return count > 0;
+  }
+
 
   // ─────────────────────────────
   // IS PPV PURCHASED / INCLUDED

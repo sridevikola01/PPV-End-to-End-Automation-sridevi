@@ -17,7 +17,7 @@ export function createTestUser(): TestUser {
     email: `ppv_automation_${timestamp}@yopmail.com`,
     firstName: 'UAT',
     lastName: 'UAT',
-    password: 'Test1!Password',
+    password: process.env.NEW_USER_PASSWORD || 'Test1!',
   };
 }
 
@@ -31,6 +31,6 @@ export function createTestUserWithEmail(email: string): TestUser {
     email,
     firstName: 'UAT',
     lastName: 'UAT',
-    password: 'Test1!Password',
+    password: process.env.NEW_USER_PASSWORD || 'Test1!',
   };
 }

@@ -108,6 +108,20 @@ export function loadEventConfig(eventConfigOrKey?: string, planKeyOverride?: str
     }
   }
 
+  // Validate that the selected plan supports the target region
+  const region = process.env.DAZN_REGION || 'GB';
+  if (planData.regions && Object.keys(planData.regions).length > 0) {
+    const planRegions = Object.keys(planData.regions);
+    if (!planRegions.includes(region)) {
+      const planDisplayName = `${planData.TIER || 'unknown'} ${planData.RATE_PLAN || planKey}`.trim();
+      throw new Error(
+        `❌ No "${planDisplayName}" plan available for region "${region}".\n` +
+        `   Available regions for this plan: ${planRegions.join(', ')}\n` +
+        `   Please choose a different plan or region.`
+      );
+    }
+  }
+
   alignRegions(planData);
   alignRegions(eventData);
 

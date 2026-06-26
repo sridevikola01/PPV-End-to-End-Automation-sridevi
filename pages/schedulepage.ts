@@ -1,9 +1,52 @@
 import { Page, Locator, expect } from '@playwright/test';
-import { handleCookies } from '../utils/helpers';
+import { handleCookies, dismissMarketingPopup } from '../utils/helpers';
 
 
 export class SchedulePage {
-  constructor(private page: Page) {}
+  constructor(private page: Page) { }
+
+  // ── DISMISS POPUPS ─────────────────────────────────────────────
+  async dismissSchedulePopups() {
+    console.log('🔍 Checking for schedule page popups...');
+
+    // Call the general marketing popup dismisser
+    await dismissMarketingPopup(this.page);
+
+    // Selectors for close button or "Maybe later" or similar dismiss CTAs
+    const closeButtonSelectors = [
+      'button[class*="close" i]',
+      'div[class*="close" i]',
+      '[aria-label*="close" i]',
+      '[class*="CloseButton" i]',
+      '[class*="ModalClose" i]',
+      'button:has-text("Maybe later")',
+      'a:has-text("Maybe later")',
+      'button:has-text("Maybe Later")',
+      'a:has-text("Maybe Later")'
+    ];
+
+    for (const selector of closeButtonSelectors) {
+      const btn = this.page.locator(selector).first();
+      if (await btn.isVisible().catch(() => false)) {
+        console.log(`🔔 Popup close button found with selector: "${selector}". Clicking to dismiss...`);
+        await btn.click({ force: true }).catch(() => { });
+        await this.page.waitForTimeout(500);
+        return;
+      }
+    }
+
+    // Fallback: Click on elements that look like 'x' or 'X' inside dialog/modal wrapper
+    const xButton = this.page.locator('[class*="Modal" i] button, [class*="dialog" i] button, [class*="popup" i] button')
+      .filter({ hasText: /^(x|close)$/i }).first();
+    if (await xButton.isVisible().catch(() => false)) {
+      console.log('🔔 Popup close button found via child button filter. Clicking...');
+      await xButton.click({ force: true }).catch(() => { });
+      await this.page.waitForTimeout(500);
+      return;
+    }
+
+    console.log('ℹ️ No schedule page popups found or dismissed.');
+  }
 
   // ── NAVIGATE ──────────────────────────────────────────────────
   async navigate(baseUrl: string) {
@@ -11,17 +54,18 @@ export class SchedulePage {
     console.log(`📅 Navigating to: ${url}`);
     await this.page.goto(url);
     await expect(this.page).toHaveURL(/schedule/);
-    await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => {});
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
     // Wait for networkidle so OneTrust's async cookie script has time to load
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
     // Use longer timeout to wait for cookie banner to appear and dismiss it
     await handleCookies(this.page, 8000);
     await this.page.waitForSelector('body', { timeout: 15000 });
 
     console.log('✅ Schedule page loaded');
+    await this.page.waitForTimeout(1000); // Wait a brief moment for any popup to animate in
+    await this.dismissSchedulePopups();
   }
 
-  // ── SELECT SPORT ──────────────────────────────────────────────
   async selectSport(sport: string) {
     if (!sport) {
       throw new Error('❌ selectSport() called with undefined — check config has SPORT field');
@@ -30,15 +74,49 @@ export class SchedulePage {
     await handleCookies(this.page);
 
     const filterContainer = this.page.locator('#schedule-filter-container');
-    await expect(filterContainer).toBeVisible({ timeout: 10000 });
+    const isFilterContainerVisible = await filterContainer.waitFor({ state: 'visible', timeout: 2000 })
+      .then(() => true)
+      .catch(() => false);
 
-    const sportEl = filterContainer.getByText(sport, { exact: true });
-    await expect(sportEl).toBeVisible({ timeout: 8000 });
-    await sportEl.click();
+    let useHorizontalFilter = false;
+    if (isFilterContainerVisible) {
+      const sportEl = filterContainer.getByText(sport, { exact: true });
+      const sportVisible = await sportEl.isVisible().catch(() => false);
+      if (sportVisible) {
+        useHorizontalFilter = true;
+      }
+    }
+
+    if (useHorizontalFilter) {
+      const sportEl = filterContainer.getByText(sport, { exact: true });
+      await sportEl.click();
+    } else {
+      console.log('ℹ️ Horizontal filter container not visible. Looking for "All Sports" dropdown...');
+      const allSportsBtn = this.page.locator('button:has-text("All Sports")')
+        .or(this.page.locator('[class*="sportsFilter" i] button'))
+        .or(this.page.locator('[class*="filter" i] button'))
+        .first();
+      await expect(allSportsBtn).toBeVisible({ timeout: 8000 });
+      await allSportsBtn.click();
+      console.log(' Clicked "All Sports" dropdown');
+
+      // Now click the sport from the dropdown/menu
+      const sportItem = this.page.getByRole('option', { name: sport })
+        .or(this.page.locator(`[role="menuitem"]:has-text("${sport}")`))
+        .or(this.page.locator(`button:has-text("${sport}")`))
+        .or(this.page.locator(`a:has-text("${sport}")`))
+        .or(this.page.locator(`li:has-text("${sport}")`))
+        .first();
+      await expect(sportItem).toBeVisible({ timeout: 8000 });
+      await sportItem.click();
+      console.log(`✅ Selected ${sport} from dropdown`);
+    }
 
     await this.page.waitForFunction(
-      () => document.querySelectorAll('article').length > 0
-    );
+      () => document.querySelectorAll('article').length > 0,
+      null,
+      { timeout: 8000 }
+    ).catch(() => { });
     await this.page.waitForTimeout(1000);
 
     // Reset scroll to top after sport filter applied
@@ -52,7 +130,7 @@ export class SchedulePage {
     await handleCookies(this.page);
 
     const regex = new RegExp(
-      eventName.replace(/\s+/g, '.*'),
+      eventName.replace(/[:\-–]/g, '').replace(/\s+/g, '.*'),
       'i'
     );
 
@@ -107,6 +185,7 @@ export class SchedulePage {
 
     // Save scroll position BEFORE any scrolling
     const scrollY = await this.page.evaluate(() => window.scrollY);
+    console.log(`📍 Saved scroll position: ${scrollY}px`);
 
     // Click using Playwright's built-in click
     try {
@@ -118,23 +197,31 @@ export class SchedulePage {
       const box = await event.boundingBox();
       if (!box) throw new Error('❌ Event not clickable — no bounding box');
       await this.page.mouse.click(
-        box.x + box.width  / 2,
+        box.x + box.width / 2,
         box.y + box.height / 2
       );
     }
 
-    // Immediately restore scroll and lock background BEFORE waiting for Buy Now
+    // Immediately lock scroll AND background to prevent DAZN snap-back
     await this.page.evaluate((y) => {
-      window.scrollTo(0, y);
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
+      // Persistent scroll lock — holds position during modal animation
+      const interval = setInterval(() => {
+        if (Math.abs(window.scrollY - y) > 30) {
+          window.scrollTo({ top: y, behavior: 'instant' });
+        }
+      }, 50);
+      // Keep lock for 3s to cover modal open animation
+      setTimeout(() => clearInterval(interval), 3000);
+      (window as any).__scheduleScrollLock = interval;
     }, scrollY);
 
     // Wait for Buy Now button using manual poll (not expect, which can trigger scrollIntoView)
     const buyNowButton = this.page.locator(
-      'a:has-text("Buy now"), '      +
+      'a:has-text("Buy now"), ' +
       'button:has-text("Buy now"), ' +
-      'a:has-text("Buy Now"), '      +
+      'a:has-text("Buy Now"), ' +
       'button:has-text("Buy Now")'
     ).first();
 
@@ -142,23 +229,25 @@ export class SchedulePage {
     for (let attempt = 0; attempt < 30; attempt++) {
       buyVisible = await buyNowButton.isVisible({ timeout: 500 }).catch(() => false);
       if (buyVisible) break;
-      // Re-restore scroll position in case the modal opening caused a scroll change
-      await this.page.evaluate((y) => {
-        window.scrollTo(0, y);
-      }, scrollY);
+      await this.page.waitForTimeout(200);
     }
 
     if (!buyVisible) {
       throw new Error('❌ Buy Now button not visible in modal after 15s');
     }
 
-    // Final scroll restoration
+    // Final scroll restoration & keep overflow hidden for validation
     await this.page.evaluate((y) => {
-      window.scrollTo(0, y);
+      window.scrollTo({ top: y, behavior: 'instant' });
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
     }, scrollY);
 
+    // Brief wait for scroll to settle
+    await this.page.waitForTimeout(300);
+
+    const finalY = await this.page.evaluate(() => window.scrollY).catch(() => -1);
+    console.log(`📍 Final scroll position: ${finalY}px (target: ${scrollY}px)`);
     console.log('🔒 Background scroll locked');
     console.log('✅ Modal opened & Buy button located');
   }
@@ -168,9 +257,9 @@ export class SchedulePage {
     console.log('💳 Clicking Buy Now CTA...');
     await handleCookies(this.page);
     const buyNow = this.page.locator(
-      'a:has-text("Buy now"), '      +
+      'a:has-text("Buy now"), ' +
       'button:has-text("Buy now"), ' +
-      'a:has-text("Buy Now"), '      +
+      'a:has-text("Buy Now"), ' +
       'button:has-text("Buy Now")'
     ).first();
 
