@@ -102,8 +102,46 @@ export async function detectPageType(
   if (urlLower.includes('page=tierplans')) return 'plan';
 
   // PPV page detection via contextualPpvId query param (before email fallback)
-  if (urlLower.includes('/signup') && urlLower.includes('contextualppvid=') && !urlLower.includes('page=')) {
-    return 'ppv';
+  // Wait for SPA routing to complete — the URL may get a page= parameter
+  if ((urlLower.includes('/signup') || urlLower.includes('/purchase')) && urlLower.includes('contextualppvid=') && !urlLower.includes('page=')) {
+    try {
+      await p.waitForFunction(() => {
+        const href = window.location.href.toLowerCase();
+        const bodyLen = document.body?.innerText?.trim().length || 0;
+        // Wait until URL gets a page= param (SPA routing) OR body has meaningful content
+        return href.includes('page=') ||
+               href.includes('upselltiershown') ||
+               bodyLen > 200;
+      }, { timeout: 10000 });
+    } catch {
+      // Timeout — proceed with what we have
+    }
+    // Re-check URL after SPA routing completes
+    const routedUrl = p.url().toLowerCase();
+    if (routedUrl.includes('paymentdetails')) return 'payment';
+    if (routedUrl.includes('page=personaldetails') || routedUrl.includes('emaildetails')) return 'email';
+    if (routedUrl.includes('upselltiershown=true')) return 'ppv';
+    if (routedUrl.includes('page=plandetails') || routedUrl.includes('page=tierplans')) {
+      // Check if it's actually a PPV page with plan selection
+      const routedBody = await p.locator('body')
+        .innerText({ timeout: 3000 })
+        .then((t: string) => t.toLowerCase())
+        .catch(() => '');
+      if (routedBody.includes('pay-per-view') || routedBody.includes('choose how to buy') ||
+          routedBody.includes('subscribe without a pay-per-view')) {
+        return 'ppv';
+      }
+      return 'plan';
+    }
+    // Still no page= param — check body content
+    const bodyCheck = await p.locator('body')
+      .innerText({ timeout: 3000 })
+      .then((t: string) => t.toLowerCase())
+      .catch(() => '');
+    if (bodyCheck.includes('pay-per-view') || bodyCheck.includes('choose how to buy')) return 'ppv';
+    if (bodyCheck.includes('choose your plan') || bodyCheck.includes('choose the right plan')) return 'ppv';
+    if (bodyCheck.includes('choose a plan')) return 'plan';
+    return 'ppv'; // Default fallback if contextualppvid present
   }
 
   // ── Rest of fallbacks ─────────────────────────
@@ -121,6 +159,8 @@ export async function detectPageType(
   } catch {}
 
   if (body.includes('first name') && body.includes('last name')) return 'email';
+
+  if (urlLower.includes('/purchase')) return 'ppv';
 
   // PPV page detection
   const ppvDetect = pc?.ppv?.detection?.toLowerCase() || '';

@@ -13,11 +13,10 @@ on:
         default: 'GB'
         type: choice
         options:
-          - AE
           - GB
           - AU
           - US
-          - BR
+          - AE
       PLAN:
         description: 'Plan key from config/DaznPlan.json'
         required: true
@@ -77,7 +76,7 @@ jobs:
     env:
       CI: 'true'
       HEADLESS: 'true'
-      DAZN_REGION: ${{ inputs.DAZN_REGION == 'UAE' && 'AE' || inputs.DAZN_REGION || 'GB' }}
+      DAZN_REGION: ${{ inputs.DAZN_REGION || 'GB' }}
       DAZN_ENV: ${{ matrix.dazn_env }}
       PLAN: ${{ inputs.PLAN || 'standard_monthly' }}
       SOURCE: ${{ matrix.source }}
@@ -96,7 +95,9 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          rm -rf node_modules
+          npm ci
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium chrome

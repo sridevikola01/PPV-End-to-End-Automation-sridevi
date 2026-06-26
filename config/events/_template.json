@@ -14,6 +14,7 @@
   "global": {
     "_comment": "Shared across all regions — event-specific info only",
     "PPV_PROMOTER": "Matchroom Boxing",
+    "PPV_ENTITLEMENT_ID": "",
     "PPV_DESCRIPTION": "Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.",
     "PPV_UTC_DATE": "2025-12-31T19:00:00Z",
     "PPV_LOCATION": "City, Country",

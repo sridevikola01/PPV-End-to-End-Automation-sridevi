@@ -70,11 +70,53 @@ jobs:
           - schedule
           - myaccount
 
-        user_state:
-          - freemium
-          - frozen
-          - active_standard
-          - active_ultimate
+        include:
+          # Freemium — all four plans
+          - user_state: freemium
+            plan: standard_monthly
+          - user_state: freemium
+            plan: standard_apm
+          - user_state: freemium
+            plan: ultimate_apm
+          - user_state: freemium
+            plan: ultimate_upfront
+
+          # Frozen — all four plans
+          - user_state: frozen
+            plan: standard_monthly
+          - user_state: frozen
+            plan: standard_apm
+          - user_state: frozen
+            plan: ultimate_apm
+          - user_state: frozen
+            plan: ultimate_upfront
+
+          # Active Standard — five valid PPV / Ultimate upgrade routes
+          - user_state: active_standard_monthly
+            plan: standard_monthly
+            purchase_path: ppv_only
+          - user_state: active_standard_monthly
+            plan: standard_monthly
+            purchase_path: ultimate_monthly
+          - user_state: active_standard_monthly
+            plan: standard_monthly
+            purchase_path: ultimate_upfront
+          - user_state: active_standard_apm
+            plan: standard_apm
+            purchase_path: ppv_only
+          - user_state: active_standard_apm
+            plan: standard_apm
+            purchase_path: ultimate_apm
+
+          # Active Ultimate — all four plans
+          - user_state: active_ultimate
+            plan: standard_monthly
+          - user_state: active_ultimate
+            plan: standard_apm
+          - user_state: active_ultimate
+            plan: ultimate_apm
+          - user_state: active_ultimate
+            plan: ultimate_upfront
 
     env:
       CI: 'true'
@@ -84,6 +126,8 @@ jobs:
       LOGIN_FIRST: 'true'
       SOURCE: ${{ matrix.source }}
       USER_STATE: ${{ matrix.user_state }}
+      PLAN: ${{ matrix.plan }}
+      PURCHASE_PATH: ${{ matrix.purchase_path || 'default' }}
       PPV_CONFIG: ${{ inputs.PPV_CONFIG }}
       PAYMENT_METHOD: ${{ inputs.PAYMENT_METHOD }}
       SWITCH: ${{ inputs.SWITCH }}
@@ -103,11 +147,10 @@ jobs:
           node -v
           npm -v
 
-      - name: Install dependencies if needed
+      - name: Install dependencies
         run: |
-          if [ ! -d node_modules ]; then
-            npm ci
-          fi
+          rm -rf node_modules
+          npm ci
 
       - name: Verify Playwright
         run: npx playwright --version
@@ -119,19 +162,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-prod-${{ matrix.source }}-${{ matrix.user_state }}
+          name: playwright-report-${{ matrix.source }}-${{ matrix.user_state }}-${{ matrix.plan }}-${{ matrix.purchase_path || 'default' }}-${{ github.run_id }}
           path: playwright-report/
           if-no-files-found: ignore
 
-          retention-days: 3
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-prod-${{ matrix.source }}-${{ matrix.user_state }}
+          name: test-results-${{ matrix.source }}-${{ matrix.user_state }}-${{ matrix.plan }}-${{ matrix.purchase_path || 'default' }}-${{ github.run_id }}
           path: |
             test-results/
             reports/
           if-no-files-found: ignore
-
-          retention-days: 3

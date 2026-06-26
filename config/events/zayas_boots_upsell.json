@@ -9,6 +9,7 @@
     "PPV_LOCATION": "Barclays Center, Brooklyn",
     "BOXING_BANNER_SUBTITLE": "Main Event • 27 Jun • 16:30",
     "PPV_DESCRIPTION": "Just the fight - plus 7 days of DAZN Standard, free.",
+    "PPV_CARD_DESCRIPTION": "Just the fight - plus 7 days of DAZN Standard, free.",
     "PPV_PRICE": "£24.99",
     "PPV_PRICE_RAW": "24.99",
     "WELCOME_TILE_DATE": "June 27",
@@ -65,6 +66,7 @@
   },
   "regions": {
     "GB": {
+      "LANDING_PAGE_PPV_DATE": "27 June",
       "PPV_LOCATION": "Barclays Center, Brooklyn",
       "PPV_DATE": "Sat 27th Jun at 16:30",
       "PPV_TIME": "16:30",
@@ -79,6 +81,27 @@
       "UPSELL_PPV_CVV": "123",
       "UPSELL_CVV": "123",
       "BET_OFFER_TITLE": "DAZN Bet Offer"
+    },
+    "US": {
+      "LANDING_PAGE_PPV_DATE": "27 June",
+      "PPV_PRICE": "$74.99",
+      "TODAY_YOU_PAY_PRICE": "$74.99",
+      "UPSELL_PRICE": "$49.99",
+      "PPV_DATE": "Saturday at 4:30 PM",
+      "PPV_TIME": "4:30 PM",
+      "WELCOME_TILE_DATE": "June 27"
+    },
+    "AU": {
+      "LANDING_PAGE_PPV_DATE": "28 June",
+      "PPV_PRICE": "$49.99",
+      "TODAY_YOU_PAY_PRICE": "$49.99",
+      "UPSELL_PRICE": "$39.99"
+    },
+    "AE": {
+      "LANDING_PAGE_PPV_DATE": "27 June",
+      "PPV_PRICE": "AED 72.99",
+      "TODAY_YOU_PAY_PRICE": "AED 72.99",
+      "UPSELL_PRICE": "AED 72.99"
     }
   },
   "upsell_ppv": {

@@ -301,9 +301,21 @@ export class LandingPage extends BasePage {
   // ─────────────────────────────
   // FIND PPV IN "DON'T MISS LIVE" TILE SECTION
   // ─────────────────────────────
-  async findPPVInTileSection(eventData: Record<string, string>): Promise<any> {
+  async findPPVInTileSection(eventData: Record<string, string>, source?: string): Promise<any> {
     const ppvName = eventData.PPV_NAME || '';
-    console.log(`🔍 [Tile] Finding PPV in "Don't miss" section: ${ppvName}`);
+    const src = (source || '').toLowerCase();
+
+    let headingPattern = /don'?t\s*miss/i;
+    let headingLabel = "Don't Miss";
+    if (src.includes('biggest-fights') || src === 'home-biggest-fights') {
+      headingPattern = /biggest\s*fights/i;
+      headingLabel = "Biggest Fights";
+    } else if (src.includes('upcoming')) {
+      headingPattern = /upcoming/i;
+      headingLabel = "Upcoming Fights";
+    }
+
+    console.log(`🔍 [Tile] Finding PPV in "${headingLabel}" section: ${ppvName}`);
 
     // Build multiple name parts for verification
     const nameParts = ppvName.split(/[:\-–]/).map(p => p.trim()).filter(p => p.length > 3);
@@ -340,38 +352,79 @@ export class LandingPage extends BasePage {
     };
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PHASE 1: Scroll to "Don't Miss" heading and locate the rail wrapper
+    // PHASE 1: Scroll to heading and locate the rail wrapper
     // ─────────────────────────────────────────────────────────────────────────
-    console.log('📜 [Tile] Scrolling down to find "Don\'t miss" section...');
-    await this.page.evaluate(() => {
-      window.scrollTo({ top: 1200, behavior: 'instant' });
-    }).catch(() => { });
-    await this.page.waitForTimeout(800);
+    console.log(`📜 [Tile] Locating "${headingLabel}" section...`);
 
-    const railHeadingLocator = this.page.getByText(/don.t miss/i);
+    const railHeadingLocator = this.page
+      .locator('h1, h2, h3, h4, [class*="heading" i]')
+      .filter({ hasText: headingPattern });
+
     let railHeadingCount = 0;
-    for (let attempt = 0; attempt < 4; attempt++) {
+
+    for (let attempt = 0; attempt < 5; attempt++) {
       railHeadingCount = await railHeadingLocator.count().catch(() => 0);
-      if (railHeadingCount > 0) break;
+
+      if (railHeadingCount > 0) {
+        break;
+      }
+
       await this.page.evaluate(() => {
-        window.scrollTo({ top: 2500 + Math.random() * 500, behavior: 'instant' });
-      }).catch(() => { });
-      await this.page.waitForTimeout(600);
+        const viewportHeight = window.innerHeight || 800;
+        const nextScrollTop = Math.min(
+          document.documentElement.scrollHeight - viewportHeight,
+          window.scrollY + viewportHeight * 0.85
+        );
+
+        window.scrollTo({
+          top: Math.max(0, Math.round(nextScrollTop)),
+          behavior: 'instant',
+        });
+      }).catch(() => {});
+
+      await this.page.waitForTimeout(500);
     }
 
     try {
       await railHeadingLocator.first().waitFor({ state: 'attached', timeout: 8000 });
     } catch (e) {
-      throw new Error(`❌ [Tile] "Don't Miss" rail heading not attached/found in DOM after timeout for event: "${ppvName}"`);
+      throw new Error(`❌ [Tile] "${headingLabel}" rail heading not attached/found in DOM after timeout for event: "${ppvName}"`);
     }
 
     railHeadingCount = await railHeadingLocator.count().catch(() => 0);
     if (railHeadingCount === 0) {
-      throw new Error(`❌ [Tile] "Don't Miss" rail heading count is 0 in DOM for event: "${ppvName}"`);
+      throw new Error(`❌ [Tile] "${headingLabel}" rail heading count is 0 in DOM for event: "${ppvName}"`);
     }
     const railHeading = railHeadingLocator.first();
-    await railHeading.scrollIntoViewIfNeeded().catch(() => { });
-    console.log('✅ [Tile] "Don\'t miss" heading found');
+
+    await railHeading.evaluate((heading: HTMLElement) => {
+      const headerOffset = 24;
+      const absoluteTop = heading.getBoundingClientRect().top + window.scrollY;
+
+      window.scrollTo({
+        top: Math.max(0, Math.round(absoluteTop - headerOffset)),
+        behavior: 'instant',
+      });
+    }).catch(() => {});
+
+    await this.page.waitForTimeout(300);
+
+    const railPosition = await railHeading.evaluate((heading: HTMLElement) => {
+      const rect = heading.getBoundingClientRect();
+
+      return {
+        top: Math.round(rect.top),
+        bottom: Math.round(rect.bottom),
+        viewportHeight: window.innerHeight,
+      };
+    }).catch(() => null);
+
+    console.log(
+      `✅ [Tile] "${headingLabel}" heading top-aligned` +
+      (railPosition
+        ? ` (top=${railPosition.top}, bottom=${railPosition.bottom}, viewport=${railPosition.viewportHeight})`
+        : '')
+    );
 
     // ─────────────────────────────────────────────────────────────────────────
     // PHASE 2: Get the rail wrapper container and swiper next button
@@ -434,13 +487,13 @@ export class LandingPage extends BasePage {
             const match = matchesPPV(text) ||
               (fighter1 && text.toLowerCase().includes(fighter1.toLowerCase())) ||
               (fighter2 && text.toLowerCase().includes(fighter2.toLowerCase()));
-            
+
             if (match) {
               const inView = await el.evaluate((node: HTMLElement) => {
                 const r = node.getBoundingClientRect();
                 return r.width > 0 && r.right > 0 && r.left < window.innerWidth;
               }).catch(() => false);
-              
+
               if (inView) {
                 const buyNowBtn = el.locator('button:has-text("Buy now"), button:has-text("Buy"), a:has-text("Buy now"), a:has-text("Buy")').first();
                 if (await buyNowBtn.isVisible().catch(() => false)) {
@@ -697,6 +750,9 @@ export class LandingPage extends BasePage {
   async findPPVContainer(eventData: Record<string, string>, source?: string): Promise<any> {
     const src = (source || '').toLowerCase();
 
+    // Dismiss cookie banner if it appeared late
+    await this.waitForConsentAndDismiss(5000).catch(() => { });
+
     if (src === 'welcome-rail') {
       return this.findPPVInWelcomeRail(eventData);
     }
@@ -706,7 +762,7 @@ export class LandingPage extends BasePage {
     }
 
     if (src.includes('dont-miss') || src.includes('tile') || src.includes('upcoming')) {
-      return this.findPPVInTileSection(eventData);
+      return this.findPPVInTileSection(eventData, source);
     }
 
     // Strict source validation — no cross-source fallback

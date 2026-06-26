@@ -1,5 +1,6 @@
 import { Page } from '@playwright/test';
 import { LandingPage } from './LandingPage';
+import { RailsInterceptor } from '../utils/railsInterceptor';
 
 export class HomePage extends LandingPage {
   protected baseUrl: string;
@@ -76,35 +77,57 @@ export class HomePage extends LandingPage {
     if (src === 'home-biggest-fights') {
       console.log('🔍 [HomePage Biggest Fights] Flow: Home → Competition Page → Coming Up → Popup');
 
-      // ── STEP 1: Scroll to "The Biggest Fights" heading ──────────────
-      const sectionHeading = this.page.locator('h2').filter({ hasText: /The Biggest Fights/i }).first();
+      // ── STEP 1: Scroll to the fights section heading ──────────────
+      // Section name is dynamic — could be "The Biggest Fights", "Saturday Fight Night", etc.
+      // Each source must verify from its specific section — if it doesn't exist, the test should fail.
+      const sectionPatterns = [
+        /biggest\s*fights/i,
+        /saturday\s*fight\s*night/i,
+        /fight\s*night/i,
+      ];
 
+      let sectionHeading: any = null;
       let foundHeading = false;
-      for (let i = 0; i < 15; i++) {
-        if (await sectionHeading.isVisible().catch(() => false)) {
-          foundHeading = true;
-          break;
+      let matchedPattern = '';
+
+      // Check all patterns at each scroll position (not one pattern at a time)
+      for (let i = 0; i < 15 && !foundHeading; i++) {
+        for (const pattern of sectionPatterns) {
+          const candidate = this.page.locator('h2, h3, [class*="title" i]')
+            .filter({ hasText: pattern }).first();
+          if (await candidate.isVisible().catch(() => false)) {
+            sectionHeading = candidate;
+            foundHeading = true;
+            matchedPattern = pattern.source;
+            break;
+          }
+          const attached = await candidate.waitFor({ state: 'attached', timeout: 200 })
+            .then(() => true).catch(() => false);
+          if (attached) {
+            sectionHeading = candidate;
+            foundHeading = true;
+            matchedPattern = pattern.source;
+            break;
+          }
         }
-        await this.page.evaluate((pos: number) => {
-          window.scrollTo({ top: pos, behavior: 'instant' });
-        }, (i + 1) * 500);
-        foundHeading = await sectionHeading.waitFor({ state: 'attached', timeout: 400 })
-          .then(() => true).catch(() => false);
-        if (foundHeading) break;
+        if (!foundHeading) {
+          await this.page.evaluate((pos: number) => {
+            window.scrollTo({ top: pos, behavior: 'instant' });
+          }, (i + 1) * 500);
+        }
       }
 
       if (!foundHeading) {
         throw new Error(
-          `❌ [HomePage Biggest Fights] Section heading "The Biggest Fights" not found on Home page.`
+          `❌ [HomePage Biggest Fights] No fights section heading found on Home page. ` +
+          `Tried patterns: ${sectionPatterns.map(p => p.source).join(', ')}`
         );
       }
 
       await sectionHeading.scrollIntoViewIfNeeded().catch(() => { });
-      console.log('✅ [HomePage Biggest Fights] Section heading found');
+      console.log(`✅ [HomePage Biggest Fights] Section heading found (matched: ${matchedPattern})`);
 
       // ── STEP 2: Find the rail wrapper ────────────────────────────────
-      // DOM: <h2 class="rail__title___xxx">The Biggest Fights</h2>
-      // Parent chain has div with class containing "rail"
       let sectionWrapper = sectionHeading.locator('xpath=ancestor::div[contains(@class,"rail")][1]');
       let hasWrapper = await sectionWrapper.isVisible({ timeout: 3000 }).catch(() => false);
       if (!hasWrapper) {
@@ -112,7 +135,6 @@ export class HomePage extends LandingPage {
         hasWrapper = await sectionWrapper.isVisible({ timeout: 2000 }).catch(() => false);
       }
       if (!hasWrapper) {
-        // Fallback: use parent's parent
         sectionWrapper = sectionHeading.locator('xpath=../..');
         hasWrapper = await sectionWrapper.isVisible({ timeout: 1000 }).catch(() => false);
       }
@@ -123,7 +145,9 @@ export class HomePage extends LandingPage {
       const vsMatch = ppvName.match(/(\w+)\s+vs\.?\s+(\w+)/i);
       const fighter1 = vsMatch ? vsMatch[1] : '';
       const fighter2 = vsMatch ? vsMatch[2] : '';
-      console.log(`🔍 [HomePage Biggest Fights] Looking for: "${ppvName}" (f1="${fighter1}", f2="${fighter2}")`);
+      const ppvEntitlementId = (eventData.PPV_ENTITLEMENT_ID || '').trim();
+      const ppvUtcDate = eventData.PPV_UTC_DATE || '';
+      console.log(`🔍 [HomePage Biggest Fights] Looking for: "${ppvName}" (f1="${fighter1}", f2="${fighter2}", entitlement="${ppvEntitlementId || 'N/A'}")`);
 
       const cleanStr = (s: string) =>
         (s || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -144,25 +168,104 @@ export class HomePage extends LandingPage {
         return matchTitle || matchFighters;
       };
 
-      // Search for matching tile, navigating carousel if needed
-      const tiles = sectionWrapper.locator('a[class*="tile" i], a[href*="competition"], a[href*="sport"]');
+      // Extract short month from PPV_UTC_DATE for date-based disambiguation
+      // e.g., "2025-07-25T19:00:00Z" → "jul"
+      let ppvMonth = '';
+      let ppvDay = '';
+      if (ppvUtcDate) {
+        const d = new Date(ppvUtcDate);
+        if (!isNaN(d.getTime())) {
+          ppvMonth = d.toLocaleString('en-US', { month: 'short' }).toLowerCase(); // "jul"
+          ppvDay = String(d.getDate()); // "25"
+        }
+      }
+
+      // ── RailsInterceptor: entitlement-based matching (Priority 1) ──
+      const railsInterceptor: RailsInterceptor | undefined = (eventData as any)._railsInterceptor;
+      let entitlementTileIndex = -1;
+      let entitlementRailTitle = '';
+      if (railsInterceptor && ppvEntitlementId) {
+        const matches = railsInterceptor.findTilesByEntitlement([ppvEntitlementId]);
+        if (matches.length > 0) {
+          entitlementTileIndex = matches[0].tileIndex;
+          entitlementRailTitle = matches[0].railTitle;
+          console.log(`🎯 [Biggest Fights] Entitlement match found: rail="${entitlementRailTitle}", tileIndex=${entitlementTileIndex}, tileTitle="${matches[0].tileTitle}"`);
+        } else {
+          console.log(`⚠️ [Biggest Fights] No entitlement match for "${ppvEntitlementId}" — falling back to text/date matching`);
+        }
+        railsInterceptor.printRailsSummary();
+      }
+
+      // For biggest-fights, tiles are competition tiles (show promoter names, not fighter names).
+      // The image alt attribute contains Competition:<ID> which matches our PPV_ENTITLEMENT_ID.
+      // Strategy: use Competition ID to find the correct tile, navigate carousel with > until visible.
+      const tiles = sectionWrapper.locator('a[class*="tile" i], a[href*="competition"], a[href*="sport"], div[class*="tile" i] a, .swiper-slide a');
       const nextBtn = sectionWrapper.locator([
         'button[aria-label="Next slide"]',
         'button[class*="swiper-button-next"]',
-        '[class*="next" i]',
+        '[class*="next" i]:not(a)',
+        'button[class*="next" i]',
       ].join(', ')).first();
 
       const findMatchingTile = async (): Promise<any> => {
         const count = await tiles.count().catch(() => 0);
+
+        // Priority 1: Competition ID — match via image alt attribute (most reliable for competition tiles)
+        if (ppvEntitlementId) {
+          const competitionImg = sectionWrapper.locator(`img[alt*="Competition:${ppvEntitlementId}" i]:not(.swiper-slide-duplicate img)`).first();
+          const imgFound = await competitionImg.count().catch(() => 0);
+          if (imgFound > 0) {
+            const inView = await competitionImg.evaluate((el: HTMLElement) => {
+              const r = el.getBoundingClientRect();
+              return r.width > 0 && r.right > 0 && r.left < window.innerWidth;
+            }).catch(() => false);
+            if (inView) {
+              // Walk up to the parent tile link
+              const parentTile = competitionImg.locator('xpath=ancestor::a[1]');
+              if (await parentTile.count().catch(() => 0) > 0) {
+                console.log(`🎯 [Biggest Fights] ✅ Found PPV tile via Competition ID: ${ppvEntitlementId}`);
+                return parentTile;
+              }
+            }
+          }
+        }
+
+        // Priority 2: Entitlement-based — match by data-target-id from API tile index
+        if (entitlementTileIndex >= 0 && entitlementTileIndex < count) {
+          const tile = tiles.nth(entitlementTileIndex);
+          if (await tile.isVisible().catch(() => false)) {
+            console.log(`🎯 [Biggest Fights] Using entitlement-matched tile at index ${entitlementTileIndex}`);
+            return tile;
+          }
+        }
+
+        // Priority 3: fighter name / PPV name text match
+        let dateMatchTile: any = null;
+        const promoter = (eventData.PPV_PROMOTER || '').toLowerCase().trim();
+
         for (let i = 0; i < count; i++) {
           const tile = tiles.nth(i);
           if (!await tile.isVisible().catch(() => false)) continue;
           const text = (await tile.textContent().catch(() => '')) || '';
+          const textLower = text.toLowerCase().trim();
+
           if (matchesTileText(text)) {
-            console.log(`🔍 [Biggest Fights] Matched tile: "${text.replace(/\s+/g, ' ').trim().substring(0, 80)}"`);
+            console.log(`🔍 [Biggest Fights] Matched tile by text: "${text.replace(/\s+/g, ' ').trim().substring(0, 80)}"`);
             return tile;
           }
+
+          // Priority 4: promoter + date disambiguation
+          if (promoter && textLower.includes(promoter)) {
+            if (ppvMonth && textLower.includes(ppvMonth)) {
+              if (!ppvDay || textLower.includes(ppvDay)) {
+                console.log(`📅 [Biggest Fights] Date-matched promoter tile: "${textLower.substring(0, 80)}" (month=${ppvMonth}, day=${ppvDay})`);
+                dateMatchTile = tile;
+              }
+            }
+          }
         }
+
+        if (dateMatchTile) return dateMatchTile;
         return null;
       };
 
@@ -195,13 +298,13 @@ export class HomePage extends LandingPage {
       if (!targetTile) {
         throw new Error(
           `❌ [HomePage Biggest Fights] PPV tile for "${ppvName}" not found in ` +
-          `"The Biggest Fights" section after ${clicks} carousel slides.`
+          `"Saturday Fight Night" section after ${clicks} carousel slides. ` +
+          `Competition ID: ${ppvEntitlementId || 'N/A'}`
         );
       }
 
-      console.log(`✅ [Biggest Fights] PPV tile found after ${clicks} carousel clicks`);
-
       // ── STEP 4: Click tile → Navigate to competition page ────────────
+      console.log(`✅ [Biggest Fights] PPV tile found after ${clicks} carousel clicks`);
       await targetTile.click({ timeout: 5000 });
       console.log('🔗 [Biggest Fights] Clicked tile, waiting for competition page...');
 
@@ -210,14 +313,17 @@ export class HomePage extends LandingPage {
         { timeout: 15000 }
       );
       await this.page.waitForLoadState('domcontentloaded').catch(() => { });
+      await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
       console.log(`✅ [Biggest Fights] Competition page loaded: ${this.page.url()}`);
 
       // ── STEP 5: Scroll to "Coming Up" section on competition page ────
+      // Wait for rails content to appear (async API-loaded) instead of hard timeout
+
       const comingUpHeading = this.page.locator('h2, h3, h4, [class*="title" i]')
-        .filter({ hasText: /Coming [Uu]p/i }).first();
+        .filter({ hasText: /coming\s*up/i }).first();
 
       let foundComingUp = false;
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 15; i++) {
         if (await comingUpHeading.isVisible().catch(() => false)) {
           foundComingUp = true;
           break;
@@ -225,7 +331,7 @@ export class HomePage extends LandingPage {
         await this.page.evaluate((pos: number) => {
           window.scrollTo({ top: pos, behavior: 'instant' });
         }, (i + 1) * 400);
-        foundComingUp = await comingUpHeading.waitFor({ state: 'attached', timeout: 300 })
+        foundComingUp = await comingUpHeading.waitFor({ state: 'attached', timeout: 500 })
           .then(() => true).catch(() => false);
         if (foundComingUp) break;
       }
@@ -298,6 +404,49 @@ export class HomePage extends LandingPage {
       return comingUpTile;
     }
 
+    if (src === 'home-page-dazntile') {
+      const railsInterceptor: RailsInterceptor | undefined =
+        (eventData as any)._railsInterceptor;
+
+      if (!railsInterceptor) {
+        throw new Error(
+          'home-page-dazntile requires RailsInterceptor to be started before home-page navigation'
+        );
+      }
+
+      // Allow the home rails response to finish after navigation.
+      await this.page.waitForTimeout(1500);
+
+      const matches = railsInterceptor.findTilesByEntitlement([
+        'base_dazn_content',
+      ]);
+
+      if (matches.length === 0) {
+        railsInterceptor.printRailsSummary();
+        throw new Error(
+          'No DAZN tile found with entitlement base_dazn_content'
+        );
+      }
+
+      // Do not assume API response order equals homepage render order.
+      // Scan the rendered homepage from top to bottom and click the first
+      // visible tile whose Rails payload has the required entitlement.
+      const clicked = await railsInterceptor.clickFirstVisibleEntitlementTile(matches);
+
+      if (!clicked) {
+        throw new Error(
+          'No rendered DAZN tile with entitlement base_dazn_content was found/clickable'
+        );
+      }
+
+      console.log(
+        `🎯 [HomePage] Clicked first rendered DAZN entitlement tile "${clicked.tileTitle}" ` +
+        `from rail "${clicked.railTitle}"`
+      );
+
+      return;
+    }
+
     if (src === 'home-page-dont-miss') {
       console.log('🔍 [HomePage Tile] Flow: Tile + Modal popup flow');
 
@@ -368,6 +517,7 @@ export class HomePage extends LandingPage {
 
       const ppvImg = railWrapper.locator(imgSelector).first();
       const ppvTileLink = ppvImg.locator('xpath=ancestor::a[1]');
+
 
       const isTileInView = async (): Promise<any> => {
         // First check candidates by text
@@ -681,7 +831,7 @@ export class HomePage extends LandingPage {
     }
 
     if (src === 'home-biggest-fights') {
-      console.log('💳 [Biggest Fights] Clicking PPV tile on Competition page → Popup → Buy now');
+      console.log('💳 [Biggest Fights] Clicking PPV tile on Competition page → Popup');
 
       if (!container) {
         throw new Error('❌ [Biggest Fights] Coming Up tile container is null');
@@ -692,7 +842,7 @@ export class HomePage extends LandingPage {
       await container.click({ timeout: 5000 });
       console.log('✅ [Biggest Fights] Clicked Coming Up tile, waiting for popup modal...');
 
-      // Wait for popup modal to appear
+      // Wait for popup modal to appear — then return so handlePopupModal can validate + click Buy Now
       const modalSelectors = [
         '[role="dialog"]',
         '[aria-modal="true"]',
@@ -701,56 +851,17 @@ export class HomePage extends LandingPage {
         '[class*="Dialog" i]',
       ];
 
-      let foundModal: any = null;
-      const ctaSelector =
-        'button:has-text("Buy now"), a:has-text("Buy now"), ' +
-        'button:has-text("Buy Now"), a:has-text("Buy Now"), ' +
-        'button:has-text("Subscribe"), a:has-text("Subscribe"), ' +
-        'button:has-text("Continue"), a:has-text("Continue")';
-
       for (const selector of modalSelectors) {
-        const modalLocator = this.page.locator(selector)
-          .filter({ has: this.page.locator(ctaSelector) }).first();
-        try {
-          await modalLocator.waitFor({ state: 'visible', timeout: 5000 });
-          if (await modalLocator.isVisible().catch(() => false)) {
-            foundModal = modalLocator;
-            break;
-          }
-        } catch {
-          // Try next selector
-        }
-      }
-
-      if (!foundModal) {
-        throw new Error('❌ [Biggest Fights] Popup modal not found after clicking Coming Up tile');
-      }
-
-      console.log('✅ [Biggest Fights] Popup modal appeared');
-
-      // Click "Buy now" inside the popup modal
-      const buyNowBtn = foundModal.locator(ctaSelector).first();
-      const visible = await buyNowBtn.isVisible({ timeout: 3000 }).catch(() => false);
-      if (!visible) {
-        throw new Error('❌ [Biggest Fights] "Buy now" button not visible inside popup modal');
-      }
-
-      try {
-        await buyNowBtn.click({ timeout: 5000 });
-        console.log('✅ [Biggest Fights] Clicked Buy now in popup modal');
-        return;
-      } catch (clickErr: any) {
-        console.log(`⚠️ Standard click failed: ${clickErr.message} — trying JS click`);
-        const handle = await buyNowBtn.elementHandle().catch(() => null);
-        if (handle) {
-          await this.page.evaluate((el: any) => el.click(), handle);
-          console.log('✅ [Biggest Fights] JS click on Buy now executed');
+        const modalLocator = this.page.locator(selector).first();
+        const appeared = await modalLocator.waitFor({ state: 'visible', timeout: 5000 }).then(() => true).catch(() => false);
+        if (appeared) {
+          console.log('✅ [Biggest Fights] Popup modal appeared — handing off to popup handler for validation + Buy Now click');
           return;
         }
-        await buyNowBtn.click({ force: true, timeout: 5000 });
-        console.log('✅ [Biggest Fights] Force-clicked Buy now');
-        return;
       }
+
+      console.log('⚠️ [Biggest Fights] Popup modal not detected — handlePopupModal will attempt to find it');
+      return;
     }
 
     if (src === 'home-page-dont-miss') {
@@ -942,8 +1053,7 @@ export class HomePage extends LandingPage {
 
   protected getFallbackBaseUrl(): string {
     const env = (process.env.DAZN_ENV || 'stag').toLowerCase();
-    let region = (process.env.DAZN_REGION || 'GB').toUpperCase();
-    if (region === 'UAE') region = 'AE';
+    const region = (process.env.DAZN_REGION || 'GB').toUpperCase();
     let domain = 'stag.dazn.com';
     if (env === 'beta') domain = 'beta.dazn.com';
     if (env === 'prod') domain = 'www.dazn.com';
@@ -1153,6 +1263,58 @@ export class HomePage extends LandingPage {
       if (activeContainer !== this.page.locator('body')) break;
     }
 
+    // Helper: check if element's own text matches exactly (not a parent with extra text)
+    const isExactTextMatch = async (el: any, name: string): Promise<boolean> => {
+      const ownText = await el.evaluate((node: HTMLElement) => {
+        // Get only the direct text content of this element (not descendants)
+        let text = '';
+        for (const child of Array.from(node.childNodes)) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            text += child.textContent || '';
+          }
+        }
+        // If no direct text, use innerText (for elements like <button><span>Boxing</span></button>)
+        return text.trim() || node.innerText?.trim() || '';
+      }).catch(() => '');
+      return ownText.toLowerCase() === name.toLowerCase();
+    };
+
+    // ── Strategy 1: Exact text match via getByText ───────────────
+    // This uses Playwright's built-in exact matching
+    const exactSelectors = [
+      activeContainer.getByRole('link', { name: sportName, exact: true }),
+      activeContainer.getByRole('button', { name: sportName, exact: true }),
+      activeContainer.getByRole('menuitem', { name: sportName, exact: true }),
+    ];
+
+    for (const locator of exactSelectors) {
+      const count = await locator.count().catch(() => 0);
+      for (let i = 0; i < count; i++) {
+        const el = locator.nth(i);
+        if (await el.isVisible().catch(() => false)) {
+          const box = await el.boundingBox().catch(() => null);
+          if (box && box.width > 0 && box.height > 0) {
+            console.log(`🎯 Clicking sport link (exact match): "${sportName}" inside container`);
+            await el.scrollIntoViewIfNeeded().catch(() => { });
+            const beforeUrl = this.page.url();
+            await el.click({ force: true });
+
+            const navigated = await this.page.waitForURL(
+              (url: URL) => url.toString() !== beforeUrl,
+              { timeout: 8000 }
+            ).then(() => true).catch(() => false);
+
+            if (navigated) {
+              return true;
+            } else {
+              console.log(`⚠️ Clicked sport link (exact) but URL did not change from "${beforeUrl}"`);
+            }
+          }
+        }
+      }
+    }
+
+    // ── Strategy 2: has-text selectors with exact text verification ──
     const selectors = [
       `button:has-text("${sportName}")`,
       `button span:has-text("${sportName}")`,
@@ -1170,6 +1332,13 @@ export class HomePage extends LandingPage {
       for (let i = 0; i < count; i++) {
         const el = locator.nth(i);
         if (await el.isVisible().catch(() => false)) {
+          // Verify the element's own text is an exact match (not "Misfits Boxing" for "Boxing")
+          const exact = await isExactTextMatch(el, sportName);
+          if (!exact) {
+            const elText = await el.innerText().catch(() => '');
+            console.log(`⏭️ Skipping "${elText.trim()}" — not exact match for "${sportName}"`);
+            continue;
+          }
           const box = await el.boundingBox().catch(() => null);
           if (box && box.width > 0 && box.height > 0) {
             console.log(`🎯 Clicking sport link: "${selector}" inside container`);

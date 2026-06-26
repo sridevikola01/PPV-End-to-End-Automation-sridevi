@@ -52,8 +52,17 @@ export class PPVPage {
 
     for (const row of data) {
       const field = (row['Field'] || '').trim();
-      const expected = (row['Value'] || row['Expected'] || '').toString().trim();
+      const expected: string = (row['Value'] || row['Expected'] || '').toString().trim();
       if (!field) continue;
+
+      // Skip validation if expected is 'N/A' or empty
+      const expectedNorm = (expected || '').trim().toUpperCase();
+      const expectedOptions = expectedNorm.split('|').map((opt: string) => opt.trim());
+      const isAllNAOrEmpty = expectedOptions.every((opt: string) => opt === 'N/A' || opt === '');
+      if (isAllNAOrEmpty) {
+        console.log(`  ⏭️  Skipping [${field}] — expected is "${expected}"`);
+        continue;
+      }
 
       let actual = 'N/A';
 

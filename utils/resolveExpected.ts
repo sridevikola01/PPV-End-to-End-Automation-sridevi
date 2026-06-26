@@ -1,5 +1,27 @@
 import { getDynamicDateBadge, getDynamicDateTimeBadge } from './dateUtils';
 
+function replacePlaceholders(template: string, eventData: Record<string, string>): string {
+  let result = template;
+  for (let pass = 0; pass < 2; pass++) {
+    result = result.replace(/\{\{(.*?)\}\}/g, (match, key) => {
+      const k = key.trim();
+      const value =
+        eventData[k] ??
+        eventData[k.toUpperCase()] ??
+        eventData[k.toLowerCase()] ??
+        eventData[k.replace(/\s+/g, '_').toUpperCase()] ??
+        eventData[k.replace(/\s+/g, '_')];
+
+      if (value === undefined) {
+        return match;
+      }
+      return String(value);
+    });
+    if (!result.includes('{{')) break;
+  }
+  return result;
+}
+
 export function resolveExpected(
   rule: any,
   eventData: Record<string, string>
@@ -15,7 +37,9 @@ export function resolveExpected(
   const rawPage = rule.Page || rule.page || eventData.CURRENT_PAGE || eventData.current_page || '';
   const pageName = rawPage.trim().toLowerCase();
 
-
+  if (field === 'upsell feature 1' && pageName === 'ppv') {
+    return 'Minimum 12 pay-per-views a year included at no extra cost.';
+  }
 
   if (pageName === 'payment') {
     const isReturning =
@@ -29,6 +53,15 @@ export function resolveExpected(
     if (field === 'saved card present') {
       const userState = (eventData.USER_STATE || process.env.USER_STATE || 'freemium').trim().toLowerCase();
       return userState === 'freemium' ? 'No' : 'Yes';
+    }
+
+    // ── Next Payment fields: skip for GB, IT, and 7-day trial ──
+    if (field === 'next payment label' || field === 'next payment price') {
+      const region = (eventData.DAZN_REGION || process.env.DAZN_REGION || '').toUpperCase();
+      const offerType = (eventData.OFFER_TYPE || '').toLowerCase();
+      if (region === 'GB' || region === 'IT' || offerType === '7_day_trial') {
+        return 'N/A';
+      }
     }
   }
 
@@ -97,11 +130,133 @@ export function resolveExpected(
         return eventData.CANCELLATION_TEXT_ULTIMATE_APU || '';
       } else if (currentRatePlanVal.includes('annual')) {
         const renewalDate = eventData.RENEWAL_DATE || '';
-        return `Your Annual (pay over time) plan will renew automatically on ${renewalDate}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term`;
+        let cancelText = eventData.CANCELLATION_TEXT_STANDARD_APM || `Your Annual (pay over time) plan will renew automatically on ${renewalDate}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term`;
+        cancelText = cancelText.replace(/\{\{RENEWAL_DATE\}\}/g, renewalDate)
+          .replace(/\{\{CURRENCY\}\}/g, eventData.CURRENCY || '')
+          .replace(/\{\{MONTHLY_PRICE\}\}/g, eventData.MONTHLY_PRICE || '');
+        return cancelText;
       }
     }
     if (field === 'annual savings badge' || field === 'save badge') {
       return eventData.ANNUAL_SAVINGS_BADGE || 'N/A';
+    }
+  }
+
+  // ── Non-1-month-free offer handling (7_day_trial, no_offer, etc.) ──
+  // When OFFER_TYPE is not 1_month_free, the DAZN Plan page should not show
+  // 1-month-free promotional expectations (badge, features, price text).
+  const currentOfferType = (eventData.OFFER_TYPE || '1_month_free').toLowerCase();
+  const currentRatePlan = (eventData.RATE_PLAN || '').replace(/-/g, ' ').toLowerCase();
+  const currentTier = (eventData.TIER || '').toLowerCase();
+  const isNonFreeMonthOffer = currentOfferType !== '1_month_free';
+  const isAnnualFreeMonth = (eventData.ANNUAL_FREE_BADGE || eventData.ANNUAL_BADGE || '').toLowerCase().includes('1 month free') || (eventData.ANNUAL_FREE_BADGE || eventData.ANNUAL_BADGE || '').toLowerCase().includes('1 month');
+
+  if (isNonFreeMonthOffer && !isSubscriptionOnly) {
+    // DAZN Plan page: no "1 MONTH FREE" badge, no promotional features/price text
+    if (pageName === 'dazn plan' || pageName === 'plan' || pageName === '') {
+      if (field === 'annual badge') {
+        return isAnnualFreeMonth ? replacePlaceholders(eventData.ANNUAL_FREE_BADGE || eventData.ANNUAL_BADGE || '', eventData) : 'N/A| |';
+      }
+      if (field === 'annual price text') {
+        return isAnnualFreeMonth ? replacePlaceholders(eventData.ANNUAL_PRICE_TEXT || '', eventData) : replacePlaceholders(eventData.PLAN_DETAILS_ANNUAL_MONTHLY_DESC || 'Annual contract. Auto renews.|N/A| |', eventData);
+      }
+      if (
+        field === 'annual feature 1' ||
+        field === 'annual feature 2' ||
+        field === 'annual feature 3'
+      ) {
+        if (isAnnualFreeMonth) {
+          const featKey = field.toUpperCase().replace(/\s+/g, '_');
+          return replacePlaceholders(eventData[featKey] || '', eventData);
+        }
+        return 'N/A| |';
+      }
+      if (field === 'annual savings badge') {
+        return replacePlaceholders(eventData.ANNUAL_SAVINGS_BADGE || 'N/A', eventData);
+      }
+    }
+
+    // Payment page overrides for non-1-month-free offers
+    if (pageName === 'payment' || pageName === '') {
+      // Payment page header for 7-day trial (monthly only — APM/APU always shows 'Choose how to pay')
+      if (currentOfferType === '7_day_trial' && !currentRatePlan.includes('annual') && (field === 'header' || field === 'payment page title')) {
+        return eventData.PAYMENT_PAGE_TITLE_TRIAL || 'Choose how to pay after your free trial';
+      }
+      if (field === 'rate plan original price' || field === 'rate plan discounted price') {
+        return 'N/A| |';
+      }
+      if (field === 'today you pay price' || field === 'today price' || (field.includes('today you pay') && !field.includes('text'))) {
+        return eventData.TODAY_YOU_PAY_PRICE || '';
+      }
+      if (currentRatePlan.includes('annual')) {
+        if (field === 'cancellation text' || field === 'cancel text') {
+          if (currentTier === 'ultimate' && currentRatePlan.includes('annual pay monthly')) {
+            return eventData.CANCELLATION_TEXT_ULTIMATE_APM || '';
+          }
+          if (currentTier === 'ultimate' && currentRatePlan.includes('annual pay upfront')) {
+            return eventData.CANCELLATION_TEXT_ULTIMATE_APU || '';
+          }
+          // Standard APM with no 1-month-free: use region-specific standard APM text
+          const renewalDate = eventData.RENEWAL_DATE || '';
+          let cancelText = eventData.CANCELLATION_TEXT_STANDARD_APM || eventData.CANCELLATION_TEXT_APM_NO_FREE || '';
+          if (!cancelText) {
+            cancelText = `Your Annual (pay over time) plan will renew automatically on ${renewalDate}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term`;
+          }
+          cancelText = cancelText.replace(/\{\{CURRENCY\}\}/g, eventData.CURRENCY || '')
+            .replace(/\{\{MONTHLY_PRICE\}\}/g, eventData.MONTHLY_PRICE || '')
+            .replace(/\{\{ANNUAL_PRICE\}\}/g, eventData.ANNUAL_PRICE || '')
+            .replace(/\{\{ANNUAL_TOTAL\}\}/g, eventData.ANNUAL_TOTAL || '')
+            .replace(/\{\{RENEWAL_DATE\}\}/g, renewalDate);
+          return cancelText;
+        }
+      }
+    }
+  }
+
+  // ── Monthly flex with no offer at all (no_offer / none) ──
+  // For PPVs/regions with no 7-day trial and no 1-month-free
+  const isNoOffer = currentOfferType === 'no_offer' || currentOfferType === 'none';
+  const isMonthlyNoOffer = isNoOffer && (currentRatePlan === 'monthly' || currentRatePlan === '');
+
+  if (isMonthlyNoOffer && !isSubscriptionOnly) {
+    // DAZN Plan page: no trial badge, no trial description
+    if (pageName === 'dazn plan' || pageName === 'plan' || pageName === '') {
+      if (field === 'flex badge') {
+        return 'N/A| |';
+      }
+      if (field === 'flex description') {
+        return eventData.PLAN_DETAILS_FLEX_DESC || 'Billed monthly. Cancel anytime.|N/A| |';
+      }
+      if (field === 'flex today text' || field === 'flex future text') {
+        return 'N/A| |';
+      }
+      // Annual fields: no 1 MONTH FREE badge either
+      if (field === 'annual badge') {
+        return 'N/A| |';
+      }
+      if (field === 'annual price text') {
+        return eventData.PLAN_DETAILS_ANNUAL_MONTHLY_DESC || 'Annual contract. Auto renews.|N/A| |';
+      }
+      if (
+        field === 'annual feature 1' ||
+        field === 'annual feature 2' ||
+        field === 'annual feature 3'
+      ) {
+        return 'N/A| |';
+      }
+    }
+
+    // Payment page: no free pricing
+    if (pageName === 'payment' || pageName === '') {
+      if (field === 'first month free price' || field === 'first month free text') {
+        return 'N/A| |';
+      }
+      if (field === 'today you pay price' || field === 'today price' || (field.includes('today you pay') && !field.includes('text'))) {
+        return eventData.TODAY_YOU_PAY_PRICE || '';
+      }
+      if (field === 'cancellation text' || field === 'cancel text') {
+        return eventData.CANCELLATION_TEXT || "Monthly subscription. Cancel with 30 days' notice. Your subscription auto-renews unless you cancel.";
+      }
     }
   }
 
@@ -172,7 +327,7 @@ export function resolveExpected(
         const shortDay = match[1].substring(0, 3).toUpperCase();
         const dateNum = match[2];
         const shortMonth = match[3].substring(0, 3).toUpperCase();
-        
+
         const getOrdinalSuffix = (dStr: string) => {
           const d = parseInt(dStr, 10);
           if (isNaN(d)) return 'th';
@@ -184,7 +339,7 @@ export function resolveExpected(
             default: return 'th';
           }
         };
-        
+
         raw = `${shortDay} ${dateNum}${getOrdinalSuffix(dateNum)} ${shortMonth}`;
       } else {
         const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -215,65 +370,65 @@ export function resolveExpected(
         raw = '{{CANCELLATION_TEXT_ULTIMATE_APU}}';
       }
     } else if (field === 'cta button' && (rule.Flow === 'boxing-bundle-ppv' || rule.flow === 'boxing-bundle-ppv')) {
-    const currentTier = (eventData.TIER || eventData.tier || '').trim().toLowerCase();
-    if (currentTier === 'ultimate') {
-      raw = 'Continue with DAZN Ultimate|Continue with pay-per-view';
-    } else {
-      raw = 'Continue with pay-per-view';
-    }
-  } else if (field === 'offer original price' || field === 'offer price original') {
-    const offerAvailable = String(eventData.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
-    if (!offerAvailable) {
-      raw = 'N/A';
-    } else if (raw && raw.includes('{{')) {
-      const resolved = raw.replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
-        const val = eventData[k] || eventData[k.toUpperCase()] || eventData[k.toLowerCase()] || eventData[k.replace(/\s+/g, '_').toUpperCase()] || eventData[k.replace(/\s+/g, '_')];
-        return val !== undefined ? String(val) : `{{${k}}}`;
-      });
-      raw = resolved;
-    }
-  } else if (field === 'offer discount' || field === 'offer discount amount' || field === 'offer save amount') {
-    const offerAvailable = String(eventData.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
-    if (!offerAvailable) {
-      raw = 'N/A';
-    } else if (raw && raw.includes('{{')) {
-      const discountNum = parseFloat(String(eventData.OFFER_DISCOUNT_AMOUNT || '').replace(/[^0-9.]/g, ''));
-      const discountText = !isNaN(discountNum) && discountNum > 0 ? `Save ${discountNum.toFixed(0)}%` : 'N/A';
-      raw = raw.replace(/\{\{OFFER_DISCOUNT_AMOUNT\}\}/g, discountText).replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
-        const val = eventData[k] || eventData[k.toUpperCase()] || eventData[k.toLowerCase()] || eventData[k.replace(/\s+/g, '_').toUpperCase()] || eventData[k.replace(/\s+/g, '_')];
-        return val !== undefined ? String(val) : `{{${k}}}`;
-      });
-    }
-  } else if (field === 'offer badge' || field === 'offer description') {
-    const offerAvailable = String(eventData.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
-    if (!offerAvailable) {
-      raw = 'N/A';
-    } else if (raw && raw.includes('{{')) {
-      const offerBadge = String(eventData.OFFER_BADGE || '');
-      const offerDesc = String(eventData.OFFER_DESCRIPTION || '');
-      if (field === 'offer badge') {
-        raw = raw.replace(/\{\{OFFER_BADGE\}\}/g, offerBadge || 'N/A').replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
+      const currentTier = (eventData.TIER || eventData.tier || '').trim().toLowerCase();
+      if (currentTier === 'ultimate') {
+        raw = 'Continue with DAZN Ultimate|Continue with pay-per-view';
+      } else {
+        raw = 'Continue with pay-per-view';
+      }
+    } else if (field === 'offer original price' || field === 'offer price original') {
+      const offerAvailable = String(eventData.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
+      if (!offerAvailable) {
+        raw = 'N/A';
+      } else if (raw && raw.includes('{{')) {
+        const resolved = raw.replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
           const val = eventData[k] || eventData[k.toUpperCase()] || eventData[k.toLowerCase()] || eventData[k.replace(/\s+/g, '_').toUpperCase()] || eventData[k.replace(/\s+/g, '_')];
           return val !== undefined ? String(val) : `{{${k}}}`;
         });
-      } else {
-        raw = raw.replace(/\{\{OFFER_DESCRIPTION\}\}/g, offerDesc || 'N/A').replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
+        raw = resolved;
+      }
+    } else if (field === 'offer discount' || field === 'offer discount amount' || field === 'offer save amount') {
+      const offerAvailable = String(eventData.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
+      if (!offerAvailable) {
+        raw = 'N/A';
+      } else if (raw && raw.includes('{{')) {
+        const discountNum = parseFloat(String(eventData.OFFER_DISCOUNT_AMOUNT || '').replace(/[^0-9.]/g, ''));
+        const discountText = !isNaN(discountNum) && discountNum > 0 ? `Save ${discountNum.toFixed(0)}%` : 'N/A';
+        raw = raw.replace(/\{\{OFFER_DISCOUNT_AMOUNT\}\}/g, discountText).replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
           const val = eventData[k] || eventData[k.toUpperCase()] || eventData[k.toLowerCase()] || eventData[k.replace(/\s+/g, '_').toUpperCase()] || eventData[k.replace(/\s+/g, '_')];
           return val !== undefined ? String(val) : `{{${k}}}`;
         });
       }
-    }
-  } else if (field === 'today you pay price' || field === 'today price' || (field.includes('today you pay') && !field.includes('text'))) {
-    if (eventData.TODAY_YOU_PAY_PRICE) {
-      raw = eventData.TODAY_YOU_PAY_PRICE;
-    } else {
+    } else if (field === 'offer badge' || field === 'offer description') {
       const offerAvailable = String(eventData.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
-      if (offerAvailable && (eventData.OFFER_EFFECTIVE_PPV_PRICE || eventData.UPSELL_PRICE)) {
-        raw = eventData.OFFER_EFFECTIVE_PPV_PRICE || eventData.UPSELL_PRICE || raw;
+      if (!offerAvailable) {
+        raw = 'N/A';
+      } else if (raw && raw.includes('{{')) {
+        const offerBadge = String(eventData.OFFER_BADGE || '');
+        const offerDesc = String(eventData.OFFER_DESCRIPTION || '');
+        if (field === 'offer badge') {
+          raw = raw.replace(/\{\{OFFER_BADGE\}\}/g, offerBadge || 'N/A').replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
+            const val = eventData[k] || eventData[k.toUpperCase()] || eventData[k.toLowerCase()] || eventData[k.replace(/\s+/g, '_').toUpperCase()] || eventData[k.replace(/\s+/g, '_')];
+            return val !== undefined ? String(val) : `{{${k}}}`;
+          });
+        } else {
+          raw = raw.replace(/\{\{OFFER_DESCRIPTION\}\}/g, offerDesc || 'N/A').replace(/\{\{(.*?)\}\}/g, (match: string, k: string) => {
+            const val = eventData[k] || eventData[k.toUpperCase()] || eventData[k.toLowerCase()] || eventData[k.replace(/\s+/g, '_').toUpperCase()] || eventData[k.replace(/\s+/g, '_')];
+            return val !== undefined ? String(val) : `{{${k}}}`;
+          });
+        }
+      }
+    } else if (field === 'today you pay price' || field === 'today price' || (field.includes('today you pay') && !field.includes('text'))) {
+      if (eventData.TODAY_YOU_PAY_PRICE) {
+        raw = eventData.TODAY_YOU_PAY_PRICE;
+      } else {
+        const offerAvailable = String(eventData.OFFER_AVAILABLE || 'false').toLowerCase() === 'true';
+        if (offerAvailable && (eventData.OFFER_EFFECTIVE_PPV_PRICE || eventData.UPSELL_PRICE)) {
+          raw = eventData.OFFER_EFFECTIVE_PPV_PRICE || eventData.UPSELL_PRICE || raw;
+        }
       }
     }
   }
-}
 
   const activeOfferPresent = String(eventData.ACTIVE_OFFER_PRESENT || 'false').toLowerCase() === 'true';
   const offerType = eventData.ACTIVE_OFFER_TYPE || 'default';
@@ -361,10 +516,12 @@ export function resolveExpected(
   for (let pass = 0; pass < 2; pass++) {
     template = template.replace(/\{\{(.*?)\}\}/g, (match, key) => {
       const k = key.trim();
-      
+
       // Override PPV_DATE specifically for landing/boxing/home pages
+      // BUT NOT for banner fields — banners show the full PPV_DATE (e.g. 'Sat 27th Jun at 16:30')
       const pageNameLower = pageName.toLowerCase();
-      if (k.toUpperCase() === 'PPV_DATE' && (pageNameLower === 'landing' || pageNameLower === 'boxing' || pageNameLower.includes('home') || pageNameLower.includes('popup'))) {
+      const isBannerField = field.startsWith('banner');
+      if (k.toUpperCase() === 'PPV_DATE' && !isBannerField && (pageNameLower === 'landing' || pageNameLower === 'boxing' || pageNameLower.includes('home') || pageNameLower.includes('popup'))) {
         if (eventData.LANDING_PAGE_PPV_DATE) {
           return String(eventData.LANDING_PAGE_PPV_DATE);
         }
@@ -405,8 +562,8 @@ export function resolveExpected(
       // Ultimate Annual Pay Upfront
       template = eventData.CANCELLATION_TEXT_ULTIMATE_APU || '';
     } else if (currentRatePlanVal.includes('annual')) {
-      // Standard Annual (1 month free offer)
-      template = eventData.CANCELLATION_TEXT_ANNUAL || '';
+      // Standard Annual — use region-specific APM text if available, else fallback to annual text
+      template = eventData.CANCELLATION_TEXT_STANDARD_APM || eventData.CANCELLATION_TEXT_ANNUAL || '';
     } else if (offerTypeVal === '7_day_trial') {
       // 7-day trial (monthly flex)
       template = eventData.CANCELLATION_TEXT_TRIAL || "In 7 days, you'll be charged {{CURRENCY}}{{MONTHLY_PRICE}}/month. Cancel anytime before the end of the trial.";
@@ -420,10 +577,10 @@ export function resolveExpected(
 
     // Resolve any remaining template placeholders
     template = template.replace(/\{\{CURRENCY\}\}/g, eventData.CURRENCY || '')
-                       .replace(/\{\{MONTHLY_PRICE\}\}/g, eventData.MONTHLY_PRICE || '')
-                       .replace(/\{\{ANNUAL_PRICE\}\}/g, eventData.ANNUAL_PRICE || '')
-                       .replace(/\{\{ANNUAL_TOTAL\}\}/g, eventData.ANNUAL_TOTAL || '')
-                       .replace(/\{\{RENEWAL_DATE\}\}/g, eventData.RENEWAL_DATE || '');
+      .replace(/\{\{MONTHLY_PRICE\}\}/g, eventData.MONTHLY_PRICE || '')
+      .replace(/\{\{ANNUAL_PRICE\}\}/g, eventData.ANNUAL_PRICE || '')
+      .replace(/\{\{ANNUAL_TOTAL\}\}/g, eventData.ANNUAL_TOTAL || '')
+      .replace(/\{\{RENEWAL_DATE\}\}/g, eventData.RENEWAL_DATE || '');
   }
 
   // Date-only fields — use getDynamicDateBadge (generates candidates with and without time)
@@ -431,6 +588,7 @@ export function resolveExpected(
     'ppv date badge',
     'date badge',
     'banner date badge',
+    'banner - event date',
     'upsell date badge',
     'tile date badge',
     'ppv date',

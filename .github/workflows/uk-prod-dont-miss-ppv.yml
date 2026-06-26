@@ -55,11 +55,10 @@ jobs:
           node -v
           npm -v
 
-      - name: Install dependencies if needed
+      - name: Install dependencies
         run: |
-          if [ ! -d node_modules ]; then
-            npm ci
-          fi
+          rm -rf node_modules
+          npm ci
 
       - name: Verify Playwright
         run: npx playwright --version
@@ -75,7 +74,6 @@ jobs:
           path: playwright-report/
           if-no-files-found: ignore
 
-          retention-days: 3
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -85,5 +83,3 @@ jobs:
             test-results/
             reports/
           if-no-files-found: ignore
-
-          retention-days: 3

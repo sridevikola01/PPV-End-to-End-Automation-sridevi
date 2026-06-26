@@ -18,7 +18,7 @@
 //   - DAZN app installed on simulator OR ipa path via DAZN_IPA_PATH
 //   - DAZN_BUNDLE_ID set if different from default
 // ─────────────────────────────────────────────────────────────────────────────
-import type { Options } from '@wdio/types';
+
 
 const BUNDLE_ID = process.env.DAZN_BUNDLE_ID || 'com.dazn.enterprise';
 const IPA_PATH  = process.env.DAZN_IPA_PATH  || '';
@@ -59,6 +59,7 @@ export const config = {
       ...(IPA_PATH ? { 'appium:app': IPA_PATH } : {}),
       'appium:noReset': true,
       'appium:fullReset': false,
+      'appium:connectHardwareKeyboard': true,
       'appium:newCommandTimeout': 120,
       'appium:wdaLaunchTimeout': 60000,
       'appium:wdaConnectionTimeout': 60000,

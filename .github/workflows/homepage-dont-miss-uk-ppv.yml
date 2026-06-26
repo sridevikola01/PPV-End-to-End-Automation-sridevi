@@ -1,4 +1,4 @@
-name: New User E2E - GB - PROD
+name: UK Homepage Don't Miss PPV
 
 on:
   workflow_dispatch:
@@ -31,66 +31,31 @@ permissions:
 
 jobs:
   prod:
-    name: ${{ matrix.source }} | ${{ matrix.plan }}
+    name: PROD | ${{ matrix.plan }}
 
     runs-on:
       - self-hosted
       - macOS
       - ARM64
 
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
       max-parallel: 8
       matrix:
-        source:
-          - home-page-get-started
-          - landing-page-banner
-          - landing-page-dont-miss-live
-          - boxing-page-banner
-          - boxing-page-bundle
-          - boxing-upcoming-fights
-          - home-page-dazntile
-          - boxing-standard-subscription
-          - boxing-banner-ultimate
-          - boxing-ultimate-subscription
-          - boxing-join-the-club
-          - home-boxing-banner
-          - home-boxing-tile
-          - home-boxing-upcoming
-          - search
-          - schedule
-          - home-kickboxing-tile
-          - home-page-banner
-          - home-page-dont-miss
-          - home-biggest-fights
-
         plan:
           - standard_monthly
           - standard_apm
           - ultimate_apm
           - ultimate_upfront
-        exclude:
-          - source: boxing-banner-ultimate
-            plan: standard_monthly
-          - source: boxing-banner-ultimate
-            plan: standard_apm
-          - source: boxing-ultimate-subscription
-            plan: standard_monthly
-          - source: boxing-ultimate-subscription
-            plan: standard_apm
-          - source: boxing-join-the-club
-            plan: standard_monthly
-          - source: boxing-join-the-club
-            plan: standard_apm
 
     env:
       CI: 'true'
       HEADLESS: 'true'
       DAZN_REGION: GB
       DAZN_ENV: prod
-      SOURCE: ${{ matrix.source }}
+      SOURCE: home-page-dont-miss
       PLAN: ${{ matrix.plan }}
       PPV_CONFIG: ${{ inputs.PPV_CONFIG }}
       PAYMENT_METHOD: ${{ inputs.PAYMENT_METHOD }}
@@ -126,7 +91,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.plan }}-${{ github.run_id }}-${{ github.job }}
+          name: playwright-report-uk-dont-miss-${{ matrix.plan }}-${{ github.run_id }}
           path: playwright-report/
           if-no-files-found: ignore
 
@@ -134,7 +99,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.plan }}-${{ github.run_id }}-${{ github.job }}
+          name: ppv-results-uk-dont-miss-${{ matrix.plan }}-${{ github.run_id }}
           path: |
             test-results/
             reports/

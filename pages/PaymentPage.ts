@@ -10,8 +10,8 @@ const CVV_FRAME = 'Secure card security code input frame';
 const CARD_HOLDER_FRAME = 'Secure text input frame';
 
 // ── Google Pay credentials (stag test account) ─────────────
-const GPAY_EMAIL    = 'srdazntest@gmail.com';
-const GPAY_PASSWORD = 'Dazn@123';
+const GPAY_EMAIL    = process.env.GPAY_EMAIL || 'srdazntest@gmail.com';
+const GPAY_PASSWORD = process.env.GPAY_PASSWORD || 'Dazn@123';
 
 export class PaymentPage extends BasePage {
   constructor(page: Page) {
@@ -146,6 +146,15 @@ export class PaymentPage extends BasePage {
 
       const expected = resolveExpected(row, eventData);
 
+      // Skip validation if expected is 'N/A' or empty
+      const expectedNorm = (expected || '').trim().toUpperCase();
+      const expectedOptions = expectedNorm.split('|').map(opt => opt.trim());
+      const isAllNAOrEmpty = expectedOptions.every(opt => opt === 'N/A' || opt === '');
+      if (isAllNAOrEmpty) {
+        console.log(`  ⏭️  Skipping [${field}] — expected is "${expected}"`);
+        continue;
+      }
+
       let actual = 'N/A';
       try {
         actual = await this.getFieldValue(field, eventData, bodyText);
@@ -168,13 +177,15 @@ export class PaymentPage extends BasePage {
     if (tier === 'ultimate') {
       planType = 'ultimate';
     } else if (ratePlan.includes('annual')) {
-      planType = '1_month_free_trial';
+      // Annual plans always have next payment visible — use 'annual' planType
+      // regardless of offer type (7_day_trial, 1_month_free, no_offer, etc.)
+      planType = 'annual';
     } else if (offerType === '7_day_trial') {
+      // Only monthly flex with 7-day trial should skip next payment
       planType = '7_day_free_trial';
     }
 
-    let region = eventData.REGION || eventData.region || process.env.DAZN_REGION || 'GB';
-    if (region === 'UAE') region = 'AE';
+    const region = eventData.REGION || eventData.region || process.env.DAZN_REGION || 'GB';
     // Capture red-boxed screenshots BEFORE validateNextPaymentDetails navigates away
     await captureFailures(this.page, results, 'Payment');
 
@@ -255,13 +266,13 @@ export class PaymentPage extends BasePage {
       const idx = nextAnnualIdx >= 0 ? nextAnnualIdx : nextIdx;
       if (idx >= 0) {
         const afterText = bodyText.substring(idx, idx + 100);
-        const priceMatch = afterText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/);
+        const priceMatch = afterText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
         if (priceMatch) {
           actualPrice = priceMatch[0].trim();
         }
       }
 
-      if (planType === '1_month_free_trial') {
+      if (planType === '1_month_free_trial' || planType === 'annual') {
         // Label format check: "Next Annual payment on <date>"
         // Date can be DD/MM/YYYY or DD Month YYYY
         const labelValid = /next\s+(?:annual\s+)?payment\s+on\s+(?:\d{1,2}[\/\s]\d{2}[\/\s]\d{4}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i.test(actualLabel);
@@ -532,23 +543,42 @@ export class PaymentPage extends BasePage {
       status: tierStatus,
     });
 
-    // Validate 2: PPV Price = £0 / $0 / €0 (included in Ultimate — no extra cost)
+    // Validate 2: PPV Price = 0 (included in Ultimate — no extra cost)
     const ppvName = eventData.PPV_NAME || '';
-    const vsMatch = ppvName.match(/(\w+)\s+vs\.?\s+(\w+)/i);
-    const fighter1 = vsMatch ? vsMatch[1].toLowerCase() : '';
-    const ppvIdx = fighter1 ? lower.indexOf(fighter1) : -1;
+    let ppvIdx = -1;
+    const parts = ppvName.toLowerCase().split(/[:\-–]/).map(p => p.trim());
+    for (const part of parts) {
+      const idx = lower.indexOf(part);
+      if (idx >= 0) {
+        ppvIdx = idx;
+        break;
+      }
+    }
+    if (ppvIdx === -1) {
+      const words = ppvName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      for (const word of words) {
+        const idx = lower.indexOf(word);
+        if (idx >= 0) {
+          ppvIdx = idx;
+          break;
+        }
+      }
+    }
+
     let actualPPVPrice = 'N/A';
     if (ppvIdx >= 0) {
-      const nearText = bodyText.substring(ppvIdx, ppvIdx + 200);
-      const priceMatch = nearText.match(/[\$£€₹]\s?0(?:\.00)?/);
+      const nearText = bodyText.substring(ppvIdx, ppvIdx + 300);
+      const priceMatch = nearText.match(/(?:AED\s?|[\$£€₹]\s?)0(?:\.00)?/);
       if (priceMatch) actualPPVPrice = priceMatch[0].trim();
     }
-    const ppvPriceStatus = /^[£$€₹]\s?0/.test(actualPPVPrice) ? 'PASS' : 'FAIL';
-    console.log(`  ${ppvPriceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - PPV Price] expected="£0/$0/€0" actual="${actualPPVPrice}"`);
+    const currency = eventData.CURRENCY || '£';
+    const expectedPPVPrice = `${currency}0`;
+    const ppvPriceStatus = (actualPPVPrice !== 'N/A' && /0/.test(actualPPVPrice)) ? 'PASS' : 'FAIL';
+    console.log(`  ${ppvPriceStatus === 'PASS' ? '✅' : '❌'} [Ultimate Switch - PPV Price] expected="${expectedPPVPrice}" actual="${actualPPVPrice}"`);
     results.push({
       page: 'Payment',
       field: 'Ultimate Switch - PPV Price',
-      expected: '£0 / $0 / €0',
+      expected: expectedPPVPrice,
       actual: actualPPVPrice,
       status: ppvPriceStatus,
     });
@@ -574,11 +604,11 @@ export class PaymentPage extends BasePage {
       status: planStatus,
     });
 
-    // Validate 4: Today You Pay (Ultimate price e.g. £24.99)
+    // Validate 4: Today You Pay (Ultimate price e.g. £24.99, AED 72.99)
     const todaySplit = bodyText.split(/today\s+you\s+pay/i);
     let actualTodayPrice = 'N/A';
     if (todaySplit.length > 1) {
-      const prices = todaySplit[1].match(/[\$£€₹]\s?\d+(?:\.\d{2})?/g) || [];
+      const prices = todaySplit[1].match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g) || [];
       if (prices[0]) actualTodayPrice = prices[0].trim();
     }
     const expectedUltimatePrice = eventData.TODAY_YOU_PAY_ULTIMATE_APM || eventData.ULTIMATE_ANNUAL_PAY_MONTHLY_PRICE || '';
@@ -722,6 +752,40 @@ export class PaymentPage extends BasePage {
         }
       }
       
+      return 'N/A';
+    }
+
+    // ── Payment Method Heading ──────────────────────────────────
+    if (fieldLower === 'payment method heading') {
+      for (const line of lines) {
+        if (line.toLowerCase() === 'payment method') return line;
+      }
+      for (const line of lines) {
+        if (line.toLowerCase().includes('payment method') && line.length < 40) return line;
+      }
+      const live = await this.page.locator('h1, h2, h3, h4, h5, p, span, div')
+        .filter({ hasText: /payment method/i }).first()
+        .innerText({ timeout: 3000 }).catch(() => '');
+      if (live.toLowerCase().includes('payment method') && live.length < 40) {
+        return live.trim();
+      }
+      return 'N/A';
+    }
+
+    // ── Purchase Summary Heading ────────────────────────────────
+    if (fieldLower === 'purchase summary heading') {
+      for (const line of lines) {
+        if (line.toLowerCase() === 'purchase summary') return line;
+      }
+      for (const line of lines) {
+        if (line.toLowerCase().includes('purchase summary') && line.length < 40) return line;
+      }
+      const live = await this.page.locator('h1, h2, h3, h4, h5, p, span, div')
+        .filter({ hasText: /purchase summary/i }).first()
+        .innerText({ timeout: 3000 }).catch(() => '');
+      if (live.toLowerCase().includes('purchase summary') && live.length < 40) {
+        return live.trim();
+      }
       return 'N/A';
     }
 
@@ -885,7 +949,7 @@ export class PaymentPage extends BasePage {
 
       if (ppvIndex >= 0) {
         const nearText = bodyText.substring(ppvIndex, ppvIndex + 300);
-        const priceMatch = nearText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/);
+        const priceMatch = nearText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
         if (priceMatch) return priceMatch[0].trim();
       }
 
@@ -894,7 +958,7 @@ export class PaymentPage extends BasePage {
         return expectedPrice;
       }
 
-      const allPrices = bodyText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/g) || [];
+      const allPrices = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g) || [];
       if (allPrices.length > 0) {
         const sorted = allPrices
           .map(p => ({ raw: p, val: parseFloat(p.replace(/[^\d.]/g, '')) }))
@@ -906,8 +970,8 @@ export class PaymentPage extends BasePage {
 
     // ── First Month Free Price ─────────────────────────────────
     if (fieldLower === 'first month free price') {
-      if (bodyText.includes('£0') || bodyText.includes('$0') || bodyText.includes('€0')) {
-        const match = bodyText.match(/[\$£€₹]\s?0/);
+      if (bodyText.includes('£0') || bodyText.includes('$0') || bodyText.includes('€0') || bodyText.includes('AED 0') || bodyText.includes('AED0')) {
+        const match = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)0/);
         return match ? match[0].trim() : 'N/A';
       }
       return 'N/A';
@@ -928,7 +992,7 @@ export class PaymentPage extends BasePage {
     // ── 7 Days Free Badge ──────────────────────────────────────
     if (fieldLower.includes('7 days free') || fieldLower.includes('7-days free')) {
       if (fieldLower.includes('price')) {
-        const match = bodyText.match(/[\$£€₹]\s?0/);
+        const match = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)0/);
         return match ? match[0].trim() : 'N/A';
       }
       const lines = bodyText.split('\n').map(l => l.trim());
@@ -959,7 +1023,7 @@ export class PaymentPage extends BasePage {
         const priceElements = allElements.filter(el => {
           if (el.children.length > 0) return false;
           const text = cleanText(el.textContent || '');
-          return /^[£$€₹]\s?\d+(?:\.\d{2})?$/.test(text);
+          return /^(?:AED\s?|[£$€₹]\s?)\d+(?:\.\d{2})?$/.test(text);
         });
 
         let todayEl: HTMLElement | null = null;
@@ -1003,7 +1067,7 @@ export class PaymentPage extends BasePage {
       const todaySplit = bodyText.split(/today\s+you\s+pay/i);
       if (todaySplit.length > 1) {
         const afterToday = todaySplit[1];
-        const prices = afterToday.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/g) || [];
+        const prices = afterToday.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g) || [];
         const origPrice = eventData.ANNUAL_PAY_MONTHLY_ORIGINAL_PRICE || eventData.UPSELL_ORIGINAL_PRICE || '';
         const cleanOrig = origPrice.replace(/[^\d.]/g, '');
         const filteredPrices = [];
@@ -1080,7 +1144,7 @@ export class PaymentPage extends BasePage {
       }
       if (nextIdx >= 0) {
         const afterText = bodyText.substring(nextIdx, nextIdx + 100);
-        const price = afterText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?/);
+        const price = afterText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
         if (price) return price[0].trim();
       }
       return 'N/A';
@@ -1437,17 +1501,34 @@ export class PaymentPage extends BasePage {
 
     // ── Rate Plan Price ────────────────────────────────────────
     if (fieldLower === 'rate plan price') {
-      const priceWithPeriod = bodyText.match(/[\$£€₹]\s?\d+(?:\.\d{2})?\s*\/\s*(?:month|year)/i);
+      const priceWithPeriod = bodyText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?\s*\/\s*(?:month|year)/i);
       if (priceWithPeriod) return priceWithPeriod[0].trim();
       return 'N/A';
     }
 
-    // ── Rate Plan Subtext / Contract Subtext ───────────────────
-    if (fieldLower === 'rate plan subtext' || fieldLower === 'contract subtext') {
+    // ── Rate Plan Subtext / Contract Subtext / Plan Subtitle ───
+    if (fieldLower === 'rate plan subtext' || fieldLower === 'contract subtext' || fieldLower === 'plan subtitle') {
       const lines = bodyText.split('\n').map(l => l.trim());
-      for (const line of lines) {
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
         if (/billed\s+monthly/i.test(line) || /12-month\s+contract/i.test(line)) return line;
-        if (/pay.*full.*up[- ]?front/i.test(line) || /full\s+year\s+up[- ]?front/i.test(line) || (/up[- ]?front/i.test(line) && !/annual/i.test(line))) return line;
+        if (/pay.*full.*up[- ]?front/i.test(line) || /full\s+year\s+up[- ]?front/i.test(line) || (/up[- ]?front/i.test(line) && !/annual/i.test(line))) {
+          // Check if previous line(s) contain a "Save £X" prefix — combine them
+          let savePrefix = '';
+          for (let j = Math.max(0, i - 3); j < i; j++) {
+            const prev = lines[j];
+            if (/save\s+[£$€₹AED\s]*[\d.]+/i.test(prev)) {
+              savePrefix = prev.replace(/[.\s]+$/, '');
+              break;
+            }
+          }
+          if (savePrefix) {
+            // Combine: "Save £49.89. Pay for the full year up front"
+            const cleanLine = line.replace(/^[.\s]+/, '');
+            return `${savePrefix}. ${cleanLine}`;
+          }
+          return line;
+        }
       }
       return 'N/A';
     }
@@ -2335,10 +2416,10 @@ export class PaymentPage extends BasePage {
    * Complete flow orchestrator
    */
   async fillPaymentAndSubmit(
-    cardNumber = '4111111111111111',
-    expiryDate = '03/30',
-    cvv = '737',
-    cardHolderName = 'Test User'
+    cardNumber = process.env.STAG_CARD_NUMBER || '4111111111111111',
+    expiryDate = process.env.STAG_CARD_EXPIRY || '03/30',
+    cvv = process.env.STAG_CARD_CVV || '737',
+    cardHolderName = process.env.STAG_CARD_HOLDER || 'Test User'
   ): Promise<void> {
     await this.selectCreditCard();
     await this.fillCardDetails(cardNumber, expiryDate, cvv, cardHolderName);

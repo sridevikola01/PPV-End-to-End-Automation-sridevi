@@ -1,18 +1,23 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
+    "module": "Node16",
+    "lib": ["ES2020", "DOM"],
     "strict": false,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "outDir": "./dist",
-    "rootDir": "./",
+    "rootDir": "../",
     "skipLibCheck": true,
     "noImplicitAny": false,
-    "moduleResolution": "node",
+    "moduleResolution": "node16",
     "types": ["node", "mocha"]
   },
-  "include": ["**/*.ts"],
+  "include": [
+    "**/*.ts",
+    "../pages/**/*.ts",
+    "../utils/**/*.ts",
+    "../flows/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

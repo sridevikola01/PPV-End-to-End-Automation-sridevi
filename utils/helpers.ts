@@ -6,15 +6,6 @@ import { Page, BrowserContext } from '@playwright/test';
 export const sleep = (ms: number): Promise<void> =>
   new Promise(r => setTimeout(r, ms));
 
-// ─────────────────────────────────────────────────────────────────
-// PRE-INJECT CONSENT COOKIES (DEPRECATED — no-op)
-// ── Kept for backward compatibility. Cookie banner is now dismissed
-//    by clicking the Accept button via handleCookies().
-// ─────────────────────────────────────────────────────────────────
-export async function injectConsentCookies(_context: BrowserContext): Promise<void> {
-  // No-op — cookie banner is now handled via UI click in handleCookies()
-  console.log('🍪 [DEPRECATED] injectConsentCookies is a no-op — cookie banner will be dismissed via UI click');
-}
 
 // ─────────────────────────────────────────────────────────────────
 // HANDLE COOKIES — dismiss cookie banner via UI click
@@ -225,22 +216,25 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
   if (page.isClosed()) return [];
   try {
     return await page.evaluate((): any[] => {
+      // Local mock for bundlers that inject __name helper for function name preservation
+      const __name = (f: any, n: string) => f;
+
       const clean = (s: string) =>
         s.replace(/\u200B/g, '').replace(/\s+/g, ' ').trim();
 
-      const modalSelectors = [
-        '[role="dialog" i]',
-        '[aria-modal="true"]',
-        '[class*="modal" i]',
-        '[class*="overlay" i]',
-        '[class*="popup" i]',
-      ];
-
-      const isInModal = (el: Element): boolean =>
-        modalSelectors.some(sel => {
-          const closest = el.closest(sel);
-          return closest !== null && closest.tagName !== 'BODY' && closest.tagName !== 'HTML';
-        });
+      const isInModal = (el: Element): boolean => {
+        let current: Element | null = el;
+        for (let depth = 0; depth < 10 && current; depth++) {
+          if (current.tagName === 'BODY' || current.tagName === 'HTML') break;
+          const role = (current.getAttribute('role') || '').toLowerCase();
+          if (role === 'dialog') return true;
+          if (current.getAttribute('aria-modal') === 'true') return true;
+          const classes = (current.className || '').toLowerCase();
+          if (classes.includes('modal') || classes.includes('overlay') || classes.includes('popup')) return true;
+          current = current.parentElement;
+        }
+        return false;
+      };
 
       const isInInactiveSlide = (el: Element): boolean => {
         const slide = el.closest('.swiper-slide, [class*="swiper-slide"]');
@@ -258,14 +252,12 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
       };
 
       // OPTIMIZED: avoid getComputedStyle — use offsetWidth/Height + inline style checks
-      // getComputedStyle forces a full style recalculation per element and blocks the thread
       const isRendered = (el: HTMLElement): boolean => {
         if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
         const style = el.style;
         if (style.display === 'none') return false;
         if (style.visibility === 'hidden') return false;
         if (style.opacity === '0') return false;
-        // Check for hidden attribute
         if (el.hidden) return false;
         if (isInInactiveSlide(el)) return false;
         return true;
@@ -273,15 +265,21 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
 
       // OPTIMIZED: avoid getComputedStyle — use only DOM-based checks, except for price elements
       const isStrikethrough = (el: HTMLElement): boolean => {
-        if (el.closest('del, s') !== null) return true;
-        if (el.closest('[style*="line-through"]') !== null) return true;
-        if (el.closest('[class*="strike" i], [class*="line-through" i], [class*="crossed" i], [class*="original" i]') !== null) return true;
+        let current: HTMLElement | null = el;
+        for (let depth = 0; depth < 8 && current; depth++) {
+          if (current.tagName === 'DEL' || current.tagName === 'S') return true;
+          const styleAttr = current.getAttribute('style') || '';
+          if (styleAttr.toLowerCase().includes('line-through')) return true;
+          const classes = (current.className || '').toLowerCase();
+          if (classes.includes('strike') || classes.includes('line-through') || classes.includes('crossed') || classes.includes('original')) {
+            return true;
+          }
+          current = current.parentElement;
+        }
 
         // Target specifically text elements that look like prices or contain numbers
         const txt = el.textContent || '';
         if (txt.includes('£') || txt.includes('$') || txt.includes('€') || txt.includes('₹') || /\d/.test(txt)) {
-          // Walk up parent elements — text-decoration is NOT inherited via CSS,
-          // so the line-through may be on a parent element (e.g. parent div with the class)
           let current: HTMLElement | null = el;
           for (let depth = 0; depth < 8 && current; depth++) {
             try {
@@ -302,6 +300,10 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
         }
         if (node.nodeType === Node.ELEMENT_NODE) {
           const htmlEl = node as HTMLElement;
+          const tagName = htmlEl.tagName.toUpperCase();
+          if (tagName === 'SCRIPT' || tagName === 'STYLE') {
+            return '';
+          }
           if (isStrikethrough(htmlEl)) {
             return '';
           }
@@ -338,6 +340,23 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
           const key = text ? `${tag}:${text}` : `${tag}:${el.className || ''}:${results.length}`;
           if (seen.has(key)) continue;
           seen.add(key);
+
+          const hasCheckedSvg = (() => {
+            const svgs = el.getElementsByTagName('svg');
+            for (let i = 0; i < svgs.length; i++) {
+              const svg = svgs[i];
+              const classes = (svg.getAttribute('class') || '').toLowerCase();
+              if (classes.includes('checked') || classes.includes('checkmark')) return true;
+            }
+            const children = el.getElementsByTagName('*');
+            for (let i = 0; i < children.length; i++) {
+              const child = children[i];
+              const classes = (child.getAttribute('class') || '').toLowerCase();
+              if (classes.includes('checked') || classes.includes('checkmark')) return true;
+            }
+            return false;
+          })();
+
           results.push({
             tag,
             text,
@@ -352,7 +371,7 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
             ariaPressed: el.getAttribute('aria-pressed') || undefined,
             ariaChecked: el.getAttribute('aria-checked') || undefined,
             id: el.id || undefined,
-            hasCheckedSvg: el.querySelector('svg[class*="checked" i], [class*="checkmark" i]') !== null,
+            hasCheckedSvg,
           });
           if (results.length >= 2000) break;
         }
@@ -360,7 +379,8 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
       }
       return results;
     });
-  } catch {
+  } catch (err: any) {
+    console.error('❌ getPageSnapshot page.evaluate failed:', err);
     return [];
   }
 }

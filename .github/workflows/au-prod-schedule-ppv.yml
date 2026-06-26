@@ -50,7 +50,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 2
       matrix:
         plan:
           - standard_monthly
@@ -84,25 +84,10 @@ jobs:
           node -v
           npm -v
 
-      - name: Install dependencies if needed
+      - name: Install dependencies
         run: |
-          if [ ! -d node_modules ]; then
-            # Search parent directories for an existing node_modules folder to save setup time
-            for path in ../../../.. ../../../../../.. ../..; do
-              if [ -d "$path/node_modules" ]; then
-                echo "✅ Found local node_modules at: $path/node_modules"
-                echo "Symlinking to workspace..."
-                ln -s "$path/node_modules" node_modules
-                break
-              fi
-            done
-
-            # Fallback to fresh install if no local node_modules found
-            if [ ! -d node_modules ]; then
-              echo "⚠️ No local node_modules found. Running fresh npm ci..."
-              npm ci
-            fi
-          fi
+          rm -rf node_modules
+          npm ci
 
       - name: Verify Playwright
         run: npx playwright --version
@@ -118,7 +103,6 @@ jobs:
           path: playwright-report/
           if-no-files-found: ignore
 
-          retention-days: 3
       - name: Upload Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -128,5 +112,3 @@ jobs:
             test-results/
             reports/
           if-no-files-found: ignore
-
-          retention-days: 3

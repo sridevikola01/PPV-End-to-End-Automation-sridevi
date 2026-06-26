@@ -6,7 +6,7 @@
       "GB": {
         "environments": {
           "stag": {
-            "USER_EMAIL": "stagukppv@yopmail.com",
+            "USER_EMAIL": "stagukppv2@yopmail.com",
             "USER_PASSWORD": "Dazn@123"
           },
           "prod": {
@@ -22,7 +22,7 @@
             "USER_PASSWORD": "Test1!"
           },
           "prod": {
-            "USER_EMAIL": "usppv01@yopmail.com",
+            "USER_EMAIL": "usfreeppv@yopmail.com",
             "USER_PASSWORD": "Dazn@123"
           }
         }
@@ -34,20 +34,20 @@
             "USER_PASSWORD": "Test1!"
           },
           "prod": {
-            "USER_EMAIL": "auppv011@yopmail.com",
-            "USER_PASSWORD": "Dazn@123"
+            "USER_EMAIL": "akhilau@yopmail.com",
+            "USER_PASSWORD": "Test1!"
           }
         }
       },
-      "IN": {
+      "AE": {
         "environments": {
           "stag": {
             "USER_EMAIL": "in_freemium1@yopmail.com",
             "USER_PASSWORD": "Test1!"
           },
           "prod": {
-            "USER_EMAIL": "in_freemium1@yopmail.com",
-            "USER_PASSWORD": "Test1!"
+            "USER_EMAIL": "aesignup@yopmail.com",
+            "USER_PASSWORD": "Dazn@1"
           }
         }
       }
@@ -76,8 +76,8 @@
             "USER_PASSWORD": "Test1!"
           },
           "prod": {
-            "USER_EMAIL": "us_returning@t.com",
-            "USER_PASSWORD": "Test1!"
+            "USER_EMAIL": "2usa@m.com",
+            "USER_PASSWORD": "55555eE"
           }
         }
       },
@@ -88,20 +88,20 @@
             "USER_PASSWORD": "Test1!"
           },
           "prod": {
-            "USER_EMAIL": "au_returning@t.com",
-            "USER_PASSWORD": "Test1!"
+            "USER_EMAIL": "autesting@t.dazn.com",
+            "USER_PASSWORD": "Dazn@1"
           }
         }
       },
-      "IN": {
+      "AE": {
         "environments": {
           "stag": {
             "USER_EMAIL": "in_returning@t.com",
             "USER_PASSWORD": "Test1!"
           },
           "prod": {
-            "USER_EMAIL": "in_returning@t.com",
-            "USER_PASSWORD": "Test1!"
+            "USER_EMAIL": "uaeppv@test.com",
+            "USER_PASSWORD": "Dlab@123"
           }
         }
       }

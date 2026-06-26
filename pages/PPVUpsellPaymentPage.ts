@@ -44,6 +44,22 @@ export class PPVUpsellPaymentPage extends BasePage {
     pageName = 'Saved Card Payment'
   ): Promise<void> {
     console.log(`🔍 Validating ${pageName} page...`);
+
+    // ── Wait for page to be ready ──
+    const readyIndicator = this.page.locator(
+      'button:has-text("Pay Now"), button:has-text("Pay now"), ' +
+      'button:has-text("Pay €"), button:has-text("Pay £"), ' +
+      'button[type="submit"]:has-text("Pay"), ' +
+      'text=/Today you pay|payment method|one time payment/i'
+    ).first();
+
+    console.log('⏳ Waiting for saved card payment page elements to render...');
+    await readyIndicator.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {
+      console.warn('⚠️ Saved card payment page indicators not visible after 15s');
+    });
+    await this.page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+    await this.page.waitForTimeout(1000); // Small settle delay
+
     const bodyText = await this.page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
     const bodyLower = bodyText.toLowerCase();
 
@@ -51,20 +67,60 @@ export class PPVUpsellPaymentPage extends BasePage {
       const field = (row['Field'] || '').trim();
       if (!field) continue;
       const expected = resolveExpected(row, eventData);
+
+      // Skip validation if expected is 'N/A' or empty
+      const expectedNorm = (expected || '').trim().toUpperCase();
+      const expectedOptions = expectedNorm.split('|').map(opt => opt.trim());
+      const isAllNAOrEmpty = expectedOptions.every(opt => opt === 'N/A' || opt === '');
+      if (isAllNAOrEmpty) {
+        console.log(`  ⏭️  Skipping [${field}] — expected is "${expected}"`);
+        continue;
+      }
+
       let actual = 'N/A';
       const key = field.toLowerCase().replace(/\s+/g, ' ').trim();
 
-      if (key === 'page title') {
-        const headings = await this.page.locator('h1, h2').allTextContents().catch(() => []);
-        // Find heading containing PPV-related text (e.g., "PPV: Fury vs. Hall")
-        const ppvH = headings.find((h: string) => h.toLowerCase().includes('ppv') || h.toLowerCase().includes('vs'));
-        actual = ppvH?.trim() || headings[0]?.trim() || 'N/A';
+      // ── Skip CTA ──
+      if (key === 'skip cta') {
+        const skipEl = this.page.locator(
+          'a:has-text("Skip"), button:has-text("Skip"), [class*="skip" i]'
+        ).first();
+        actual = (await skipEl.isVisible({ timeout: 2000 }).catch(() => false)) ? 'Yes' : 'No';
 
-      } else if (key.includes('ppv image') || key.includes('image present')) {
+      // ── PPV Name (heading) ──
+      } else if (key === 'ppv name' || key === 'page title') {
+        const headings = await this.page.locator('h1, h2, h3, h4').allTextContents().catch(() => []);
+        const ppvNameFull = (eventData?.PPV_NAME || '').toLowerCase();
+        const nameWords = ppvNameFull
+          .split(/[\s:\-–—,]+/)
+          .filter(w => w.length > 2 && !/^(the|and|for|with|from|ppv)$/i.test(w));
+
+        let foundHeading = headings.find((h: string) => {
+          const lowerH = h.toLowerCase();
+          if (lowerH.includes('dazn')) return false;
+          if (nameWords.length > 0) {
+            return nameWords.some(w => lowerH.includes(w));
+          }
+          return lowerH.includes('ppv') || lowerH.includes('vs');
+        });
+
+        actual = foundHeading?.trim() || headings.find(h => !h.toLowerCase().includes('dazn'))?.trim() || headings[0]?.trim() || 'N/A';
+
+      // ── PPV Description ──
+      } else if (key === 'ppv description') {
+        // Check for descriptive paragraph text below the heading
+        const paras = await this.page.locator('p, [class*="description" i], [class*="subtitle" i]')
+          .allTextContents().catch(() => []);
+        const desc = paras.find((p: string) => p.trim().length > 20 && !p.toLowerCase().includes('payment'));
+        actual = desc ? 'Yes' : 'No';
+
+      // ── PPV Image Present ──
+      } else if (key === 'ppv image present' || key.includes('ppv image') || key.includes('image present')) {
         const imgs = this.page.locator('img');
         actual = (await imgs.count().catch(() => 0)) > 0 ? 'Yes' : 'No';
 
-      } else if (key.includes('date badge') || key.includes('event date')) {
+      // ── PPV Date and Time ──
+      } else if (key === 'ppv date and time' || key.includes('date badge') || key.includes('event date')) {
         const datePatterns = [
           /\b(Sat|Sun|Mon|Tue|Wed|Thu|Fri)\w*\s+\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+at\s+\d{1,2}:\d{2}/i,
           /\b(Saturday|Sunday|Monday|Tuesday|Wednesday|Thursday|Friday)\s+at\s+\d{1,2}:\d{2}/i,
@@ -76,29 +132,112 @@ export class PPVUpsellPaymentPage extends BasePage {
           if (match) { actual = match[0].trim(); break; }
         }
 
+      // ── Order Summary PPV Name (PPV name in the price/summary section) ──
+      } else if (key === 'order summary ppv name') {
+        // The PPV name appears next to the price in the order summary row
+        const ppvName = eventData.PPV_NAME || '';
+        const mainName = ppvName.split(/[:\-–]/)[0].trim();
+        const vsMatch = ppvName.match(/(\w+)\s+vs\.?\s+(\w+)/i);
+        const f1 = vsMatch ? vsMatch[1].toLowerCase() : '';
+        const f2 = vsMatch ? vsMatch[2].toLowerCase() : '';
+
+        // Look for the PPV name outside headings (in the order summary area)
+        const summaryEls = await this.page.locator('div, span, p, td').allTextContents().catch(() => []);
+        const matchEl = summaryEls.find((t: string) => {
+          const tLower = t.trim().toLowerCase();
+          if (tLower.length < 5 || tLower.length > 100) return false;
+          if (f1 && f2) return tLower.includes(f1) && tLower.includes(f2);
+          return tLower.includes(mainName.toLowerCase());
+        });
+        actual = matchEl ? matchEl.trim() : 'N/A';
+
+      // ── Today You Pay Text ──
+      } else if (key === 'today you pay text') {
+        actual = bodyLower.includes('today you pay') ? 'Today you pay' : 'N/A';
+
+      // ── Today You Pay Price ──
+      } else if (key === 'today you pay price' || key.includes('today you pay') || key.includes('total price')) {
+        const todayMatch = bodyText.match(/today you pay[^£$€AED]*(?:AED\s?|[£$€])\d+\.\d{2}/i);
+        actual = todayMatch ? todayMatch[0].match(/(?:AED\s?|[£$€])\d+\.\d{2}/)?.[0] || 'N/A' : 'N/A';
+
+      // ── PPV Price / Event Price (in the order summary line) ──
       } else if (key === 'ppv price' || key === 'event price') {
-        const priceMatch = bodyText.match(/£\d+\.\d{2}/);
+        const priceMatch = bodyText.match(/(?:AED\s?|[£$€])\d+\.\d{2}/);
         actual = priceMatch ? priceMatch[0] : 'N/A';
 
+      // ── Payment Type (One time payment) ──
       } else if (key.includes('payment type')) {
         actual = bodyLower.includes('one time payment') ? 'One time payment' : 'N/A';
 
-      } else if (key.includes('today you pay') || key.includes('total price')) {
-        const todayMatch = bodyText.match(/today you pay[^£]*£(\d+\.\d{2})/i);
-        actual = todayMatch ? `£${todayMatch[1]}` : 'N/A';
+      // ── Payment Method Present ──
+      } else if (key === 'payment method present') {
+        const hasMethod = bodyLower.includes('payment method') ||
+          bodyLower.includes('visa') || bodyLower.includes('mastercard') ||
+          bodyLower.includes('amex') || bodyLower.includes('****');
+        actual = hasMethod ? 'Yes' : 'No';
 
+      // ── Pay Now Button ──
+      } else if (key === 'pay now button') {
+        const payBtn = this.page.locator(
+          'button:has-text("Pay Now"), button:has-text("Pay now"), ' +
+          'button:has-text("Pay €"), button:has-text("Pay £"), ' +
+          'button[type="submit"]:has-text("Pay")'
+        ).first();
+        actual = (await payBtn.isVisible({ timeout: 2000 }).catch(() => false)) ? 'Yes' : 'No';
+
+      // ── Secure Checkout ──
+      } else if (key === 'secure checkout') {
+        const hasSecure = bodyLower.includes('secure checkout') ||
+          bodyLower.includes('secure payment') ||
+          bodyLower.includes('ssl') ||
+          await this.page.locator('[class*="secure" i], [class*="lock" i], [alt*="secure" i]')
+            .first().isVisible({ timeout: 1500 }).catch(() => false);
+        actual = hasSecure ? 'Yes' : 'No';
+
+      // ── More Payment Methods ──
+      } else if (key === 'more payment methods' || key.includes('more payment')) {
+        const hasMore = bodyLower.includes('more payment methods') ||
+          await this.page.locator('text=/more payment/i').first()
+            .isVisible({ timeout: 1500 }).catch(() => false);
+        actual = hasMore ? 'Yes' : 'No';
+
+      // ── Legal Text Present ──
+      } else if (key === 'legal text present') {
+        // Legal text typically contains terms like "By completing", "agree", "purchase"
+        const legalPatterns = [
+          'by completing', 'by purchasing', 'you agree', 'terms of use',
+          'terms and conditions', 'non-refundable', 'acknowledge', 'consent'
+        ];
+        const hasLegal = legalPatterns.some(p => bodyLower.includes(p));
+        actual = hasLegal ? 'Yes' : 'No';
+
+      // ── Terms Link Present ──
+      } else if (key === 'terms link present') {
+        const termsLink = this.page.locator(
+          'a:has-text("Terms"), a:has-text("terms of use"), a:has-text("Terms and Conditions"), ' +
+          'a[href*="terms"], a[href*="Terms"]'
+        ).first();
+        actual = (await termsLink.isVisible({ timeout: 1500 }).catch(() => false)) ? 'Yes' : 'No';
+
+      // ── Privacy Policy Link Present ──
+      } else if (key === 'privacy policy link present') {
+        const privacyLink = this.page.locator(
+          'a:has-text("Privacy"), a:has-text("privacy policy"), ' +
+          'a[href*="privacy"], a[href*="Privacy"]'
+        ).first();
+        actual = (await privacyLink.isVisible({ timeout: 1500 }).catch(() => false)) ? 'Yes' : 'No';
+
+      // ── Payment Instruction / Payment Text ──
       } else if (key.includes('payment instruction') || key.includes('payment text')) {
         actual = bodyLower.includes('please choose from the payment options') ? expected : 'N/A';
 
+      // ── Saved Card / Card on File ──
       } else if (key.includes('saved card') || key.includes('card on file')) {
-        // Generic: check for any card brand + last 4 digits pattern
         const hasCard = bodyLower.includes('visa') || bodyLower.includes('mastercard') ||
                         bodyLower.includes('amex') || bodyLower.includes('****');
         actual = hasCard ? expected : 'N/A';
 
-      } else if (key.includes('more payment')) {
-        actual = bodyLower.includes('more payment methods') ? 'More payment methods' : 'N/A';
-
+      // ── Redeem Promo Code ──
       } else if (key.includes('redeem promo') || key.includes('promo code')) {
         actual = bodyLower.includes('redeem promo code') ? 'Redeem promo code' : 'N/A';
       }

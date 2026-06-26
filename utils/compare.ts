@@ -16,7 +16,7 @@ export function compare(
 
   const norm = (s: string) =>
     s.replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u00A0]/g, '')
-     .replace(/[£$€₹]/g, '')
+     .replace(/[£$€₹]|AED\s?/g, '')
      .replace(/'/gi, "'")
      .replace(/&#39;/gi, "'")
      .replace(/&apos;/gi, "'")
@@ -29,7 +29,7 @@ export function compare(
      .replace(/[\u2018\u2019\u201A\u201B\u2032\u0060\u00B4]/g, "'")
      .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
      .replace(/\bppv\b/gi, '')
-     .replace(/[:\-–]/g, ' ')
+     .replace(/[\-–—\u2014\u2013]/g, ' ')
      .replace(/\s+/g, ' ')
      .trim()
      .toLowerCase()
@@ -96,7 +96,7 @@ export function compare(
 
   // ── Price comparison ───────────────────────────────────────────
   const normPrice = (s: string) =>
-    s.replace(/[£$€₹,\s]/g, '').trim();
+    s.replace(/[£$€₹,\s]|AED\s?/g, '').trim();
   const aPrice = normPrice(actual);
   const ePrice = normPrice(expected);
   if (aPrice && ePrice && aPrice === ePrice) return true;
@@ -117,6 +117,40 @@ export function compare(
   ) {
     if (a.includes('not ' + e) || a.includes('not' + e)) return false;
     return true;
+  }
+
+  // ── PPV Name: Abbreviated promotion prefix matching ─────────────
+  // Config may use abbreviated names like "AEW: Forbidden Door" or "PFL: Champions"
+  // but the live site displays "All Elite Wrestling Forbidden Door" or "Professional Fighters League Champions".
+  // Match if the part after the colon appears in the actual text and the actual text is
+  // genuinely longer (full name expansion), NOT just the colon removed.
+  if (expected.includes(':')) {
+    const beforeColon = norm(expected.split(':')[0].trim());
+    const afterColon = norm(expected.split(':').slice(1).join(':').trim());
+    // Only match if: (a) the part after colon appears in actual,
+    // (b) the actual text is genuinely longer than expected (suggesting full name expansion),
+    // (c) the prefix before the colon is NOT present as-is in actual (it was expanded).
+    if (
+      afterColon.length >= 5 &&
+      a.includes(afterColon) &&
+      actual.length > expected.length * 1.1 &&
+      !a.includes(beforeColon + ' ' + afterColon)
+    ) {
+      return true;
+    }
+  }
+  // Reverse: actual has colon, expected doesn't — only if expected is genuinely longer
+  if (actual.includes(':') && !expected.includes(':')) {
+    const beforeColonActual = norm(actual.split(':')[0].trim());
+    const afterColonActual = norm(actual.split(':').slice(1).join(':').trim());
+    if (
+      afterColonActual.length >= 5 &&
+      e.includes(afterColonActual) &&
+      expected.length > actual.length * 1.1 &&
+      !e.includes(beforeColonActual + ' ' + afterColonActual)
+    ) {
+      return true;
+    }
   }
 
   // ── Date flexibility ───────────────────────────────────────────

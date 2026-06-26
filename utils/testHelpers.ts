@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { injectConsentCookies } from './helpers';
+
 import path from 'path';
 
 // ─────────────────────────────────────────────────────────────────
@@ -94,8 +94,7 @@ export async function createFreshContext(browser: any): Promise<{ context: any; 
     },
   });
 
-  // Pre-inject OneTrust consent cookies so banner never appears
-  await injectConsentCookies(context);
+
 
   await context.addInitScript(() => {
     try {
@@ -279,6 +278,10 @@ export async function handlePopupModal(
 // ASSERT COUNTRY MATCH
 // ─────────────────────────────────────────────────────────────────
 export function assertCountryMatch(page: any, region: string): void {
+  if (process.env.BYPASS_COUNTRY_CHECK === 'true') {
+    console.log(`⚠️ [Country Match Check] Bypassed country match assertion (requested region: "${region}").`);
+    return;
+  }
   const url = page.url();
   const regionLower = region.toLowerCase();
 

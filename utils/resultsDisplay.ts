@@ -81,13 +81,10 @@ export function displayResultsTable(
 
   // ── File paths ───────────────────────────────────────────────
   if (meta?.excelPath) {
-    console.log(`  📊  Excel   : ${meta.excelPath}`);
   }
 
   if (meta?.videoPath) {
-    console.log(`  🎥  Video   : ${meta.videoPath}`);
   } else {
-    console.log(`  🎥  Video   : not found — check test-results/artifacts/`);
   }
 
   console.log(`${dline}\n`);

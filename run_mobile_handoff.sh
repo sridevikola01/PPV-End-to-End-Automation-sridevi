@@ -17,7 +17,7 @@ echo ""
 
 cd appium
 
-SOURCE="schedule" \
+SOURCE="${SOURCE:-home-page-dont-miss}" \
 ANDROID_HOME="$HOME/Library/Android/sdk" \
 ANDROID_SDK_ROOT="$HOME/Library/Android/sdk" \
 npx wdio run config/wdio.android.conf.ts --spec ./tests/android/ppv.handoff.spec.ts
@@ -28,16 +28,13 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "✅ Appium test completed - URL captured"
-echo ""
-
-# Step 2: Run Playwright web test to complete purchase
-echo "🌐 Step 2: Running Playwright web test..."
-echo "   This will open browser and complete the purchase flow"
+echo "✅ Appium mobile test completed - Entire flow executed on the device!"
 echo ""
 
 cd ..
 
+# Step 2: Run Playwright test to complete checkout on simulated mobile browser
+echo "🌐 Step 2: Running Playwright mobile checkout test..."
 npx playwright test tests/mobile/mobile.ppv.spec.ts
 
 if [ $? -ne 0 ]; then
@@ -47,5 +44,7 @@ fi
 
 echo ""
 echo "═══════════════════════════════════════════════════════"
-echo "✅ Mobile → Web handoff flow completed successfully!"
+echo "✅ Mobile PPV automation completed successfully!"
+echo "   All handoff and checkout steps executed successfully."
+echo "   Check screenshots in test-results/ for verification."
 echo "═══════════════════════════════════════════════════════"

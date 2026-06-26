@@ -10,9 +10,16 @@ const outputPath = path.resolve(process.cwd(), 'data', 'PPV_Input.xlsx');
 const landingData = [
   { Field: 'Don\'t Miss Live on DAZN Section', Expected: 'Yes', Flow: 'landing' },
   { Field: 'PPV Tile Present', Expected: 'Yes', Flow: 'landing' },
-  { Field: 'PPV Name', Expected: '{{PPV_NAME}}', Flow: 'landing' },
+  { Field: 'PPV Name', Expected: '{{PPV_FULL_NAME}}', Flow: 'landing' },
   { Field: 'Landing Page PPV Date', Expected: '{{LANDING_PAGE_PPV_DATE}}', Flow: 'landing' },
   { Field: 'Buy Now Button', Expected: 'Buy now', Flow: 'landing' },
+  // ── Landing Page Banner validations ───────────────────────
+  { Field: 'Banner - Event Title', Expected: '{{PPV_NAME}}', Flow: 'landing-page-banner' },
+  { Field: 'Banner - Event Date', Expected: '{{PPV_DATE}}', Flow: 'landing-page-banner' },
+  { Field: 'Banner - Event Description', Expected: '{{PPV_DESCRIPTION}}', Flow: 'landing-page-banner' },
+  { Field: 'Banner Image Present', Expected: 'Yes', Flow: 'landing-page-banner' },
+  { Field: 'Banner - Buy Now CTA', Expected: 'Visible', Flow: 'landing-page-banner' },
+  { Field: 'Banner - Fight Card CTA', Expected: 'Visible', Flow: 'landing-page-banner' },
 ];
 
 const boxingLandingData = [
@@ -82,10 +89,9 @@ const ppvData = [
 
   { Variant: 'variant1', Field: 'Page Title', Expected: 'Choose the right plan for you.', Flow: '' },
   { Variant: 'variant1', Field: 'Header Sub Text', Expected: 'To watch your pay-per-view, you\'ll need a DAZN plan.', Flow: '' },
-  { Variant: 'variant1', Field: 'Header Highlight Text1', Expected: '{{PPV_NAME}}', Flow: '' },
   { Variant: 'variant1', Field: 'Header Highlight Text2', Expected: 'N/A', Flow: '' },
-  { Variant: 'variant1', Field: 'Hero Image', Expected: 'Yes', Flow: '' },
   { Variant: 'variant1', Field: 'Event Name', Expected: '{{PPV_NAME}}', Flow: '' },
+  { Variant: 'variant1', Field: 'PPV Per Fight Text', Expected: '/fight', Flow: '' },
   { Variant: 'variant1', Field: 'PPV Price', Expected: '{{PPV_PRICE}}', Flow: '' },
   { Variant: 'variant1', Field: 'Currency', Expected: '{{CURRENCY}}', Flow: '' },
   { Variant: 'variant1', Field: 'DAZN Tier', Expected: '+DAZN Standard', Flow: 'newuser' },
@@ -102,13 +108,11 @@ const ppvData = [
   { Variant: 'variant1', Field: 'Upsell Price', Expected: '{{UPSELL_PRICE}}', Flow: '' },
   { Variant: 'variant1', Field: 'Upsell Price Length', Expected: '{{UPSELL_PRICE_LENGTH}}', Flow: '' },
   { Variant: 'variant1', Field: 'Upsell Crossed Price', Expected: '{{UPSELL_CROSSED_PRICE}}', Flow: '' },
-  { Variant: 'variant1', Field: 'Upsell Contract Text', Expected: 'Annual contract. Auto renews.', Flow: '' },
+
   { Variant: 'variant1', Field: 'Upsell Billing Text', Expected: '{{ANNUAL_PAY_MONTHLY_CONTRACT_TEXT}}', Flow: '' },
   { Variant: 'variant1', Field: 'Upsell Offer Text', Expected: '{{UPSELL_OFFER_TEXT}}', Flow: 'offer' },
   { Variant: 'variant1', Field: 'Upsell Section Heading', Expected: '{{UPSELL_SECTION_HEADING}}', Flow: '' },
-  { Variant: 'variant1', Field: 'Included PPV1 Name', Expected: '{{PPV_NAME}}', Flow: '' },
-  { Variant: 'variant1', Field: 'PPV1 Image Present on ultimate tier', Expected: 'Yes', Flow: '' },
-  { Variant: 'variant1', Field: 'PPV1 Upsell Tile Date', Expected: '{{PPV1_UPSELL_TILE_DATE}}', Flow: '' },
+
   { Variant: 'variant1', Field: 'PPV1 Included tag', Expected: 'N/A', Flow: '' },
   { Variant: 'variant1', Field: 'Included PPV2 Name', Expected: 'N/A', Flow: '' },
   { Variant: 'variant1', Field: 'PPV2 Image Present on ultimate tier', Expected: 'N/A', Flow: '' },
@@ -142,7 +146,6 @@ const ppvData = [
 
   { Variant: 'variant2', Field: 'Page Title', Expected: 'Choose your plan', Flow: '' },
   { Variant: 'variant2', Field: 'Header Full Copy', Expected: 'Buy {{PPV_NAME}} with DAZN Standard or get it included in DAZN Ultimate.', Flow: '' },
-  { Variant: 'variant2', Field: 'Header Highlight Text1', Expected: '{{PPV_NAME}}', Flow: '' },
   { Variant: 'variant2', Field: 'Header Highlight Text2', Expected: 'get it included in DAZN Ultimate.', Flow: '' },
   { Variant: 'variant2', Field: 'PPV Image', Expected: 'Yes', Flow: '' },
   { Variant: 'variant2', Field: 'Event Date and Time', Expected: '{{PPV_DATE}}', Flow: '' },
@@ -150,6 +153,7 @@ const ppvData = [
   { Variant: 'variant2', Field: 'PPV Checkbox Present', Expected: 'Yes', Flow: '' },
   { Variant: 'variant2', Field: 'PPV Selected', Expected: 'Yes', Flow: '' },
   { Variant: 'variant2', Field: 'PPV Name', Expected: '{{PPV_NAME}}', Flow: '' },
+  { Variant: 'variant2', Field: 'PPV Per Fight Text', Expected: '/fight', Flow: '' },
   { Variant: 'variant2', Field: 'PPV Price', Expected: '{{PPV_PRICE}}', Flow: '' },
   { Variant: 'variant2', Field: 'Currency', Expected: '{{CURRENCY}}', Flow: '' },
   { Variant: 'variant2', Field: 'Subscription Section Title', Expected: 'Choose your subscription', Flow: '' },
@@ -166,9 +170,7 @@ const ppvData = [
   { Variant: 'variant2', Field: 'Upsell Price', Expected: '{{UPSELL_PRICE}}', Flow: '' },
   { Variant: 'variant2', Field: 'Upsell Price Length', Expected: '{{UPSELL_PRICE_LENGTH}}', Flow: '' },
   { Variant: 'variant2', Field: 'Upsell Billing Text', Expected: 'Annual contract. Auto renews.', Flow: '' },
-  { Variant: 'variant2', Field: 'Included PPV1 Name', Expected: '{{PPV_NAME}}', Flow: '' },
-  { Variant: 'variant2', Field: 'PPV1 Image Present on ultimate tier', Expected: 'Yes', Flow: '' },
-  { Variant: 'variant2', Field: 'PPV1 Upsell Tile Date', Expected: '{{PPV1_UPSELL_TILE_DATE}}', Flow: '' },
+
   { Variant: 'variant2', Field: 'PPV1 Included tag', Expected: 'Yes', Flow: '' },
   { Variant: 'variant2', Field: 'Included PPV2 Name', Expected: 'N/A', Flow: '' },
   { Variant: 'variant2', Field: 'PPV2 Image Present on ultimate tier', Expected: 'N/A', Flow: '' },
@@ -240,7 +242,8 @@ const planData = [
 // ═══════════════════════════════════════════════════════════
 const paymentData = [
   // ── Common ───────────────────────────────────────────────
-  { Tier: 'Common', 'Rate Plan': 'All', Field: 'Header', Expected: 'Your payment is encrypted and you can change how you pay at any time.', Flow: '' },
+  { Tier: 'Common', 'Rate Plan': 'All', Field: 'Payment Method Heading', Expected: 'Payment method', Flow: '' },
+  { Tier: 'Common', 'Rate Plan': 'All', Field: 'Purchase Summary Heading', Expected: 'Purchase summary', Flow: '' },
   { Tier: 'Common', 'Rate Plan': 'All', Field: 'Plan Change CTA', Expected: 'Change', Flow: '' },
   { Tier: 'Common', 'Rate Plan': 'All', Field: 'Credit & Debit Card Option', Expected: 'Yes', Flow: '' },
   { Tier: 'Common', 'Rate Plan': 'All', Field: 'PayPal Option', Expected: 'Yes', Flow: '' },
@@ -303,7 +306,7 @@ const paymentData = [
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'PPV Price', Expected: '{{CURRENCY}}0', Flow: '' },
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'Rate Plan', Expected: 'Annual - Pay Upfront', Flow: '' },
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'Rate Plan Price', Expected: '{{ANNUAL_UPFRONT_PRICE}}/year', Flow: '' },
-  { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'Plan Subtitle', Expected: 'Save {{CURRENCY}}{{UPFRONT_SAVE_AMOUNT}}. Pay for the full year up front!|Save {{CURRENCY}}{{UPFRONT_SAVE_AMOUNT}}', Flow: '' },
+  { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'Plan Subtitle', Expected: 'Save {{CURRENCY}}{{UPFRONT_SAVE_AMOUNT}}. Pay for the full year up front|Save {{CURRENCY}}{{UPFRONT_SAVE_AMOUNT}}', Flow: '' },
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'Today You Pay Text', Expected: 'Today you pay', Flow: '' },
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'Today You Pay Price', Expected: '{{TODAY_YOU_PAY_PRICE}}', Flow: '' },
   { Tier: 'Ultimate', 'Rate Plan': 'Annual Pay Upfront', Field: 'Next Payment Label', Expected: 'Next Annual payment on {{NEXT_PAYMENT_DATE}}', Flow: '' },
@@ -373,7 +376,7 @@ const scheduleData = [
   { Field: 'Popup Date', Expected: '{{PPV_DATE}}' },
   { Field: 'Popup PPV Name', Expected: '{{PPV_NAME}}' },
   { Field: 'Popup Promoter', Expected: '{{PPV_PROMOTER}}' },
-  { Field: 'Popup Description', Expected: '{{PPV_DESCRIPTION}}' },
+  { Field: 'Popup Description', Expected: 'Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.' },
   { Field: 'Popup Buy Now CTA Present', Expected: 'Yes' },
   { Field: 'Popup Buy Now CTA Text', Expected: 'Buy now' },
   { Field: 'Popup Close Button', Expected: 'Yes' },
@@ -390,6 +393,7 @@ const myAccountData = [
   { Field: 'PPV Date', Expected: '{{PPV_DATE}}' },
   { Field: 'PPV Price', Expected: '{{PPV_PRICE}}' },
   { Field: 'PPV Status', Expected: '{{PPV_STATUS}}' },
+  { Field: 'PPV Image Present', Expected: 'Yes' },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -439,6 +443,8 @@ const ppvPaymentData = [
   { Field: 'Legal Text Present', Expected: 'Yes' },
   { Field: 'Terms Link Present', Expected: 'Yes' },
   { Field: 'Privacy Policy Link Present', Expected: 'Yes' },
+  { Field: 'Payment Type', Expected: 'One time payment' },
+  { Field: 'Payment Instruction Text', Expected: 'In order to purchase this event, please choose from the payment options below' },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -446,26 +452,26 @@ const ppvPaymentData = [
 // ═══════════════════════════════════════════════════════════
 const upgradeConfirmationData = [
   { Tier: 'common', Field: 'Page Title', Expected: 'DAZN Ultimate' },
-  { Tier: 'common', Field: 'Page Description', Expected: 'Yes' },
+  { Tier: 'common', Field: 'Page Description', Expected: 'All the action in one subscription. 12 pay-per-view fights a year with the ultimate viewing experience, plus football, basketball and more.' },
   { Tier: 'common', Field: 'Payment Method Present', Expected: 'Yes' },
   { Tier: 'common', Field: 'Confirm Button', Expected: 'Confirm' },
   { Tier: 'common', Field: 'Terms Link Present', Expected: 'Yes' },
-  { Tier: 'common', Field: 'Legal Text Line 1', Expected: 'Your plan will be changed to DAZN Ultimate today' },
-  { Tier: 'common', Field: 'Legal Text Line 2', Expected: 'Today you will be charged' },
+  { Tier: 'annual pay upfront', Field: 'Legal Text Line 1', Expected: 'Your plan will be changed to DAZN Ultimate today {{TODAY_DATE}} and your contract will last 12 months.' },
+  { Tier: 'annual pay upfront', Field: 'Legal Text Line 2', Expected: 'Today you will be charged {{CURRENCY}}{{ANNUAL_UPFRONT_PRICE}} minus the remainder of your last payment which was not used in full. From {{NEXT_PAYMENT_DATE}} you will be charged {{CURRENCY}}{{ANNUAL_UPFRONT_PRICE}}/year.' },
   { Tier: 'annual pay upfront', Field: 'Rate Plan', Expected: 'Annual - Pay Upfront' },
   { Tier: 'annual pay upfront', Field: 'Rate Plan Price', Expected: '{{ANNUAL_UPFRONT_PRICE}}' },
   { Tier: 'annual pay upfront', Field: 'Rate Plan Period', Expected: '/year' },
   { Tier: 'annual pay upfront', Field: 'Rate Plan Description', Expected: 'Get the best value when you pay upfront.' },
-  { Tier: 'annual pay upfront', Field: 'Next Payment Label', Expected: 'Next payment on' },
+  { Tier: 'annual pay upfront', Field: 'Next Payment Label', Expected: 'Next payment on {{NEXT_PAYMENT_DATE}}' },
   { Tier: 'annual pay upfront', Field: 'Next Payment Date', Expected: '{{NEXT_PAYMENT_DATE}}' },
-  { Tier: 'annual pay upfront', Field: 'Next Payment Price', Expected: '{{ANNUAL_UPFRONT_PRICE}}' },
+  { Tier: 'annual pay monthly', Field: 'Legal Text Line 1', Expected: 'Your plan will be changed to DAZN Ultimate today {{TODAY_DATE}} and your contract will last 12 months.' },
+  { Tier: 'annual pay monthly', Field: 'Legal Text Line 2', Expected: 'Today you will be charged {{CURRENCY}}{{ANNUAL_PAY_MONTHLY_PRICE}} minus the remainder of your last payment which was not used in full. From {{NEXT_PAYMENT_DATE}} you will be charged {{CURRENCY}}{{ANNUAL_PAY_MONTHLY_PRICE}} /month.' },
   { Tier: 'annual pay monthly', Field: 'Rate Plan', Expected: 'Annual - Pay Monthly' },
   { Tier: 'annual pay monthly', Field: 'Rate Plan Price', Expected: '{{ANNUAL_PAY_MONTHLY_PRICE}}' },
   { Tier: 'annual pay monthly', Field: 'Rate Plan Period', Expected: '/ month' },
   { Tier: 'annual pay monthly', Field: 'Rate Plan Description', Expected: 'Annual contract. Paid in 12 monthly instalments.' },
-  { Tier: 'annual pay monthly', Field: 'Next Payment Label', Expected: 'Next payment on' },
+  { Tier: 'annual pay monthly', Field: 'Next Payment Label', Expected: 'Next payment on {{NEXT_PAYMENT_DATE}}' },
   { Tier: 'annual pay monthly', Field: 'Next Payment Date', Expected: '{{NEXT_PAYMENT_DATE}}' },
-  { Tier: 'annual pay monthly', Field: 'Next Payment Price', Expected: '{{ANNUAL_PAY_MONTHLY_PRICE}}' },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -522,8 +528,16 @@ const homePageData = [
   { Flow: 'home-page-dont-miss', Field: 'Popup - Event Date', Expected: '{{PPV_DATE}}' },
   { Flow: 'home-page-dont-miss', Field: 'Popup - Promoter', Expected: '{{PPV_PROMOTER}}' },
   { Flow: 'home-page-dont-miss', Field: 'Popup - Buy Now CTA', Expected: 'Visible' },
-  { Flow: 'home-page-dont-miss', Field: 'Popup - Event Description', Expected: '{{PPV_DESCRIPTION}}' },
+  { Flow: 'home-page-dont-miss', Field: 'Popup - Event Description', Expected: 'Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.' },
   { Flow: 'home-page-dont-miss', Field: 'Popup - Close Button', Expected: 'Visible' },
+  // ── Home Page Biggest Fights validations ───────────────────
+  { Flow: 'home-biggest-fights', Field: 'Biggest Fights Section', Expected: 'The Biggest Fights|Saturday Fight Night|Fight Night|Upcoming Big Fights|Big Fights' },
+  { Flow: 'home-biggest-fights', Field: 'Popup - Event Title', Expected: '{{PPV_NAME}}' },
+  { Flow: 'home-biggest-fights', Field: 'Popup - Event Date', Expected: '{{PPV_DATE}}' },
+  { Flow: 'home-biggest-fights', Field: 'Popup - Promoter', Expected: '{{PPV_PROMOTER}}' },
+  { Flow: 'home-biggest-fights', Field: 'Popup - Buy Now CTA', Expected: 'Visible' },
+  { Flow: 'home-biggest-fights', Field: 'Popup - Event Description', Expected: 'Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.' },
+  { Flow: 'home-biggest-fights', Field: 'Popup - Close Button', Expected: 'Visible' },
 ];
 
 // ═══════════════════════════════════════════════════════════

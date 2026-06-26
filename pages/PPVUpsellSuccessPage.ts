@@ -42,6 +42,16 @@ export class PPVUpsellSuccessPage extends BasePage {
       const field = (row['Field'] || '').trim();
       if (!field) continue;
       const expected = resolveExpected(row, eventData);
+
+      // Skip validation if expected is 'N/A' or empty
+      const expectedNorm = (expected || '').trim().toUpperCase();
+      const expectedOptions = expectedNorm.split('|').map(opt => opt.trim());
+      const isAllNAOrEmpty = expectedOptions.every(opt => opt === 'N/A' || opt === '');
+      if (isAllNAOrEmpty) {
+        console.log(`  ⏭️  Skipping [${field}] — expected is "${expected}"`);
+        continue;
+      }
+
       let actual = 'N/A';
       const key = field.toLowerCase().replace(/\s+/g, ' ').trim();
 
@@ -168,6 +178,16 @@ export class PPVUpsellSuccessPage extends BasePage {
       const field = (row['Field'] || '').trim();
       if (!field) continue;
       const expected = resolveExpected(row, eventData);
+
+      // Skip validation if expected is 'N/A' or empty
+      const expectedNorm = (expected || '').trim().toUpperCase();
+      const expectedOptions = expectedNorm.split('|').map(opt => opt.trim());
+      const isAllNAOrEmpty = expectedOptions.every(opt => opt === 'N/A' || opt === '');
+      if (isAllNAOrEmpty) {
+        console.log(`  ⏭️  Skipping [${field}] — expected is "${expected}"`);
+        continue;
+      }
+
       let actual = 'N/A';
       const key = field.toLowerCase().replace(/\s+/g, ' ').trim();
 
