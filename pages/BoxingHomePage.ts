@@ -29,15 +29,18 @@ export class BoxingHomePage extends HomePage {
 
 
   // ─────────────────────────────
-  // NAVIGATE: Welcome → Explore → Home → Tab/Dropdown → Sport competition page
+  // NAVIGATE: Directly launch Home -> Tab/Dropdown -> Sport competition page
   // ─────────────────────────────
   override async navigate(baseUrl: string, source?: string, eventData?: Record<string, string>): Promise<void> {
-    const welcomeUrl = `${baseUrl}/welcome`;
-    console.log(`🌍 Navigating to Welcome page: ${welcomeUrl}`);
-    await this.page.goto(welcomeUrl, { waitUntil: 'domcontentloaded' });
+    const homeUrl = `${baseUrl}/home`;
+    console.log(`🌍 Navigating directly to Home page: ${homeUrl}`);
+    await this.page.goto(homeUrl, { waitUntil: 'domcontentloaded' });
     await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
+
+    console.log(`🍪 Waiting for cookies and clicking Accept...`);
     await this.dismissConsentIfPresent();
 
+<<<<<<< HEAD
     console.log(`✅ Welcome page loaded: ${this.page.url()}`);
     await this.clickExplore();
 
@@ -45,6 +48,8 @@ export class BoxingHomePage extends HomePage {
     console.log('🍪 Waiting for cookie banner on Home page...');
     await this.dismissConsentIfPresent();
 
+=======
+>>>>>>> origin/feature/sridevi-changes
     console.log(`✅ Home page loaded: ${this.page.url()}`);
 
     let targetSport = (eventData?.SPORT || '').trim();

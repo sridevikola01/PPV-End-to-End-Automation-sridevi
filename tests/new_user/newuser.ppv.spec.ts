@@ -274,7 +274,7 @@ async function runFlow(
     } else if (isSchedule) {
       const schedule = new SchedulePage(page);
       await schedule.navigate(baseUrl);
-      await setupPage(page, 8000);
+      await setupPage(page, 500);
       assertCountryMatch(page, region);
 
       const sport = json.SPORT || 'Boxing';
@@ -311,7 +311,7 @@ async function runFlow(
     } else if (isSearch) {
       const searchPage = new SearchPage(page);
       await searchPage.navigate(baseUrl);
-      await setupPage(page, 8000);
+      await setupPage(page, 500);
       assertCountryMatch(page, region);
       let searchQuery = eventData.PPV_NAME;
       if (eventData.PPV_NAME && eventData.PPV_NAME.includes(':')) {
@@ -369,12 +369,16 @@ async function runFlow(
       }
 
       await landing.navigate(baseUrl, source, eventData);
+<<<<<<< HEAD
 
       // Pass interceptor to eventData so HomePage can use it
       if (railsInterceptor) {
         eventData._railsInterceptor = railsInterceptor;
       }
       await setupPage(page, 8000);
+=======
+      await setupPage(page, 500);
+>>>>>>> origin/feature/sridevi-changes
       assertCountryMatch(page, region);
 
       // ── DEV MODE: If enabled, activate dev mode to bypass phone number ──
@@ -651,7 +655,7 @@ async function runFlow(
             `Tile → Subscribe → TierPlans journey completed.\nURL: ${stdUrl}`
           );
 
-          await context.close().catch(() => {});
+          await context.close().catch(() => { });
           return { results, reachedEndPage: true };
         }
 
@@ -1240,7 +1244,6 @@ async function runFlow(
           await signup.enterEmail(user.email);
           await signup.clickContinue();
           await page.waitForLoadState('domcontentloaded').catch(() => { });
-          await sleep(500);
         } else {
           console.log('ℹ️  Email input not visible or on personal details page — assuming directly on personal details page');
         }
@@ -1318,7 +1321,7 @@ async function runFlow(
         await page.waitForLoadState('domcontentloaded').catch(() => { });
 
         // After personal details Continue, wait and check if we moved to payment
-        await sleep(2000);
+        await page.waitForURL(/paymentDetails/, { timeout: 2000 }).catch(() => { });
         if (page.url().includes('paymentDetails')) {
           console.log('💳 Navigated to payment page after personal details');
         }
@@ -1829,9 +1832,15 @@ async function runFlow(
 // ═══════════════════════════════════════════════════════════════
 // TEST DEFINITION — Dynamically defines tests for parallel runs
 // ═══════════════════════════════════════════════════════════════
+<<<<<<< HEAD
 const plansToRun = (process.env.PLAN || 'standard_monthly,standard_apm,ultimate_upfront,ultimate_apm')
   .split(',')
   .map(p => p.trim());
+=======
+test('PPV flow for new user', async ({ browser }) => {
+  test.setTimeout(300_000);
+  const runStart = new Date();
+>>>>>>> origin/feature/sridevi-changes
 
 // Configure tests to run in parallel using configured workers
 test.describe.configure({ mode: 'parallel' });

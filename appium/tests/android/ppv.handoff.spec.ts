@@ -159,9 +159,93 @@ async function dismissStartupDialogs(driver: WdBrowser): Promise<void> {
     if (exploreClicked) break;
   }
   
-  // Don't wait for specific screens - just continue after a delay
-  console.log('  Continuing without waiting for specific screen...');
-  await driver.pause(2000);
+  if (!exploreClicked) {
+    console.log('  Trying Back button fallback...');
+    for (let i = 0; i < 5; i++) {
+      adbBack();
+      await driver.pause(1500);
+      if (await isVisible(driver, 'Home', 1000) || await isVisible(driver, 'Schedule', 1000) || 
+          await isVisible(driver, 'Sports', 1000)) {
+        console.log('  ✅ Navigated to home with Back button');
+        exploreClicked = true;
+        break;
+      }
+    }
+  }
+  
+  if (!exploreClicked) {
+    console.log('  ⚠️ Could not click Explore button — taking screenshot and continuing');
+    await driver.saveScreenshot('./test-results/android_explore_failed.png');
+  }
+  
+  // Dismiss cookie consent popup using exact XPath
+  console.log('🍪 Checking for cookie consent popup...');
+  
+  let cookieDismissed = false;
+  
+  // Method 1: Use exact XPath from Appium Inspector (most reliable)
+  try {
+    const acceptBtn = await driver.$(`//android.widget.Button[@resource-id="com.dazn:id/btn_accept_cookies"]`);
+    if (await acceptBtn.isDisplayed()) {
+      await acceptBtn.click();
+      console.log('✅ Cookie popup dismissed (exact XPath)');
+      cookieDismissed = true;
+      await driver.pause(1500);
+    }
+  } catch (e) {
+    console.log('  Exact XPath not found, trying text methods...');
+  }
+  
+  // Method 2: Try finding Accept button using textContains
+  if (!cookieDismissed) {
+    for (let cookieAttempt = 0; cookieAttempt < 3; cookieAttempt++) {
+      await driver.pause(500);
+      
+      try {
+        const acceptBtn = await driver.$(`android=new UiSelector().textContains("Accept")`);
+        if (await acceptBtn.isDisplayed()) {
+          await acceptBtn.click();
+          console.log('✅ Cookie popup dismissed (textContains)');
+          cookieDismissed = true;
+          await driver.pause(1500);
+          break;
+        }
+      } catch (e) {}
+    }
+  }
+  
+  // Method 3: Try exact button texts
+  if (!cookieDismissed) {
+    const cookieButtons = ['Accept', 'Essential cookies only', 'Got it', 'OK'];
+    
+    for (const buttonText of cookieButtons) {
+      try {
+        const cookieBtn = await driver.$(`android=new UiSelector().text("${buttonText}")`);
+        if (await cookieBtn.isDisplayed()) {
+          await cookieBtn.click();
+          console.log(`✅ Cookie popup dismissed (clicked "${buttonText}")`);
+          cookieDismissed = true;
+          await driver.pause(1500);
+          break;
+        }
+      } catch (e) {}
+    }
+  }
+  
+  // Method 4: Coordinate fallback
+  if (!cookieDismissed) {
+    const screenSize = getScreenSize();
+    const acceptBtnY = Math.round(screenSize.height * 0.78);
+    const acceptBtnX = Math.round(screenSize.width * 0.5);
+    
+    console.log(`  Trying coordinate tap at (${acceptBtnX}, ${acceptBtnY})`);
+    adbTap(acceptBtnX, acceptBtnY);
+    await driver.pause(1500);
+  }
+  
+  await driver.$(`android=new UiSelector().textContains("Home")`)
+    .waitForDisplayed({ timeout: 20000 })
+    .catch(() => console.log('  ⚠️ Home text not found — continuing'));
   
   console.log('✅ App loaded\n');
 }
@@ -586,28 +670,9 @@ describe('DAZN Android PPV → Web Handoff', () => {
       throw new Error(`❌ Could not tap Buy CTA. SOURCE="${SOURCE}". See test-results/android_buy_not_found.png`);
     }
 
+    await driver.pause(3000);
+    await driver.saveScreenshot('./test-results/android_buy_tapped.png');
     console.log('\n⏳ Waiting for Chrome Custom Tab to open...');
-    await driver.pause(5000);  // Wait longer for Chrome to open
-    await driver.saveScreenshot('./test-results/android_after_buy_click.png');
-    
-    // Check if Chrome opened by looking for Chrome UI
-    console.log('  Checking if Chrome opened...');
-    const chromeSigns = ['Address', 'Search', 'dazn.com', 'https://'];
-    let chromeOpened = false;
-    
-    for (const sign of chromeSigns) {
-      if (await isVisible(driver, sign, 2000)) {
-        console.log(`  ✅ Chrome opened (found: ${sign})`);
-        chromeOpened = true;
-        break;
-      }
-    }
-    
-    if (!chromeOpened) {
-      console.log('  ⚠️ Chrome may not have opened. Checking current activity...');
-      const currentActivity = adb('shell dumpsys window | grep mCurrentFocus');
-      console.log(`  Current activity: ${currentActivity}`);
-    }
 
     // ── Step 3: Capture checkout URL from paywall screen ──────────────────
     console.log("📋 Capturing checkout URL from paywall...");
@@ -684,6 +749,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
       console.log("   Screenshot saved to: test-results/android_url_not_found.png");
       console.log("   Paywall screenshot saved to: test-results/android_paywall_screen.png");
       throw new Error(`❌ Could not capture checkout URL from paywall.\n   Clipboard content: ${checkoutUrl}\n   Check screenshots and console log.`);
+    }
     }
 
     console.log(`\n🌐 Checkout URL captured:\n   ${checkoutUrl}\n`);

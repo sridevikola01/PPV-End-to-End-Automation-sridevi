@@ -12,8 +12,8 @@ on:
           - GB
           - AU
           - US
-          - BR
           - AE
+          - BR
 
       DAZN_ENV:
         description: 'Environment to run'
@@ -182,5 +182,4 @@ jobs:
             test-results/
             reports/
           if-no-files-found: ignore
-
           retention-days: 3

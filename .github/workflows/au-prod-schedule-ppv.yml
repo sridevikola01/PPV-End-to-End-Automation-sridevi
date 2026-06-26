@@ -86,8 +86,23 @@ jobs:
 
       - name: Install dependencies
         run: |
-          rm -rf node_modules
-          npm ci
+          if [ ! -d node_modules ]; then
+            # Search parent directories for an existing node_modules folder to save setup time
+            for path in ../../../.. ../../../../../.. ../..; do
+              if [ -d "$path/node_modules" ]; then
+                echo "✅ Found local node_modules at: $path/node_modules"
+                echo "Symlinking to workspace..."
+                ln -s "$path/node_modules" node_modules
+                break
+              fi
+            done
+
+            # Fallback to fresh install if no local node_modules found
+            if [ ! -d node_modules ]; then
+              echo "⚠️ No local node_modules found. Running fresh npm ci..."
+              npm ci
+            fi
+          fi
 
       - name: Verify Playwright
         run: npx playwright --version
