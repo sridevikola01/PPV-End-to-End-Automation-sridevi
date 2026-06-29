@@ -3,11 +3,13 @@ import { getActualValue }           from '../utils/getActualValue';
 import { compare }                  from '../utils/compare';
 import { getPageSnapshot, DOMNode, stabilisePage } from '../utils/helpers';
 import { captureFailures }          from '../utils/failureCapture';
-import selectors                    from '../config/selectors.json';
 
 async function getVisibleTextList(locator: any): Promise<string[]> {
   try {
     return await locator.evaluate((el: HTMLElement) => {
+      // Local mock for bundlers that inject __name helper for function name preservation
+      const __name = (f: any, n: string) => f;
+
       const clean = (s: string) => s.replace(/\u200B/g, '').replace(/\s+/g, ' ').trim();
       const texts: string[] = [];
       const walk = (node: Node) => {
@@ -144,7 +146,7 @@ export const validateVariant = async (
   const snapUrlLower = snapUrl.toLowerCase();
   if (snapUrlLower.includes('plandetails') || pageName.toLowerCase().includes('ppv')) {
     // Wait for page to load — look for radio buttons or continue button
-    await page.waitForSelector('input[type="radio"], button:has-text("Continue"), [data-test-id*="radio" i]',
+    await page.waitForSelector('input[type="radio"], button:has-text("Continue"), [data-test-id*="radio" i]', 
       { state: 'visible', timeout: 5000 }
     ).catch(() => {});
 
@@ -196,149 +198,12 @@ export const validateVariant = async (
     console.log('⚠️ Timeout waiting for body text rendering in validateVariant');
   }
 
-  // ── Banner flow: re-freeze carousel and re-navigate to PPV slide before snapshot ──
-  const isBannerFlow = normalizedFlow.includes('banner');
-  if (isBannerFlow) {
-    console.log('🔒 [Banner] Re-freezing carousel before snapshot...');
-    // Re-inject CSS freeze and stop autoplay
-    await page.evaluate(() => {
-      try {
-        // CSS freeze
-        const styleId = '__ppv_freeze_carousel__';
-        if (!document.getElementById(styleId)) {
-          const style = document.createElement('style');
-          style.id = styleId;
-          style.textContent = `.swiper-wrapper { transition-duration: 0ms !important; }`;
-          document.head.appendChild(style);
-        }
-
-        // Stop all swipers
-        const stopSwiper = (swiper: any) => {
-          if (!swiper) return;
-          try { swiper.autoplay?.stop(); } catch {}
-          try {
-            swiper.params.autoplay = false;
-            swiper.params.loop = false;
-          } catch {}
-          try {
-            if (swiper.autoplay?.running) swiper.autoplay.stop();
-          } catch {}
-        };
-
-        document.querySelectorAll('.swiper, [class*="swiper"], .swiper-container').forEach((el: any) => {
-          if (el.swiper) stopSwiper(el.swiper);
-        });
-        if ((window as any).swiper) stopSwiper((window as any).swiper);
-        document.querySelectorAll('*').forEach((el: any) => {
-          if (el.swiper && typeof el.swiper === 'object' && el.swiper.autoplay) stopSwiper(el.swiper);
-        });
-      } catch {}
-    }).catch(() => {});
-
-    // Re-navigate to saved PPV slide index if available
-    const savedSlideIndex = (eventData as any)._ppvBannerSlideIndex;
-    if (savedSlideIndex !== undefined && savedSlideIndex !== null) {
-      const slideIdx = parseInt(String(savedSlideIndex), 10);
-      if (!isNaN(slideIdx)) {
-        console.log(`🔄 [Banner] Re-navigating to PPV slide index: ${slideIdx}`);
-        console.log(`🔄 [Banner] Re-navigating to PPV slide index: ${slideIdx}`);
-        const ppvName = eventData.PPV_NAME || '';
-        const carousel = page.locator([
-          'main [class*="hero-banner" i]',
-          'main [class*="heroBanner" i]',
-          'main [class*="herobanner" i]',
-          'main div.heroBannerSlider',
-          'main [class*="bannersContainer" i]',
-          'main [class*="hero-slider" i]',
-          'main [class*="heroSlider" i]',
-          'main [class*="hero" i] .swiper',
-          'main [class*="banner" i] .swiper',
-          '[class*="hero-banner" i]',
-          '[class*="heroBanner" i]',
-          '[class*="bannersContainer" i]',
-        ].join(', ')).first();
-
-        const activeSlideSelector = selectors.banner.activeSlide || ".swiper-slide-active:not(.swiper-slide-duplicate), [class*='swiper-slide-active']:not([class*='duplicate'])";
-        const nextBtnSelectors = [
-          selectors.banner.nextButton,
-          '.swiper-button-next',
-          '[class*="swiper-button-next"]',
-          'button[data-test-id="CHEVRON_RIGHT_ICON"]',
-          'svg[data-test-id="CHEVRON_RIGHT_ICON"]',
-          '[aria-label="Next slide"]',
-          'button[aria-label*="next" i]',
-          'button[class*="swiper-next" i]',
-          'button[class*="chevron" i]',
-          '[class*="chevron-right" i]',
-          '[class*="chevron-next" i]',
-          '[class*="next-button" i]',
-          '[class*="button-next" i]',
-        ].filter(Boolean).join(', ');
-
-        const nextBtn = carousel.locator(nextBtnSelectors).first();
-
-        // Stop auto-slide
-        await page.evaluate(() => {
-          try {
-            const stopSwiper = (swiper: any) => {
-              if (swiper) {
-                swiper.autoplay?.stop();
-                swiper.params.autoplay = false;
-                swiper.params.loop = false;
-              }
-            };
-            document.querySelectorAll('.swiper, [class*="swiper"], .swiper-container').forEach((el: any) => {
-              if (el.swiper) stopSwiper(el.swiper);
-            });
-          } catch {}
-        }).catch(() => {});
-
-        // Helper to match PPV name
-        const cleanStr = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-        const matchesPPVName = (text: string, expected: string): boolean => {
-          const nameParts = expected.split(/[:\-–]/).map(p => p.trim()).filter(p => p.length > 3);
-          const cleanText = cleanStr(text);
-          return nameParts.some(part => {
-            const words = cleanStr(part).split(/\s+/).filter(Boolean);
-            if (words.length === 0) return false;
-            return words.every(w => cleanText.includes(w));
-          });
-        };
-
-        for (let attempt = 0; attempt < 8; attempt++) {
-          const activeSlide = carousel.locator(activeSlideSelector).locator(':visible').first();
-          const activeText = await activeSlide.textContent().catch(() => '') || '';
-          const currentIdx = await activeSlide.getAttribute('data-swiper-slide-index').catch(() => null);
-
-          if (currentIdx === String(slideIdx) || (ppvName && matchesPPVName(activeText, ppvName))) {
-            console.log(`✅ [Banner] Re-navigated to active slide: "${activeText.substring(0, 50)}..." (index: ${currentIdx})`);
-            break;
-          }
-
-          if (await nextBtn.count().catch(() => 0) > 0) {
-            console.log(`  [Banner] Re-navigating: slide is index ${currentIdx}, expected: ${slideIdx} — clicking next`);
-            await nextBtn.click({ force: true }).catch(() => {});
-            await page.waitForTimeout(500);
-          } else {
-            console.log('⚠️ [Banner] Next button not found during re-navigation');
-            break;
-          }
-        }
-        await page.waitForTimeout(300);
-      }
-    }
-
-    // Scroll back to top to ensure banner is visible (not scrolled past)
-    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
-    await page.waitForTimeout(200);
-  }
-
   // ── Pre-fetch DOM snapshot ONCE ───────────────────────────────
   const snapshot = await getPageSnapshot(page);
   console.log(`📸 ${pageName} snapshot: ${snapshot.length} nodes`);
 
   // ── DEBUG — log all snapshot texts ───────────────────────────
-  if (pageName === 'Schedule' || pageName === 'Home of Boxing' || pageName === 'PPV' || pageName === 'DAZN Plan' || pageName === 'Upgrade Confirmation' || pageName === 'Payment' || pageName === 'Bundle PPV' || pageName === 'Boxing' || pageName === 'Landing') {
+  if (pageName === 'Schedule' || pageName === 'Home of Boxing' || pageName === 'PPV' || pageName === 'DAZN Plan' || pageName === 'Upgrade Confirmation' || pageName === 'Payment' || pageName === 'Bundle PPV' || pageName === 'Boxing') {
     console.log(`\n📋 Snapshot contents for ${pageName}:`);
     snapshot.forEach((n, i) => {
       console.log(
