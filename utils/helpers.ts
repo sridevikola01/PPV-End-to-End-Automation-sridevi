@@ -127,10 +127,12 @@ export async function stabilisePage(page: Page): Promise<void> {
 // ─────────────────────────────────────────────────────────────────
 // DISMISS MARKETING POPUP ("Unlock exclusive content")
 // ─────────────────────────────────────────────────────────────────
-export async function dismissMarketingPopup(page: Page, timeout = 0): Promise<void> {
+export async function dismissMarketingPopup(page: Page, timeout: number = 0): Promise<void> {
   if (page.isClosed()) return;
   try {
     const dismissSelectors = [
+      'button:has-text("Keep me updated")',
+      'button:has-text("Keep Me Updated")',
       'button:has-text("Maybe later")',
       'button:has-text("Maybe Later")',
       'button:has-text("No thanks")',
@@ -139,8 +141,6 @@ export async function dismissMarketingPopup(page: Page, timeout = 0): Promise<vo
       'button:has-text("Not Now")',
       'button:has-text("Close")',
       'button:has-text("Dismiss")',
-      'button:has-text("Keep me updated")',
-      'button:has-text("Keep Me Updated")',
       '[aria-label="Close"]',
       '[aria-label="close"]',
       '[aria-label*="close" i]',
@@ -148,7 +148,7 @@ export async function dismissMarketingPopup(page: Page, timeout = 0): Promise<vo
     ].join(', ');
 
     const popup = page.locator(dismissSelectors).first();
-    
+
     let isVisible = false;
     if (timeout > 0) {
       isVisible = await popup.waitFor({ state: 'visible', timeout })
@@ -244,27 +244,33 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
   if (page.isClosed()) return [];
   try {
     return await page.evaluate((): any[] => {
-      // Local mock for bundlers that inject __name helper for function name preservation
-      const __name = (f: any, n: string) => f;
+      (globalThis as any).__name = (f: any, n: string) => f;
 
       const clean = (s: string) =>
         s.replace(/\u200B/g, '').replace(/\s+/g, ' ').trim();
 
-      const isInModal = (el: Element): boolean => {
-        let current: Element | null = el;
+      const getElementClasses = (el: any): string => {
+        const className = el.className;
+        if (typeof className === 'string') return className;
+        if (className && typeof className.baseVal === 'string') return className.baseVal;
+        return '';
+      };
+
+      const isInModal = (el: any): boolean => {
+        let current: any = el;
         for (let depth = 0; depth < 10 && current; depth++) {
           if (current.tagName === 'BODY' || current.tagName === 'HTML') break;
           const role = (current.getAttribute('role') || '').toLowerCase();
           if (role === 'dialog') return true;
           if (current.getAttribute('aria-modal') === 'true') return true;
-          const classes = (current.className || '').toLowerCase();
+          const classes = getElementClasses(current).toLowerCase();
           if (classes.includes('modal') || classes.includes('overlay') || classes.includes('popup')) return true;
           current = current.parentElement;
         }
         return false;
       };
 
-      const isInInactiveSlide = (el: Element): boolean => {
+      const isInInactiveSlide = (el: any): boolean => {
         const slide = el.closest('.swiper-slide, [class*="swiper-slide"]');
         if (!slide) return false;
         const isHero = el.closest([
@@ -281,7 +287,8 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
 
       // OPTIMIZED: avoid getComputedStyle — use offsetWidth/Height + inline style checks
       const isRendered = (el: HTMLElement): boolean => {
-        if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (!isMobile && el.offsetWidth === 0 && el.offsetHeight === 0) return false;
         const style = el.style;
         if (style.display === 'none') return false;
         if (style.visibility === 'hidden') return false;
@@ -298,7 +305,7 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
           if (current.tagName === 'DEL' || current.tagName === 'S') return true;
           const styleAttr = current.getAttribute('style') || '';
           if (styleAttr.toLowerCase().includes('line-through')) return true;
-          const classes = (current.className || '').toLowerCase();
+          const classes = getElementClasses(current).toLowerCase();
           if (classes.includes('strike') || classes.includes('line-through') || classes.includes('crossed') || classes.includes('original')) {
             return true;
           }
@@ -365,7 +372,7 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
           const text = isStrikethrough(el) ? clean(el.textContent || '') : clean(getNonStrikeText(el));
           const isInteractive = ['button', 'a', 'img', 'input'].includes(tag);
           if (!isInteractive && (!text || text.length < 2 || text.length > 500)) continue;
-          const key = text ? `${tag}:${text}` : `${tag}:${el.className || ''}:${results.length}`;
+          const key = text ? `${tag}:${text}` : `${tag}:${getElementClasses(el)}:${results.length}`;
           if (seen.has(key)) continue;
           seen.add(key);
 
@@ -388,7 +395,7 @@ export async function getPageSnapshot(page: Page): Promise<DOMNode[]> {
           results.push({
             tag,
             text,
-            classes: el.className || '',
+            classes: getElementClasses(el),
             childCount: el.children.length,
             isInModal: isInModal(el),
             isStrike: isStrikethrough(el),

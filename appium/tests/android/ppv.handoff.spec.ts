@@ -13,6 +13,7 @@
 //        boxing-page-banner      → Sports tab → Boxing → hero banner → Buy this fight
 //        home-boxing-banner      → Home hero banner → Buy
 //        home-boxing-tile        → Home Boxing rail → Buy
+//        search                  → Search icon/tab → Search for event → find PPV tile → Buy
 //   4. App opens Chrome Custom Tab with DAZN checkout URL
 //   5. Captures URL via WebView context switch or ADB fallback
 //   6. Writes URL to mobile_entry_url.txt  ← Playwright reads this
@@ -113,58 +114,62 @@ async function isVisible(driver: WdBrowser, text: string, timeoutMs = 3000): Pro
 async function dismissStartupDialogs(driver: WdBrowser): Promise<void> {
   const screen = getScreenSize();
   const centerX = Math.round(screen.width / 2);
-  
+
   console.log(`🔍 Dismissing dialogs with ADB taps (screen: ${screen.width}x${screen.height})...`);
-  
+
+  // Dismiss any system dialogs at top of screen
   const systemDialogY = Math.round(screen.height * 0.15);
   for (let i = 0; i < 3; i++) {
     adbTap(centerX, systemDialogY);
     await driver.pause(500);
   }
-  
+
   console.log('🔍 Clicking "Explore" button on landing page...');
-  
+
   const exploreYPositions = [
     Math.round(screen.height * 0.08),
     Math.round(screen.height * 0.10),
     Math.round(screen.height * 0.12),
     Math.round(screen.height * 0.06),
   ];
-  
+
   const xPositions = [
     Math.round(screen.width * 0.65),
     Math.round(screen.width * 0.70),
     Math.round(screen.width * 0.60),
     Math.round(screen.width * 0.75),
   ];
-  
+
   let exploreClicked = false;
-  
+
   for (const yPos of exploreYPositions) {
     for (const x of xPositions) {
-      for (let clickAttempt = 0; clickAttempt < 3; clickAttempt++) {
-        console.log(`  Clicking (${x}, ${yPos}) attempt ${clickAttempt + 1}...`);
-        adbTap(x, yPos);
-        await driver.pause(2500);
-        
-        if (await isVisible(driver, 'Home', 1500) || await isVisible(driver, 'Schedule', 1500) || 
-            await isVisible(driver, 'Sports', 1500) || await isVisible(driver, 'Boxing', 1500)) {
-          console.log(`  ✅ "Explore" button clicked at (${x}, ${yPos}) - now on home screen`);
-          exploreClicked = true;
-          break;
-        }
+      console.log(`  Clicking Explore button coordinate (${x}, ${yPos})...`);
+      adbTap(x, yPos);
+      await driver.pause(2000);
+
+      const onHomeScreen = await isVisible(driver, 'Home', 500) ||
+                           await isVisible(driver, 'Schedule', 500) ||
+                           await isVisible(driver, 'Sports', 500) ||
+                           await isVisible(driver, 'Boxing', 500);
+
+      if (onHomeScreen) {
+        console.log(`  ✅ Successfully navigated to Home screen`);
+        exploreClicked = true;
+        break;
       }
-      if (exploreClicked) break;
     }
     if (exploreClicked) break;
   }
-  
-  // Don't wait for specific screens - just continue after a delay
-  console.log('  Continuing without waiting for specific screen...');
-  await driver.pause(2000);
-  
+
+  await driver.saveScreenshot('./test-results/after_dismiss.png');
+  console.log('  Screenshot saved: after_dismiss.png');
+
+  await driver.pause(1000);
   console.log('✅ App loaded\n');
 }
+
+
 
 // ── Find PPV banner anywhere on screen ───────────────────────────────────────
 async function findPPVBanner(driver: WdBrowser): Promise<boolean> {
@@ -179,57 +184,46 @@ async function findPPVBanner(driver: WdBrowser): Promise<boolean> {
 async function navigateToSchedule(driver: WdBrowser): Promise<void> {
   console.log('📅 Navigating to Schedule tab...');
   await driver.saveScreenshot('./test-results/before_schedule_click.png');
-  
-  // Method 1: Find Schedule by text label (most reliable)
-  console.log('  Looking for Schedule button by text...');
+
+  // Tap the 4th position in the bottom navigation menu (Schedule tab)
+  const screenSize = getScreenSize();
+  const bottomNavY = Math.round(screenSize.height * 0.92);  // Bottom nav area
+
+  // Bottom nav has 5 items; 4th item is at ~70% from left
+  const scheduleX = Math.round(screenSize.width * 0.70);
+  console.log(`  Tapping Schedule tab at 4th position: (${scheduleX}, ${bottomNavY})`);
+  adbTap(scheduleX, bottomNavY);
+  await driver.pause(3000);
+  await driver.saveScreenshot('./test-results/after_schedule_click.png');
+
+  // Verify we navigated to Schedule page
+  try {
+    const scheduleHeader = await driver.$(`android=new UiSelector().text("SCHEDULE")`);
+    if (await scheduleHeader.isDisplayed()) {
+      console.log('✅ Schedule tab clicked successfully');
+      return;
+    }
+  } catch (e) {}
+
+  // Fallback: try by text label
+  console.log('  Schedule header not found, trying text selector fallback...');
   try {
     const scheduleText = await driver.$(`android=new UiSelector().text("Schedule")`);
     if (await scheduleText.isDisplayed()) {
       console.log('  Found Schedule button by text, clicking...');
       await scheduleText.click();
       await driver.pause(3000);
-      console.log('✅ Schedule tab clicked (by text)');
-      await driver.saveScreenshot('./test-results/after_schedule_click.png');
+      console.log('✅ Schedule tab clicked (by text fallback)');
+      await driver.saveScreenshot('./test-results/after_schedule_fallback.png');
       return;
     }
   } catch (e) {
-    console.log('  Schedule text not found as button');
+    console.log('  Schedule text fallback also not found');
   }
-  
-  // Take screenshot to see what's on the home page
-  console.log('  Taking screenshot to see home page layout...');
-  await driver.saveScreenshot('./test-results/home_page_before_schedule.png');
-  
-  // Method 2: Tap Schedule icon by coordinates (bottom nav)
-  const screenSize = getScreenSize();
-  const bottomNavY = Math.round(screenSize.height * 0.92);  // Bottom nav area
-  
-  // Schedule tab is at 4th position (around 70% from left) on Pixel 7
-  const scheduleX = Math.round(screenSize.width * 0.70);
-  console.log(`  Tapping Schedule at coordinates (${scheduleX}, ${bottomNavY})`);
-  adbTap(scheduleX, bottomNavY);
-  await driver.pause(3000);
-  await driver.saveScreenshot('./test-results/after_schedule_tap.png');
-  
-  // Verify we're on Schedule page
-  try {
-    const scheduleHeader = await driver.$(`android=new UiSelector().text("SCHEDULE")`);
-    const isSchedule = await scheduleHeader.isDisplayed();
-    
-    // Check if we're still on Home page
-    const homeTab = await driver.$(`android=new UiSelector().text("Home")`);
-    const stillOnHome = await homeTab.isDisplayed();
-    
-    if (isSchedule && !stillOnHome) {
-      console.log('✅ Schedule tab clicked successfully');
-      return;
-    } else if (stillOnHome) {
-      console.log('  ⚠️ Still on Home page - tap did not navigate to Schedule');
-    }
-  } catch (e) {}
-  
+
   console.log('⚠️  Could not navigate to Schedule tab');
 }
+
 
 // ── Scroll schedule and find Joshua PPV tile (then center it) ─────
 async function scrollScheduleToPPVTile(driver: WdBrowser): Promise<WdElement | null> {
@@ -328,6 +322,124 @@ async function navigateToBoxingPage(driver: WdBrowser): Promise<void> {
   console.log('⚠️  Could not confirm Boxing page — continuing from current screen');
 }
 
+// ── Helper: extract significant keywords from event title for matching ────────
+function getPPVKeywords(searchQuery: string, ppvName: string): string[] {
+  const words = [searchQuery, ppvName];
+  const candidates: string[] = [];
+  for (const w of words) {
+    if (!w) continue;
+    const cleanWord = w.toLowerCase().replace(/[:\-–\.]/g, ' ');
+    if (cleanWord.includes('vs')) {
+      const parts = cleanWord.split(/\bvs\b/).map(p => p.trim());
+      candidates.push(...parts);
+    } else {
+      candidates.push(...cleanWord.split(/\s+/).map(p => p.trim()));
+    }
+  }
+  const keywordsSet = new Set<string>();
+  for (const cand of candidates) {
+    const subWords = cand.split(/\s+/);
+    for (const sw of subWords) {
+      if (sw.length > 2 && sw !== 'the' && sw !== 'vs' && sw !== 'and') {
+        keywordsSet.add(sw);
+      }
+    }
+  }
+  const result = Array.from(keywordsSet);
+  return result.length > 0 ? result : [searchQuery.toLowerCase()];
+}
+
+// ── Helper: find target PPV tile excluding ancillary content ─────────────────
+async function findCorrectPPVTile(driver: WdBrowser, keywords: string[]): Promise<WdElement | null> {
+  console.log(`🔍 Scanning TextView elements for keywords: ${JSON.stringify(keywords)}`);
+  try {
+    const elements = await driver.$$('android=new UiSelector().className("android.widget.TextView")');
+    for (const el of elements) {
+      const text = await el.getText().catch(() => '');
+      if (text) {
+        const textLower = text.toLowerCase();
+        const matchesQuery = keywords.every(kw => textLower.includes(kw));
+        const isAncillary = [
+          'press', 'weigh', 'workout', 'replay', 'highlights', 
+          'preview', 'promo', 'interview', 'behind the', 'episode', 
+          'documentary', 'face off', 'kickboxing'
+        ].some(term => textLower.includes(term));
+        
+        if (matchesQuery && !isAncillary) {
+          console.log(`  ✅ Found matching main event tile: "${text}"`);
+          return el;
+        }
+      }
+    }
+  } catch (e: any) {
+    console.log(`  ⚠️ Error finding tile: ${e.message}`);
+  }
+  return null;
+}
+
+// ── Navigate to Search screen ────────────────────────────────────────────────
+async function navigateToSearch(driver: WdBrowser): Promise<void> {
+  console.log('🔍 Navigating to Search screen...');
+  await driver.saveScreenshot('./test-results/before_search_click.png');
+
+  // Method 1: Find Search button by text, content description, or resource ID
+  const searchSelectors = [
+    `android=new UiSelector().text("Search")`,
+    `android=new UiSelector().description("Search")`,
+    `android=new UiSelector().textContains("Search")`,
+    `android=new UiSelector().descriptionContains("Search")`,
+    `android=new UiSelector().resourceIdMatches(".*search.*")`,
+    `//android.widget.ImageView[@content-desc="Search"]`,
+    `//android.widget.TextView[@content-desc="Search"]`,
+    `//*[@content-desc="Search"]`,
+    `//*[contains(@resource-id, "search")]`
+  ];
+
+  for (const selector of searchSelectors) {
+    try {
+      console.log(`  Trying to find Search button with selector: ${selector}`);
+      const searchBtn = await driver.$(selector);
+      if (await searchBtn.isDisplayed()) {
+        console.log(`  Found Search button, clicking...`);
+        await searchBtn.click();
+        await driver.pause(3000);
+        console.log('✅ Search screen opened (by selector)');
+        await driver.saveScreenshot('./test-results/after_search_click.png');
+        return;
+      }
+    } catch (e: any) {
+      console.log(`  Selector failed: ${e.message}`);
+    }
+  }
+
+  // Method 2: Coordinate tap fallback.
+  const screenSize = getScreenSize();
+  console.log(`  Screen size: ${screenSize.width}x${screenSize.height}`);
+  
+  // Try tapping top right header (around 90% width, 6% height)
+  const searchTopX = Math.round(screenSize.width * 0.90);
+  const searchTopY = Math.round(screenSize.height * 0.06);
+  console.log(`  Tapping top header search coordinates fallback: (${searchTopX}, ${searchTopY})`);
+  adbTap(searchTopX, searchTopY);
+  await driver.pause(3000);
+  await driver.saveScreenshot('./test-results/after_search_top_tap.png');
+
+  // Check if input element appeared
+  const hasInput = await driver.$('android=new UiSelector().className("android.widget.EditText")').isDisplayed().catch(() => false);
+  if (hasInput) {
+    console.log('✅ Search screen opened (via top coordinate tap)');
+    return;
+  }
+
+  // Try bottom navigation Search tab coordinate (around 90% width, 92% height)
+  const searchBottomX = Math.round(screenSize.width * 0.90);
+  const searchBottomY = Math.round(screenSize.height * 0.92);
+  console.log(`  Tapping bottom nav search coordinates fallback: (${searchBottomX}, ${searchBottomY})`);
+  adbTap(searchBottomX, searchBottomY);
+  await driver.pause(3000);
+  await driver.saveScreenshot('./test-results/after_search_bottom_tap.png');
+}
+
 // ── Capture checkout URL from WebView / Chrome Custom Tab ────────────────────
 async function captureCheckoutUrl(driver: WdBrowser): Promise<string> {
   for (let attempt = 0; attempt < 15; attempt++) {
@@ -406,7 +518,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
     await driver.pause(5000);
 
     await dismissStartupDialogs(driver);
-
+    
     let buyTapped = false;
 
     if (SOURCE === 'schedule') {
@@ -501,6 +613,162 @@ describe('DAZN Android PPV → Web Handoff', () => {
       }
     }
 
+    // ── search ────────────────────────────────────────────────────────────
+    else if (SOURCE === 'search') {
+      await navigateToSearch(driver);
+      
+      let searchQuery = PPV_NAME;
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const configFileName = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
+        const configPath = path.resolve(__dirname, '../../..', 'config/events', configFileName);
+        if (fs.existsSync(configPath)) {
+          const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+          if (configData.PPV_NAME) {
+            searchQuery = configData.PPV_NAME;
+            console.log(`✅ Loaded complete PPV name from config: "${searchQuery}"`);
+          }
+        }
+      } catch (e: any) {
+        console.log(`⚠️ Failed to load complete PPV name from config: ${e.message}. Using fallback.`);
+      }
+
+      if (searchQuery.includes(':')) {
+        searchQuery = searchQuery.split(':').pop()?.trim() || searchQuery;
+      }
+      searchQuery = searchQuery.replace(/\./g, ''); // removes dots, e.g. "Joshua vs. Prenga" -> "Joshua vs Prenga"
+      
+      console.log(`🔍 Entering search query: "${searchQuery}"`);
+      const screenSize = getScreenSize();
+      let searchInput = null;
+      const inputSelectors = [
+        `android=new UiSelector().className("android.widget.EditText")`,
+        `android=new UiSelector().resourceIdMatches(".*search_src_text.*")`,
+        `android=new UiSelector().resourceIdMatches(".*search.*")`,
+        `//android.widget.EditText`,
+        `//*[contains(@resource-id, "search")]`
+      ];
+      
+      for (const selector of inputSelectors) {
+        try {
+          const el = await driver.$(selector);
+          if (await el.isDisplayed()) {
+            searchInput = el;
+            break;
+          }
+        } catch {}
+      }
+      
+      let searchInputSuccess = false;
+      if (searchInput) {
+        try {
+          await searchInput.click();
+          await driver.pause(1000);
+          await searchInput.clearValue();
+          await searchInput.setValue(searchQuery);
+          await driver.pause(1500);
+          searchInputSuccess = true;
+        } catch (e: any) {
+          console.log(`⚠️ Search input interaction failed: ${e.message}. Falling back to coordinates...`);
+        }
+      }
+      
+      if (!searchInputSuccess) {
+        console.log('⚠️ Search input not found or failed via locator, using coordinate tap fallback and ADB text typing...');
+        const inputX = Math.round(screenSize.width / 2);
+        const inputY = Math.round(screenSize.height * 0.06);
+        adbTap(inputX, inputY);
+        await driver.pause(1000);
+        
+        // Send keyevent via ADB text as fallback/supplement
+        const adbText = searchQuery.replace(/\s+/g, '%s');
+        adb(`shell input text "${adbText}"`);
+        await driver.pause(1500);
+      }
+      
+      console.log('⌨️ Pressing Search/Enter on keyboard...');
+      adb('shell input keyevent 66');
+      await driver.pause(4000);
+      await driver.saveScreenshot('./test-results/android_search_results.png');
+      
+      const keywords = getPPVKeywords(searchQuery, PPV_NAME);
+      console.log(`🔍 Looking for PPV tile: "${PPV_NAME}"...`);
+      let ppvTile = await findCorrectPPVTile(driver, keywords);
+      
+      if (!ppvTile) {
+        console.log('  ⚠️ PPV tile not immediately visible. Swiping down search results...');
+        await scrollDown(driver);
+        await driver.pause(2000);
+        ppvTile = await findCorrectPPVTile(driver, keywords);
+      }
+      
+      // If the PPV tile is not found, retry searching by appending 'upcoming'
+      if (!ppvTile) {
+        const retryQuery = `${searchQuery} upcoming`;
+        console.log(`⚠️ PPV tile not found for "${searchQuery}". Retrying search with "${retryQuery}"...`);
+        
+        // Reset Search screen by navigating to it again
+        await navigateToSearch(driver);
+        
+        searchInput = null;
+        for (const selector of inputSelectors) {
+          try {
+            const el = await driver.$(selector);
+            if (await el.isDisplayed()) {
+              searchInput = el;
+              break;
+            }
+          } catch {}
+        }
+        
+        if (searchInput) {
+          await searchInput.click();
+          await driver.pause(1000);
+          await searchInput.clearValue();
+          await searchInput.setValue(retryQuery);
+          await driver.pause(1500);
+        } else {
+          console.log('⚠️ Search input not found, using coordinate tap fallback and ADB text typing...');
+          const inputX = Math.round(screenSize.width / 2);
+          const inputY = Math.round(screenSize.height * 0.06);
+          adbTap(inputX, inputY);
+          await driver.pause(1000);
+          
+          const adbRetryText = retryQuery.replace(/\s+/g, '%s');
+          adb(`shell input text "${adbRetryText}"`);
+          await driver.pause(1500);
+        }
+        
+        console.log('⌨️ Pressing Search/Enter on keyboard...');
+        adb('shell input keyevent 66');
+        await driver.pause(4000);
+        await driver.saveScreenshot('./test-results/android_search_retry_results.png');
+        
+        ppvTile = await findCorrectPPVTile(driver, keywords);
+        
+        if (!ppvTile) {
+          console.log('  ⚠️ PPV tile not immediately visible in retry search. Swiping down results...');
+          await scrollDown(driver);
+          await driver.pause(2000);
+          ppvTile = await findCorrectPPVTile(driver, keywords);
+        }
+      }
+      
+      if (ppvTile) {
+        console.log(`✅ Found PPV tile - tapping it...`);
+        await ppvTile.click();
+        await driver.pause(4000);
+        await driver.saveScreenshot('./test-results/android_search_after_tile_click.png');
+        
+        // Directly transition to url capture phase (similar to schedule flow)
+        console.log('  On paywall screen - will capture URL via Copy button');
+        buyTapped = true;
+      } else {
+        throw new Error(`❌ PPV event "${PPV_NAME}" not found in search results (after primary & retry search).`);
+      }
+    }
+
     // ── boxing-upcoming-fights ────────────────────────────────────────────
     else if (SOURCE === 'boxing-upcoming-fights') {
       await navigateToBoxingPage(driver);
@@ -568,6 +836,276 @@ describe('DAZN Android PPV → Web Handoff', () => {
       for (const cta of ['Buy now', 'Buy Now', 'Buy']) {
         if (await tapByText(driver, cta, 6000)) { buyTapped = true; break; }
       }
+    }
+
+    // ── home-page-dont-miss ───────────────────────────────────────────────
+    else if (SOURCE === 'home-page-dont-miss') {
+      console.log('🎯 Navigating to "Don\'t Miss" section on Home page...');
+      
+      // Step 1: Scroll to find "Don't Miss" heading
+      console.log('  Step 1: Scrolling to find "Don\'t Miss" section...');
+      let dontMissFound = false;
+      
+      for (let i = 0; i < 15; i++) {
+        if (await isVisible(driver, 'Don\'t Miss', 2000) || 
+            await isVisible(driver, 'Dont Miss', 2000) ||
+            await isVisible(driver, 'Don’t Miss', 2000)) {
+          console.log(`  ✅ Found "Don't Miss" section (scroll ${i + 1})`);
+          dontMissFound = true;
+          break;
+        }
+        
+        // Try scrolling down to find the section
+        adbSwipe(Math.round(getScreenSize().width / 2), 
+                 Math.round(getScreenSize().height * 0.65), 
+                 Math.round(getScreenSize().width / 2), 
+                 Math.round(getScreenSize().height * 0.35));
+        await driver.pause(800);
+      }
+      
+      if (!dontMissFound) {
+        await driver.saveScreenshot('./test-results/dont_miss_section_not_found.png');
+        throw new Error('❌ "Don\'t Miss" section not found on Home page');
+      }
+      
+      await driver.pause(1000);
+      
+      // Center the "Don't Miss" rail section on screen
+      console.log('  Centering "Don\'t Miss" rail on screen...');
+      try {
+        const dontMissHeading = await driver.$(`android=new UiSelector().textContains("Don't Miss")`);
+        if (await dontMissHeading.isDisplayed()) {
+          // Get the heading position
+          const rect = await dontMissHeading.getRect();
+          const screenHeight = getScreenSize().height;
+          const screenWidth = getScreenSize().width;
+          
+          // Calculate where we want the heading to be (upper middle of screen to show both heading and tiles)
+          const targetY = Math.round(screenHeight * 0.25); // 25% from top (upper area)
+          const currentY = rect.y;
+          const headingHeight = rect.height;
+          
+          console.log(`  "Don't Miss" heading current position: y=${currentY}, height=${headingHeight}, target position: y=${targetY}`);
+          
+          // Calculate how much we need to scroll to position the heading
+          const scrollDistance = currentY - targetY;
+          
+          // If heading is not at target position, scroll to position it
+          if (Math.abs(scrollDistance) > 30) {
+            // Scroll to position the heading in the upper portion of screen
+            const swipeStartY = Math.round(screenHeight * 0.5);
+            const swipeEndY = Math.round(screenHeight * 0.5) - scrollDistance;
+            
+            console.log(`  Scrolling to position "Don't Miss" rail (moving ${scrollDistance}px)...`);
+            adbSwipe(Math.round(screenWidth / 2), 
+                     swipeStartY, 
+                     Math.round(screenWidth / 2), 
+                     swipeEndY);
+            await driver.pause(2000);
+            
+            // Verify the heading is now positioned correctly
+            try {
+              const newRect = await dontMissHeading.getRect();
+              console.log(`  "Don't Miss" heading new position: y=${newRect.y}`);
+              
+              // Fine-tune if needed
+              const fineTune = newRect.y - targetY;
+              if (Math.abs(fineTune) > 30) {
+                adbSwipe(Math.round(screenWidth / 2), 
+                         Math.round(screenHeight * 0.5), 
+                         Math.round(screenWidth / 2), 
+                         Math.round(screenHeight * 0.5) - fineTune);
+                await driver.pause(1500);
+                console.log(`  Fine-tuned scroll by ${fineTune}px`);
+              }
+            } catch (e) {
+              console.log(`  Could not verify new position: ${e.message}`);
+            }
+          } else {
+            console.log(`  "Don't Miss" heading already at target position y=${currentY}`);
+          }
+          
+          // Now scroll down slightly to ensure tiles are visible below the heading
+          console.log('  Scrolling down slightly to reveal tiles...');
+          adbSwipe(Math.round(screenWidth / 2), 
+                   Math.round(screenHeight * 0.35), 
+                   Math.round(screenWidth / 2), 
+                   Math.round(screenHeight * 0.45));
+          await driver.pause(1500);
+          
+          // Take a screenshot to verify the rail is visible
+          await driver.saveScreenshot('./test-results/dont_miss_centered.png');
+          console.log('  Screenshot saved: dont_miss_centered.png');
+          
+          // Verify tiles are now visible by checking for any TextView elements
+          try {
+            const tiles = await driver.$$('android=new UiSelector().className("android.widget.TextView")');
+            console.log(`  Found ${tiles.length} text elements on screen (tiles should be visible now)`);
+          } catch (e) {
+            console.log(`  Could not count tiles: ${e.message}`);
+          }
+        }
+      } catch (e) {
+        console.log(`  Could not center rail: ${e.message}`);
+      }
+      
+      // Step 2: Look for PPV tile in the "Don't Miss" section
+      console.log(`  Step 2: Looking for "${PPV_NAME}" in "Don't Miss" section...`);
+      let ppvFound = false;
+      
+      // First, check if PPV is immediately visible
+      if (await isVisible(driver, PPV_NAME, 3000)) {
+        console.log(`  ✅ Found "${PPV_NAME}" in "Don't Miss" section`);
+        ppvFound = true;
+      } else {
+        // Try swiping left through the carousel/rail
+        console.log('  PPV not immediately visible - trying carousel navigation...');
+        
+        for (let i = 0; i < 12; i++) {
+          // BEFORE swiping, check what's currently visible on screen
+          console.log(`  Checking current tile BEFORE swipe ${i + 1}...`);
+          
+          // Get all visible text elements to see what PPV is currently displayed
+          let currentVisiblePPV = '';
+          let foundAnyTile = false;
+          try {
+            const visibleElements = await driver.$$('android=new UiSelector().className("android.widget.TextView")');
+            console.log(`  Found ${visibleElements.length} text elements on screen`);
+            
+            for (const el of visibleElements) {
+              try {
+                const text = await el.getText();
+                if (text && text.length > 3 && text.length < 100) {
+                  foundAnyTile = true;
+                  // Check if this looks like a PPV title (contains "vs" or event-like text)
+                  if (text.toLowerCase().includes('vs') || 
+                      text.toLowerCase().includes('prenga') ||
+                      text.toLowerCase().includes('joshua')) {
+                    currentVisiblePPV = text;
+                    console.log(`  ✓ Current visible tile (text): "${currentVisiblePPV}"`);
+                    break;
+                  }
+                }
+              } catch (e) {
+                // Continue to next element
+              }
+            }
+          } catch (e) {
+            console.log(`  Could not check text elements: ${e.message}`);
+          }
+          
+          // If no text found, check images in the rail for PPV title in alt text/content-desc
+          if (!currentVisiblePPV) {
+            try {
+              console.log('  No text found, checking images for PPV title...');
+              const images = await driver.$$('android=new UiSelector().className("android.widget.ImageView")');
+              console.log(`  Found ${images.length} image elements on screen`);
+              
+              for (const img of images) {
+                try {
+                  const contentDesc = await img.getAttribute('content-desc');
+                  const resourceId = await img.getAttribute('resource-id');
+                  
+                  // Check content description for PPV name
+                  if (contentDesc && contentDesc.length > 3) {
+                    const contentDescLower = contentDesc.toLowerCase();
+                    if (contentDescLower.includes('vs') || 
+                        contentDescLower.includes('prenga') ||
+                        contentDescLower.includes('joshua')) {
+                      currentVisiblePPV = contentDesc;
+                      console.log(`  ✓ Current visible tile (image content-desc): "${currentVisiblePPV}"`);
+                      break;
+                    }
+                  }
+                  
+                  // Check resource ID for clues
+                  if (resourceId && resourceId.toLowerCase().includes('ppv')) {
+                    console.log(`  Found PPV image with resource-id: ${resourceId}`);
+                  }
+                } catch (e) {
+                  // Continue to next image
+                }
+              }
+            } catch (e) {
+              console.log(`  Could not check images: ${e.message}`);
+            }
+          }
+          
+          // If we didn't find any tiles at all, the rail might not be visible - scroll down more
+          if (!foundAnyTile && !currentVisiblePPV) {
+            console.log(`  ⚠️ No tiles visible on screen - scrolling down to reveal tiles...`);
+            adbSwipe(Math.round(getScreenSize().width / 2), 
+                     Math.round(getScreenSize().height * 0.4), 
+                     Math.round(getScreenSize().width / 2), 
+                     Math.round(getScreenSize().height * 0.55));
+            await driver.pause(1500);
+            continue; // Skip this iteration and check again
+          }
+          
+          // Check if current visible tile is our target PPV
+          if (currentVisiblePPV) {
+            const currentLower = currentVisiblePPV.toLowerCase();
+            const ppvLower = PPV_NAME.toLowerCase();
+            
+            // Direct match
+            if (currentLower.includes(ppvLower)) {
+              console.log(`  ✅ Found "${PPV_NAME}" on current screen (no swipe needed)`);
+              ppvFound = true;
+              break;
+            }
+            
+            // Match by fighter names for "vs" format
+            if (ppvLower.includes('vs')) {
+              const parts = ppvLower.split('vs');
+              const fighter1 = parts[0].trim();
+              const fighter2 = parts[1]?.trim() || '';
+              
+              if (fighter1 && currentLower.includes(fighter1) &&
+                  fighter2 && currentLower.includes(fighter2)) {
+                console.log(`  ✅ Found "${PPV_NAME}" (matched by fighter names) on current screen`);
+                ppvFound = true;
+                break;
+              }
+            }
+            
+            console.log(`  ✗ Current tile is "${currentVisiblePPV}" - not our target, swiping...`);
+          } else {
+            console.log(`  ? No PPV tile identified on screen, swiping to check next...`);
+          }
+          
+          // Swipe to next tile in carousel
+          console.log(`  Swiping to next tile (attempt ${i + 1})...`);
+          adbSwipe(Math.round(getScreenSize().width * 0.75), 
+                   Math.round(getScreenSize().height * 0.45), 
+                   Math.round(getScreenSize().width * 0.25), 
+                   Math.round(getScreenSize().height * 0.45));
+          await driver.pause(1500);
+          
+          // After swipe, check if PPV is now visible
+          if (await isVisible(driver, PPV_NAME, 2000)) {
+            console.log(`  ✅ Found "${PPV_NAME}" after ${i + 1} swipes`);
+            ppvFound = true;
+            break;
+          }
+        }
+      }
+      
+      if (!ppvFound) {
+        await driver.saveScreenshot('./test-results/dont_miss_ppv_not_found.png');
+        throw new Error(`❌ "${PPV_NAME}" not found in "Don't Miss" section`);
+      }
+      
+      // Step 3: Tap the PPV tile (will navigate to paywall screen)
+      console.log(`  Step 3: Tapping "${PPV_NAME}" tile...`);
+      await driver.pause(1000);
+      await tapByText(driver, PPV_NAME, 5000);
+      await driver.pause(2000);
+      await driver.saveScreenshot('./test-results/dont_miss_after_tile_click.png');
+      
+      // After clicking PPV tile, we should be on paywall screen with Copy button
+      // Skip looking for Buy button and go straight to URL capture (same as schedule/search flow)
+      console.log('  On paywall screen - will capture URL via Copy button');
+      buyTapped = true;  // Skip Buy button step, proceed to URL capture
     }
 
     // ── fallback ──────────────────────────────────────────────────────────
@@ -689,18 +1227,16 @@ describe('DAZN Android PPV → Web Handoff', () => {
     console.log(`\n🌐 Checkout URL captured:\n   ${checkoutUrl}\n`);
     writeHandoffUrl(checkoutUrl);
     console.log("✅ URL written to mobile_entry_url.txt");
-    console.log("📱 Now navigating back and closing app...");
-    adbBack(); 
-    await driver.pause(2000);
-    adbBack(); 
-    await driver.pause(2000);
-    adb("shell am force-stop " + APP_PACKAGE); 
-    console.log("✅ URL written to mobile_entry_url.txt");
-    console.log("📱 Next: Open browser, paste URL, and complete web flow");
-
-
+    console.log("📱 Closing DAZN app...");
+    adb("shell am force-stop " + APP_PACKAGE);
+    await driver.pause(1000);
+    console.log("📱 Next: Open fresh Chrome browser, paste URL, and complete web flow");
 
     // ── Playwright Web Checkout Phase ──────────────────────────────────────────
+    // Force-stop Chrome to ensure a completely fresh browser launch (not a new tab).
+    console.log("Force-stopping Chrome to ensure fresh browser launch...");
+    adb("shell am force-stop com.android.chrome");
+    await driver.pause(1000);
     const originalCwd = process.cwd();
     let playwrightBrowser: any = null;
     let context: any = null;
@@ -1251,6 +1787,16 @@ describe('DAZN Android PPV → Web Handoff', () => {
         // ── Payment Details Page ─────────────────────────────────
         if (pageType === 'payment') {
           console.log('💳 Reached Payment page');
+          if (SOURCE === 'schedule' || SOURCE === 'search') {
+            const currentUrl = page.url();
+            console.log(`🔍 [${SOURCE === 'schedule' ? 'Schedule' : 'Search'} Flow] Checking URL: ${currentUrl}`);
+            const isStag = currentUrl.includes('stag.dazn.com') || currentUrl.includes('sandbox') || currentUrl.includes('staging');
+            const isProdOrBeta = ENV === 'prod' || ENV === 'beta';
+            if (!isStag && !isProdOrBeta) {
+              console.log(`⚠️ URL is not stag, prod, or beta (URL: ${currentUrl}). Ending flow and closing browser.`);
+              return;
+            }
+          }
           reachedEndPage = true;
 
           const payment = new PaymentPage(page);
@@ -1782,7 +2328,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
                 let clicked = false;
                 for (let i = 0; i < count; i++) {
                   const r = radios.nth(i);
-                  const parentText = await r.evaluate((el: HTMLElement) => el.closest('label')?.innerText || el.closest('div')?.innerText || '').catch(() => '');
+                  const parentText = await r.evaluate((el: any) => el.closest('label')?.innerText || el.closest('div')?.innerText || '').catch(() => '');
                   if (parentText.toLowerCase().includes('upfront') || parentText.toLowerCase().includes('save')) {
                     await safeScrollToElement(page, r);
                     await r.click({ force: true }).catch(() => { });
@@ -1811,7 +2357,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
                 let clicked = false;
                 for (let i = 0; i < count; i++) {
                   const r = radios.nth(i);
-                  const parentText = await r.evaluate((el: HTMLElement) => el.closest('label')?.innerText || el.closest('div')?.innerText || '').catch(() => '');
+                  const parentText = await r.evaluate((el: any) => el.closest('label')?.innerText || el.closest('div')?.innerText || '').catch(() => '');
                   if (parentText.toLowerCase().includes('monthly') || parentText.toLowerCase().includes('saver') || parentText.toLowerCase().includes('over time')) {
                     await safeScrollToElement(page, r);
                     await r.click({ force: true }).catch(() => { });
@@ -1837,7 +2383,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
               let upfrontSelected = false;
               for (let i = 0; i < count; i++) {
                 const r = radios.nth(i);
-                const parentText = await r.evaluate((el: HTMLElement) => el.closest('label')?.innerText || el.closest('div')?.innerText || '').catch(() => '');
+                const parentText = await r.evaluate((el: any) => el.closest('label')?.innerText || el.closest('div')?.innerText || '').catch(() => '');
                 if (parentText.toLowerCase().includes('upfront')) {
                   upfrontSelected = await r.isChecked().catch(() => false);
                   break;
@@ -1948,6 +2494,15 @@ describe('DAZN Android PPV → Web Handoff', () => {
         const finalUrl = page.url();
         if (finalUrl.includes('paymentDetails') || finalUrl.includes('payment')) {
           console.log('💳 Payment page detected after loop exit');
+          if (SOURCE === 'schedule' || SOURCE === 'search') {
+            console.log(`🔍 [${SOURCE === 'schedule' ? 'Schedule' : 'Search'} Flow] Checking URL: ${finalUrl}`);
+            const isStag = finalUrl.includes('stag.dazn.com') || finalUrl.includes('sandbox') || finalUrl.includes('staging');
+            const isProdOrBeta = ENV === 'prod' || ENV === 'beta';
+            if (!isStag && !isProdOrBeta) {
+              console.log(`⚠️ URL is not stag, prod, or beta (URL: ${finalUrl}). Ending flow and closing browser.`);
+              return;
+            }
+          }
           reachedEndPage = true;
 
           const payment = new PaymentPage(page);
@@ -1962,12 +2517,13 @@ describe('DAZN Android PPV → Web Handoff', () => {
       }
 
       console.log('🎥 Stopping screen recording on Android device...');
+      let videoOutputPath: string | null = null;
       try {
         const videoBuffer = await driver.stopRecordingScreen();
         if (videoBuffer) {
           const videoDir = path.resolve(process.cwd(), 'test-results');
           if (!fs.existsSync(videoDir)) fs.mkdirSync(videoDir, { recursive: true });
-          const videoOutputPath = path.join(videoDir, `handoff_run_${Date.now()}.mp4`);
+          videoOutputPath = path.join(videoDir, `handoff_run_${Date.now()}.mp4`);
           fs.writeFileSync(videoOutputPath, Buffer.from(videoBuffer, 'base64'));
           console.log(`🎥 Video recording saved to: ${videoOutputPath}`);
         }
@@ -1989,7 +2545,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
       });
 
       // Write results to Excel
-      const { excelPath, videoPath } = await writeResults(results);
+      const { excelPath, videoPath } = await writeResults(results, videoOutputPath);
 
       // Display detailed results table
       displayResultsTable(results, 'ppv', {

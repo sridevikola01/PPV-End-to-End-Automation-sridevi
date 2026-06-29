@@ -38,6 +38,11 @@
 const ANDROID_SDK = process.env.ANDROID_HOME || `${process.env.HOME}/Library/Android/sdk`;
 const ADB         = `${ANDROID_SDK}/platform-tools/adb`;
 
+// Export ANDROID_HOME at module level so Appium server inherits it
+process.env.ANDROID_HOME = ANDROID_SDK;
+process.env.ANDROID_SDK_ROOT = ANDROID_SDK;
+process.env.ADB_PATH = ADB;
+
 export const config = {
   runner: 'local',
   port:   4723,
@@ -57,7 +62,7 @@ export const config = {
     ],
   ],
 
-  specs:        ['./tests/android/*.spec.ts'],
+  specs:        ['../tests/android/*.spec.ts'],
   exclude:      [],
   maxInstances: 1,
 

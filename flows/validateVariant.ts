@@ -7,8 +7,7 @@ import { captureFailures }          from '../utils/failureCapture';
 async function getVisibleTextList(locator: any): Promise<string[]> {
   try {
     return await locator.evaluate((el: HTMLElement) => {
-      // Local mock for bundlers that inject __name helper for function name preservation
-      const __name = (f: any, n: string) => f;
+      (globalThis as any).__name = (f: any, n: string) => f;
 
       const clean = (s: string) => s.replace(/\u200B/g, '').replace(/\s+/g, ' ').trim();
       const texts: string[] = [];
@@ -20,7 +19,8 @@ async function getVisibleTextList(locator: any): Promise<string[]> {
           const htmlEl = node as HTMLElement;
           const tag = htmlEl.tagName.toUpperCase();
           if (tag === 'SCRIPT' || tag === 'STYLE') return;
-          if (htmlEl.offsetWidth === 0 && htmlEl.offsetHeight === 0) return;
+          const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+          if (!isMobile && htmlEl.offsetWidth === 0 && htmlEl.offsetHeight === 0) return;
           for (let i = 0; i < htmlEl.childNodes.length; i++) {
             walk(htmlEl.childNodes[i]);
           }

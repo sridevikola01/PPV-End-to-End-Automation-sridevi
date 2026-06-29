@@ -6,12 +6,14 @@
     "test:setup": "playwright test --grep @setup",
     "test:report": "playwright show-report",
     "test:headed": "playwright test --headed",
-    "test:debug": "playwright test --debug"
+    "test:debug": "playwright test --debug",
+    "android": "npm --prefix appium run android"
   },
   "devDependencies": {
     "@playwright/mcp": "^0.0.70",
     "@playwright/test": "^1.49.0",
     "@types/dotenv": "^6.1.1",
+    "@wdio/cli": "^9.29.1",
     "ts-node": "^10.0.0",
     "typescript": "^5.0.0"
   },
