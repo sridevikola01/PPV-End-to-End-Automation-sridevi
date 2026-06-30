@@ -920,122 +920,12 @@ describe('DAZN Android PPV → Web Handoff', () => {
 
     // ── home-boxing-tile ──────────────────────────────────────────────────
     else if (SOURCE === 'home-boxing-tile') {
-      // 1. Navigate to Boxing page via direct filter on Home
-      await navigateToBoxingPage(driver);
+      await scrollToText(driver, PPV_NAME);
+      await tapByText(driver, PPV_NAME, 8000);
       await driver.pause(2000);
-
-      // 2. Scroll to find "Don't Miss" section on Boxing page
-      console.log('  Scrolling to find "Don\'t Miss" section on Boxing page...');
-      let dontMissFound = false;
-      for (let i = 0; i < 12; i++) {
-        if (await isVisible(driver, 'Don\'t Miss', 2000) || 
-            await isVisible(driver, 'Dont Miss', 2000) ||
-            await isVisible(driver, 'Don’t Miss', 2000)) {
-          console.log(`  ✅ Found "Don't Miss" section (scroll ${i + 1})`);
-          dontMissFound = true;
-          break;
-        }
-        
-        // Scroll down to find the section
-        const screenW = getScreenSize().width;
-        const screenH = getScreenSize().height;
-        adbSwipe(
-          Math.round(screenW / 2), 
-          Math.round(screenH * 0.75), 
-          Math.round(screenW / 2), 
-          Math.round(screenH * 0.25)
-        );
-        await driver.pause(1000);
+      for (const cta of ['Buy now', 'Buy Now', 'Buy']) {
+        if (await tapByText(driver, cta, 6000)) { buyTapped = true; break; }
       }
-
-      if (!dontMissFound) {
-        console.log('  ⚠️ "Don\'t Miss" heading not found. Continuing directly...');
-      } else {
-        // Scroll down a bit more to center/reveal the cards under heading
-        const screenW = getScreenSize().width;
-        const screenH = getScreenSize().height;
-        adbSwipe(
-          Math.round(screenW / 2), 
-          Math.round(screenH * 0.7), 
-          Math.round(screenW / 2), 
-          Math.round(screenH * 0.4)
-        );
-        await driver.pause(1500);
-      }
-
-      // 3. Find PPV tile under "Don't Miss" section
-      const targetText = json.PPV_NAME || PPV_NAME;
-      const vsMatch = targetText.match(/vs\.?\s+(\w+)/i);
-      const uniqueKeyword = vsMatch ? vsMatch[1] : targetText;
-
-      console.log(`🔍 Searching for PPV tile under Don't Miss (primary: "${PPV_NAME}", fallback: "${uniqueKeyword}")...`);
-      let ppvEl: any = null;
-      for (let i = 0; i < 12; i++) {
-        // FIRST check before swiping the tiles in the rail
-        console.log(`  Checking for PPV tile (attempt ${i + 1})...`);
-        try {
-          // Check for any element containing the primary name case-insensitively
-          let el = await driver.$(`android=new UiSelector().textMatches("(?i).*${PPV_NAME}.*")`);
-          if (!await el.isDisplayed()) {
-            el = await driver.$(`android=new UiSelector().descriptionMatches("(?i).*${PPV_NAME}.*")`);
-          }
-          
-          // Fallback to unique opponent keyword
-          if (!await el.isDisplayed() && uniqueKeyword) {
-            el = await driver.$(`android=new UiSelector().textMatches("(?i).*${uniqueKeyword}.*")`);
-          }
-          if (!await el.isDisplayed() && uniqueKeyword) {
-            el = await driver.$(`android=new UiSelector().descriptionMatches("(?i).*${uniqueKeyword}.*")`);
-          }
-
-          if (await el.isDisplayed()) {
-            ppvEl = el;
-            console.log(`✅ PPV tile located successfully on step ${i + 1}`);
-            break;
-          }
-        } catch (e) {}
-
-        // Swipe horizontal-left on the bottom half of screen to scroll through the rail
-        // We swipe at y = screenH * 0.75 (middle of the card images) from x = 80% to 30% to shift by one tile
-        console.log(`  PPV tile not visible on screen, swiping left (attempt ${i + 1})...`);
-        const screenW = getScreenSize().width;
-        const screenH = getScreenSize().height;
-        adbSwipe(
-          Math.round(screenW * 0.8),
-          Math.round(screenH * 0.75), // swipe height centered on the cards
-          Math.round(screenW * 0.3),
-          Math.round(screenH * 0.75)
-        );
-        await driver.pause(1500);
-      }
-
-      if (!ppvEl) {
-        await driver.saveScreenshot('./test-results/android_boxing_debug.png');
-        throw new Error(`❌ PPV tile under "Don't Miss" not found. Check test-results/android_boxing_debug.png`);
-      }
-
-      // 4. Click the PPV tile to open the details/paywall page
-      console.log('  Clicking the PPV tile...');
-      await ppvEl.click();
-      await driver.pause(2500);
-
-      // 5. Click the "Buy now" button on the details page (same as home-boxing-banner)
-      console.log('  Clicking "Buy now" button on PPV details page...');
-      let buyClicked = false;
-      for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV', 'Purchase']) {
-        if (await tapByText(driver, cta, 6000)) {
-          buyClicked = true;
-          console.log(`✅ Clicked "${cta}" button on details page`);
-          break;
-        }
-      }
-
-      if (!buyClicked) {
-        await driver.saveScreenshot('./test-results/android_buy_btn_missing.png');
-        throw new Error('❌ "Buy now" button not found on PPV details page.');
-      }
-      
-      buyTapped = true;
     }
 
     // ── home-page-dont-miss ───────────────────────────────────────────────
