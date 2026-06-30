@@ -830,6 +830,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
 
       // 3. Click on the "Buy now" button of the PPV card directly
       console.log('  Clicking "Buy now" button of the PPV card...');
+      let buyClicked = false;
       // Try finding button relative to uniqueKeyword or targetText using different ancestor/descendant relationships
       const relativeSelectors = [
         `//android.widget.TextView[contains(@text, "${uniqueKeyword}")]/..//*[contains(@text, "Buy") or contains(@text, "buy")]`,
