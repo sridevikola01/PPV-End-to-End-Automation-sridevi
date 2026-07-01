@@ -46,17 +46,6 @@ export function resolveExpected(
   }
 
   if (pageName === 'payment') {
-    const isMobileWebHandoff = String(eventData.MOBILE_WEB_HANDOFF || eventData.mobile_web_handoff || '').toLowerCase() === 'true';
-
-    // Mobile checkout does not render these desktop payment-section headings.
-    // Returning N/A lets validateVariant skip them via its existing not-required path.
-    if (
-      isMobileWebHandoff &&
-      (field === 'payment method heading' || field === 'purchase summary heading')
-    ) {
-      return 'N/A';
-    }
-
     const isReturning =
       String(rule.Flow || rule.flow).toLowerCase() === 'returning' ||
       ['frozen', 'sub_active', 'cancelled'].includes(String(eventData.USER_STATE || process.env.USER_STATE || '').toLowerCase().trim());
@@ -69,6 +58,14 @@ export function resolveExpected(
       const userState = (eventData.USER_STATE || process.env.USER_STATE || 'freemium').trim().toLowerCase();
       return userState === 'freemium' ? 'No' : 'Yes';
     }
+    if (field === 'excluding tax text' || field === 'excluding tax') {
+      const region = (eventData.DAZN_REGION || process.env.DAZN_REGION || '').toUpperCase();
+      if (region === 'US') {
+        return '(excluding tax)';
+      }
+      return 'N/A';
+    }
+
 
     // ── Next Payment fields: skip for GB, IT, and 7-day trial ──
     if (field === 'next payment label' || field === 'next payment price') {
@@ -146,15 +143,18 @@ export function resolveExpected(
   ) {
     return 'N/A';
   }
-  
+
   // Check if a PPV event is active. If a PPV event is active, the boxing subscription-only sources
   // will render the PPV-bundled offers on the live site, so they should be validated using the PPV rules.
   const hasPPVEvent = eventData.PPV_NAME && eventData.PPV_NAME !== 'N/A' && eventData.PPV_NAME !== 'none';
   const isSubscriptionOnly =
-    (currentSource === 'boxing-ultimate-subscription' ||
-     currentSource === 'boxing-standard-subscription' ||
-     currentSource === 'boxing-join-the-club') &&
-    !hasPPVEvent;
+    ((currentSource === 'boxing-ultimate-subscription' ||
+      currentSource === 'boxing-standard-subscription' ||
+      currentSource === 'boxing-join-the-club') &&
+      !hasPPVEvent) ||
+    eventData.SUBSCRIBE_WITHOUT_PPV === 'true' ||
+    process.env.SUBSCRIBE_WITHOUT_PPV === 'true';
+
 
   if (isSubscriptionOnly) {
     // In subscription-only flow (no PPV), the plans page shows default descriptions
@@ -263,6 +263,9 @@ export function resolveExpected(
     if (pageName === 'payment' || pageName === '') {
       // Payment page header for 7-day trial (monthly only — APM/APU always shows 'Choose how to pay')
       if (currentOfferType === '7_day_trial' && !currentRatePlan.includes('annual') && (field === 'header' || field === 'payment page title')) {
+        if (eventData.USER_STATE === 'frozen') {
+          return eventData.PAYMENT_PAGE_TITLE_STANDARD || 'Choose how to pay';
+        }
         return eventData.PAYMENT_PAGE_TITLE_TRIAL || 'Choose how to pay after your free trial';
       }
       if (field === 'rate plan original price' || field === 'rate plan discounted price') {
@@ -298,7 +301,11 @@ export function resolveExpected(
 
   // ── Monthly flex with no offer at all (no_offer / none) ──
   // For PPVs/regions with no 7-day trial and no 1-month-free
-  const isNoOffer = currentOfferType === 'no_offer' || currentOfferType === 'none';
+  const isReturningUser =
+    (eventData.IS_RETURNING_USER === 'true' ||
+     ['frozen', 'sub_active', 'cancelled'].includes(String(eventData.USER_STATE || '').toLowerCase().trim())) &&
+    (eventData.USER_STATE || '').toLowerCase().trim() !== 'freemium';
+  const isNoOffer = currentOfferType === 'no_offer' || currentOfferType === 'none' || isReturningUser;
   const isMonthlyNoOffer = isNoOffer && (currentRatePlan === 'monthly' || currentRatePlan === '');
 
   if (isMonthlyNoOffer && !isSubscriptionOnly) {
@@ -343,7 +350,7 @@ export function resolveExpected(
     }
   }
 
-  if (field === 'popup date') {
+  if (field === 'popup date' || field === 'popup - event date' || field === 'paywall date' || field === 'paywall - event date') {
     const pDate = eventData.PPV_DATE || '';
     const lpDate = eventData.LANDING_PAGE_PPV_DATE || '';
     if (pDate && lpDate) {
@@ -398,37 +405,6 @@ export function resolveExpected(
         currentSource !== 'boxing-join-the-club'
       ) {
         raw = 'N/A';
-      }
-    } else if (field === 'saturday badge') {
-      const eventDate = eventData.PPV_DATE || '';
-      const match = eventDate.match(/^([A-Za-z]+)\s+(\d+)(?:st|nd|rd|th)?\s+([A-Za-z]+)/i);
-      if (match) {
-        const shortDay = match[1].substring(0, 3).toUpperCase();
-        const dateNum = match[2];
-        const shortMonth = match[3].substring(0, 3).toUpperCase();
-
-        const getOrdinalSuffix = (dStr: string) => {
-          const d = parseInt(dStr, 10);
-          if (isNaN(d)) return 'th';
-          if (d >= 11 && d <= 13) return 'th';
-          switch (d % 10) {
-            case 1: return 'st';
-            case 2: return 'nd';
-            case 3: return 'rd';
-            default: return 'th';
-          }
-        };
-
-        raw = `${shortDay} ${dateNum}${getOrdinalSuffix(dateNum)} ${shortMonth}`;
-      } else {
-        const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-        const matchedDays: string[] = [];
-        for (const day of dayNames) {
-          if (eventDate.toLowerCase().includes(day)) {
-            matchedDays.push(day.toUpperCase());
-          }
-        }
-        raw = matchedDays.length > 0 ? matchedDays.join('|') : 'SATURDAY';
       }
     } else if (field === 'next payment label') {
       if (ratePlan.includes('annual pay monthly')) {
@@ -600,7 +576,7 @@ export function resolveExpected(
       // BUT NOT for banner fields — banners show the full PPV_DATE (e.g. 'Sat 27th Jun at 16:30')
       const pageNameLower = pageName.toLowerCase();
       const isBannerField = field.startsWith('banner');
-      if (k.toUpperCase() === 'PPV_DATE' && !isBannerField && (pageNameLower === 'landing' || pageNameLower === 'boxing' || pageNameLower.includes('home') || pageNameLower.includes('popup'))) {
+      if (k.toUpperCase() === 'PPV_DATE' && !isBannerField && (pageNameLower === 'landing' || pageNameLower === 'boxing' || pageNameLower.includes('home'))) {
         if (eventData.LANDING_PAGE_PPV_DATE) {
           return String(eventData.LANDING_PAGE_PPV_DATE);
         }
@@ -686,6 +662,8 @@ export function resolveExpected(
     'ppv date',
     'popup date',
     'popup - event date',
+    'paywall date',
+    'paywall - event date',
     'welcome tile date',
     'event date',
     'fury payment date',

@@ -86,14 +86,17 @@ export function formatNextPaymentDateUS(daysOffset: number): string {
 }
 
 // ── Flex Future Date — "In 7 days • 4 June 2026" ────────────
-export function formatFlexFutureDate(daysOffset: number = 7): string {
+export function formatFlexFutureDate(daysOffset: number = 7, isUSRegion: boolean = false): string {
   const date = getNowIST();
   date.setDate(date.getDate() + daysOffset);
 
   const day   = date.getDate(); // no padding
-  const month = date.toLocaleString('en-GB', { month: 'long' });
+  const month = date.toLocaleString('en-US', { month: 'long' });
   const year  = date.getFullYear();
 
+  if (isUSRegion) {
+    return `In ${daysOffset} days • ${month} ${day}, ${year}`;
+  }
   return `In ${daysOffset} days • ${day} ${month} ${year}`;
 }
 

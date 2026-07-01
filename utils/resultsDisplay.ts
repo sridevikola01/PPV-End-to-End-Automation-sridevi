@@ -1,3 +1,5 @@
+import { sortValidationResults } from './helpers';
+
 type Result = {
   page:     string;
   field:    string;
@@ -17,7 +19,27 @@ export function displayResultsTable(
     videoPath?: string | null;
   }
 ): void {
-  if (!results.length) {
+  // Filter out non-applicable fields (where expected is N/A or empty)
+  const filtered = results.filter((r: any) => {
+    if (!r || !r.field) return false;
+    const expNA = String(r.expected ?? '').trim().toUpperCase() === 'N/A';
+    const expEmpty = String(r.expected ?? '').trim() === '';
+    return !expNA && !expEmpty;
+  });
+
+  // Deduplicate results by page and field
+  const seen = new Set<string>();
+  const deduplicated = filtered.filter((r: any) => {
+    const key = `${r.page}::${r.field}`.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // Sort validation results deterministically
+  const sorted = sortValidationResults(deduplicated);
+
+  if (!sorted.length) {
     console.log('\n⚠️  No results to display');
     return;
   }
@@ -25,7 +47,7 @@ export function displayResultsTable(
   const line  = '─'.repeat(55);
   const dline = '═'.repeat(55);
 
-  const pages = [...new Set(results.map(r => r.page))];
+  const pages = [...new Set(sorted.map(r => r.page))];
 
   console.log(`\n${dline}`);
   console.log('  📊  TEST RESULTS SUMMARY');
@@ -40,7 +62,7 @@ export function displayResultsTable(
   console.log('');
 
   for (const p of pages) {
-    const pageResults = results.filter(r => r.page === p);
+    const pageResults = sorted.filter(r => r.page === p);
     const pass  = pageResults.filter(r => r.status === 'PASS').length;
     const fail  = pageResults.filter(r => r.status === 'FAIL').length;
     const total = pageResults.length;
@@ -68,9 +90,9 @@ export function displayResultsTable(
   }
 
   // ── Overall totals ───────────────────────────────────────────
-  const totalPass = results.filter(r => r.status === 'PASS').length;
-  const totalFail = results.filter(r => r.status === 'FAIL').length;
-  const total     = results.length;
+  const totalPass = sorted.filter(r => r.status === 'PASS').length;
+  const totalFail = sorted.filter(r => r.status === 'FAIL').length;
+  const total     = sorted.length;
   const totalPct  = total ? ((totalPass / total) * 100).toFixed(1) : '0';
 
   console.log(line);

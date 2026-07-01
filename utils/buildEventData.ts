@@ -350,84 +350,77 @@ export function buildEventData(
 
   if (regional.DAZN_TIER           ?? merged.DAZN_TIER)           base.DAZN_TIER           = regional.DAZN_TIER           ?? merged.DAZN_TIER;
 
-  // Resolve userState values from central userstatus.json file.
-  // USER_STATE is ONLY set by existing-user flows (existinguser.ppv.spec.ts sets
-  // process.env.USER_STATE explicitly). New-user flows never set it, so its
-  // absence means the caller is a brand-new account with no subscription state.
-  const userStateKey = process.env.USER_STATE || '';
+  // Resolve userState values from central userstatus.json file
+  
+const userStateKey = process.env.USER_STATE || 'freemium';
 
-  const isActiveStandard = [
-    'active_standard',
-    'active_standard_monthly',
-    'active_standard_apm',
-  ].includes(userStateKey);
+const isActiveStandard = [
+  'active_standard',
+  'active_standard_monthly',
+  'active_standard_apm',
+].includes(userStateKey);
 
-  const isActiveUltimate = [
-    'active_ultimate',
-    'active_ultimate_apm',
-    'active_ultimate_upfront',
-  ].includes(userStateKey);
+const isActiveUltimate = [
+  'active_ultimate',
+  'active_ultimate_apm',
+  'active_ultimate_upfront',
+].includes(userStateKey);
 
-  // Only load user-state config when an existing-user state is explicitly provided.
-  // For new users, leave USER_STATE unset so resolveExpected can detect them correctly.
-  if (userStateKey) {
-    base.USER_STATE = userStateKey;
+  const userStatesPath = path.resolve(process.cwd(), 'config/userstatus.json');
+  let userStates: Record<string, any> = {};
+  if (fs.existsSync(userStatesPath)) {
+    userStates = JSON.parse(fs.readFileSync(userStatesPath, 'utf-8'));
+  }
+  const userStateConfig = userStates[userStateKey] || {};
+  base.USER_STATE = userStateKey;
 
-    const userStatesPath = path.resolve(process.cwd(), 'config/userstatus.json');
-    let userStates: Record<string, any> = {};
-    if (fs.existsSync(userStatesPath)) {
-      userStates = JSON.parse(fs.readFileSync(userStatesPath, 'utf-8'));
+  // Apply general user state configuration
+  for (const key of Object.keys(userStateConfig)) {
+    if (key !== 'regions') {
+      base[key] = userStateConfig[key];
     }
-    const userStateConfig = userStates[userStateKey] || {};
+  }
 
-    // Apply general user state configuration
-    for (const key of Object.keys(userStateConfig)) {
-      if (key !== 'regions') {
-        base[key] = userStateConfig[key];
+  // Apply regional overrides from user state config
+  let userStateRegional = userStateConfig.regions?.[region];
+  if (!userStateRegional) {
+    // Backward-compat: if region is GB but config only has UK
+    if (region === 'GB') {
+      userStateRegional = userStateConfig.regions?.UK;
+    }
+  }
+  if (userStateRegional) {
+    const envKey = (process.env.DAZN_ENV || 'stag').toLowerCase();
+    const envOverrides = userStateRegional.environments?.[envKey];
+    const finalRegional = envOverrides 
+      ? { ...userStateRegional, ...envOverrides }
+      : userStateRegional;
+
+    for (const key of Object.keys(finalRegional)) {
+      if (key !== 'environments') {
+        base[key] = finalRegional[key];
       }
     }
+  }
 
-    // Apply regional overrides from user state config
-    let userStateRegional = userStateConfig.regions?.[region];
-    if (!userStateRegional) {
-      // Backward-compat: if region is GB but config only has UK
-      if (region === 'GB') {
-        userStateRegional = userStateConfig.regions?.UK;
-      }
+  // Ultimate entitlement logic: active_ultimate on included PPVs is Purchased, otherwise Buy now.
+  let ppvStatus = base.PPV_STATUS || "Buy now";
+  if (isActiveUltimate) {
+    const ppvType = merged.PPV_TYPE || json.PPV_TYPE;
+    if (ppvType === 'included') {
+      ppvStatus = 'Purchased';
+    } else if (!base.PPV_STATUS) {
+      ppvStatus = 'Buy now';
     }
-    if (userStateRegional) {
-      const envKey = (process.env.DAZN_ENV || 'stag').toLowerCase();
-      const envOverrides = userStateRegional.environments?.[envKey];
-      const finalRegional = envOverrides
-        ? { ...userStateRegional, ...envOverrides }
-        : userStateRegional;
+  }
+  base.PPV_STATUS = ppvStatus;
 
-      for (const key of Object.keys(finalRegional)) {
-        if (key !== 'environments') {
-          base[key] = finalRegional[key];
-        }
-      }
-    }
-
-    // Ultimate entitlement logic: active_ultimate on included PPVs is Purchased, otherwise Buy now.
-    let ppvStatus = base.PPV_STATUS || 'Buy now';
-    if (isActiveUltimate) {
-      const ppvType = merged.PPV_TYPE || json.PPV_TYPE;
-      if (ppvType === 'included') {
-        ppvStatus = 'Purchased';
-      } else if (!base.PPV_STATUS) {
-        ppvStatus = 'Buy now';
-      }
-    }
-    base.PPV_STATUS = ppvStatus;
-
-    // Active standard user: Choose How To Buy page shows different feature text
-    if (isActiveStandard) {
-      base.UPSELL_FEATURE_1 = 'Pay-per-views included at no extra cost. Minimum of 12 events per year.';
-      base.UPSELL_FEATURE_2 = "185+ fights a year from the best promoters.|185+ fights a year from the best promotors.|185+ fights a year from the world's best promoters.";
-      base.UPSELL_FEATURE_3 = 'HDR and Dolby 5.1 surround sound on select events.';
-    }
-  } // end if (userStateKey)
+  // Active standard user: Choose How To Buy page shows different feature text
+  if (isActiveStandard) {
+    base.UPSELL_FEATURE_1 = 'Pay-per-views included at no extra cost. Minimum of 12 events per year.';
+    base.UPSELL_FEATURE_2 = "185+ fights a year from the best promoters.|185+ fights a year from the best promotors.|185+ fights a year from the world's best promoters.";
+    base.UPSELL_FEATURE_3 = "HDR and Dolby 5.1 surround sound on select events.";
+  }
 
   if (!base.RATE_PLAN_LABEL && (regional.RATE_PLAN_LABEL ?? merged.RATE_PLAN_LABEL)) base.RATE_PLAN_LABEL = regional.RATE_PLAN_LABEL ?? merged.RATE_PLAN_LABEL;
   if (!base.USER_EMAIL && (regional.USER_EMAIL ?? merged.USER_EMAIL)) base.USER_EMAIL = regional.USER_EMAIL ?? merged.USER_EMAIL;
@@ -446,6 +439,11 @@ export function buildEventData(
   }
   if (merged.FLOW_FROM_POPUP !== undefined) {
     base.FLOW_FROM_POPUP = String(merged.FLOW_FROM_POPUP);
+    base.FLOW_FROM_PAYWALL = String(merged.FLOW_FROM_POPUP);
+  }
+  if (merged.FLOW_FROM_PAYWALL !== undefined) {
+    base.FLOW_FROM_PAYWALL = String(merged.FLOW_FROM_PAYWALL);
+    base.FLOW_FROM_POPUP = String(merged.FLOW_FROM_PAYWALL);
   }
 
   const planPage = regional.pages?.plan ?? merged.pages?.plan ?? {};
@@ -555,17 +553,19 @@ export function buildEventData(
 
   const offerType = (base.OFFER_TYPE || '1_month_free').toLowerCase();
   if (offerType === '7_day_trial') {
-    base.FLEX_FUTURE_DATE = formatFlexFutureDate(7);
+    base.FLEX_FUTURE_DATE = formatFlexFutureDate(7, isUSRegion);
     // Trial payment page shows trial cancellation text, not legacy "Cancel with 30 days' notice"
     base.PAYMENT_FLEX_CANCEL_NOTICE = 'N/A';
     base.PAYMENT_FLEX_LEGAL_TEXT = 'N/A';
   } else if (offerType === '1_month_free') {
-    const futureDate = getNow();
+    const futureDate = getNowIST();
     futureDate.setMonth(futureDate.getMonth() + 1);
     const day = futureDate.getDate();
-    const month = futureDate.toLocaleString('en-GB', { month: 'long' });
+    const month = futureDate.toLocaleString('en-US', { month: 'long' });
     const year = futureDate.getFullYear();
-    base.FLEX_FUTURE_DATE = `In 1 month • ${day} ${month} ${year}`;
+    base.FLEX_FUTURE_DATE = isUSRegion
+      ? `In 1 month • ${month} ${day}, ${year}`
+      : `In 1 month • ${day} ${month} ${year}`;
     // 1-month free also uses different cancellation text, not "Cancel with 30 days' notice"
     base.PAYMENT_FLEX_CANCEL_NOTICE = 'N/A';
     base.PAYMENT_FLEX_LEGAL_TEXT = 'N/A';
@@ -573,12 +573,14 @@ export function buildEventData(
     // No offer — keep default "Cancel with 30 days' notice" messaging
     base.FLEX_FUTURE_DATE = 'N/A';
   } else {
-    const futureDate = new Date();
+    const futureDate = getNowIST();
     futureDate.setMonth(futureDate.getMonth() + 1);
     const day = futureDate.getDate();
-    const month = futureDate.toLocaleString('en-GB', { month: 'long' });
+    const month = futureDate.toLocaleString('en-US', { month: 'long' });
     const year = futureDate.getFullYear();
-    base.FLEX_FUTURE_DATE = `In 1 month • ${day} ${month} ${year}`;
+    base.FLEX_FUTURE_DATE = isUSRegion
+      ? `In 1 month • ${month} ${day}, ${year}`
+      : `In 1 month • ${day} ${month} ${year}`;
   }
 
   // ── Dynamic calculations for non-1-month-free plans ──

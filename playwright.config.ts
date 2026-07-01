@@ -1,4 +1,9 @@
 import { defineConfig } from '@playwright/test';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Load environment variables from .env file
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const isHeadless = process.env.HEADLESS === 'true';
 
@@ -12,9 +17,10 @@ export default defineConfig({
   use: {
     headless: isHeadless,
 
-    // Keep CI/headless on the same desktop layout as local headed Chrome.
-    viewport: { width: 1920, height: 1080 },
-    deviceScaleFactor: 1,
+    // CI/headless: fixed viewport for deterministic runs
+    // Local headed: null viewport with --start-maximized
+    viewport: isHeadless ? { width: 1920, height: 1080 } : null,
+    ...(isHeadless ? { deviceScaleFactor: 1 } : {}),
     isMobile: false,
     hasTouch: false,
 
@@ -23,7 +29,7 @@ export default defineConfig({
 
     launchOptions: {
       args: [
-        '--window-size=1920,1080',
+        isHeadless ? '--window-size=1920,1080' : '--start-maximized',
         '--disable-infobars',
         '--no-sandbox',
         '--disable-dev-shm-usage',

@@ -7,7 +7,7 @@ export async function detectPageType(
   p: any,
   pc: Record<string, { detection: string }>,
   planClickCount: number
-): Promise<'ppv' | 'plan' | 'email' | 'payment' | 'phone' | 'otp' | 'unknown' | 'standalone-ppv' | 'success-upsell' | 'saved-card-payment' | 'bet-upsell' | 'default-signup' | 'choose-how-to-buy' | 'confirmation'> {
+): Promise<'ppv' | 'plan' | 'email' | 'payment' | 'phone' | 'otp' | 'unknown' | 'standalone-ppv' | 'success-upsell' | 'saved-card-payment' | 'bet-upsell' | 'default-signup'> {
   if (!p || p.isClosed()) return 'unknown';
 
   // ── Body text detection FIRST for highly specific pages (OTP & Phone) ──
@@ -55,16 +55,25 @@ export async function detectPageType(
   const url = p.url();
   const urlLower = url.toLowerCase();
 
+  // High-priority check for Subscribe Without PPV redirect (must be before any PPV checks)
+  if (urlLower.includes('page=tierplans') && urlLower.includes('noppv=true')) {
+    const hasRadio = (await p.locator('input[type="radio"], [role="radio"]').count().catch(() => 0)) > 0;
+    const hasPlanCards = (await p.locator('[class*="plancard" i], [class*="tier" i], [class*="offer" i], [data-test-id*="tier" i]').count().catch(() => 0)) > 0;
+    const hasPlanText = body.includes('choose your plan') || 
+                        body.includes('choose a plan') || 
+                        body.includes('choose the right plan') ||
+                        body.includes("choose a plan that's right") ||
+                        body.includes('select how to pay');
+    if (hasRadio || hasPlanCards || hasPlanText) {
+      console.log('[detectPageType] Subscribe Without PPV destination verified via URL and DOM (exposes Plan UI).');
+      console.log('Returning page type: plan.');
+      return 'plan';
+    }
+  }
+
   // Phone/OTP pages (highest priority URL checks)
   if (urlLower.includes('phonenumbercollection')) return 'phone';
   if (urlLower.includes('phoneverification') || urlLower.includes('otpverification')) return 'otp';
-
-  // Upgrade confirmation page (after clicking Upgrade to Ultimate)
-  if (urlLower.includes('upgradeplan')) return 'confirmation';
-  if (urlLower.includes('upgradetier') && !urlLower.includes('isupgradetierflow')) return 'confirmation';
-
-  // Choose How To Buy page (active existing user addon purchase)
-  if (urlLower.includes('/addon/purchase')) return 'choose-how-to-buy';
 
   // Payment page
   if (urlLower.includes('paymentdetails') || urlLower.includes('page=payment')) return 'payment';
@@ -105,8 +114,25 @@ export async function detectPageType(
     return 'standalone-ppv';
   }
 
-  if (urlLower.includes('page=plandetails')) return 'plan';
-  if (urlLower.includes('page=tierplans')) return 'plan';
+  // ── PPV/Default-signup page intercept (before generic plan fallback) ──
+  // Pages with plandetails/tierplans in URL may actually be PPV pages if they
+  // contain PPV-related content. Only applies when contextualPpvId or pay-per-view
+  // body text is present. Gated behind DEFAULT_SIGNUP to avoid affecting other flows.
+  if (urlLower.includes('page=plandetails') || urlLower.includes('page=tierplans')) {
+    if (urlLower.includes('contextualppvid') ||
+        body.includes('pay-per-view') ||
+        body.includes('choose how to buy') ||
+        body.includes('subscribe without a pay-per-view') ||
+        body.includes('continue without pay-per-view') ||
+        body.includes('continue without a pay-per-view')) {
+      if (process.env.DEFAULT_SIGNUP === 'true' && body.includes('subscribe without a pay-per-view')) {
+        return 'default-signup';
+      }
+      return 'ppv';
+    }
+    return 'plan';
+  }
+
 
   // PPV page detection via contextualPpvId query param (before email fallback)
   // Wait for SPA routing to complete — the URL may get a page= parameter
@@ -185,4 +211,113 @@ export async function detectPageType(
   if (body.includes('pick a plan to go with')) return 'plan';
 
   return 'unknown';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HANDLE "Subscribe without a pay-per-view" OPT-OUT CLICK
+// Centralized helper — invoked from both existinguser and newuser specs.
+// ═══════════════════════════════════════════════════════════════
+import { safeScrollToElement } from './testHelpers';
+
+export async function handleNoPpvClick(
+  page: Page,
+  eventData: Record<string, any>,
+  source: string
+): Promise<boolean> {
+  // ── Precondition guards ──
+  // Only execute for the subscribe-without-pay-per-view surfacing point.
+  const noPpvClick = eventData.noPpvClick === true || eventData.noPpvClick === 'true';
+  const defaultSignup = process.env.DEFAULT_SIGNUP === 'true';
+  const isSubscribeWithoutPpvSource = source === 'subscribe-without-pay-per-view';
+  const isMyAccountSubStatusSource = eventData.source === 'myaccount-subscription-status' ||
+    source === 'myaccount-subscription-status' ||
+    eventData.SOURCE === 'subscribe-without-pay-per-view';
+
+  if (!noPpvClick || !defaultSignup || (!isSubscribeWithoutPpvSource && !isMyAccountSubStatusSource)) {
+    return false; // Preconditions not met — do nothing
+  }
+
+  console.log('🔗 [handleNoPpvClick] Attempting to click "Subscribe without a pay-per-view"...');
+
+  // Step 1: Wait for page stability, then scroll to bottom
+  await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
+  await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
+  await page.waitForTimeout(1000);
+
+  // Step 2: Broad selector search (any element type, case-insensitive)
+  const noPpvLink = page.locator('text=/subscribe without a pay-per-view/i').first();
+  let found = await noPpvLink.isVisible().catch(() => false);
+
+  // Step 3: If not found and URL has contextualPpvId, strip it and retry
+  if (!found) {
+    const currentUrl = page.url();
+    if (currentUrl.toLowerCase().includes('contextualppvid')) {
+      console.log('⚠️  [handleNoPpvClick] Button not found — contextualPpvId detected in URL. Stripping and navigating...');
+      const url = new URL(currentUrl);
+      url.searchParams.delete('contextualPpvId');
+      // Also try lowercase variant
+      for (const [key] of url.searchParams.entries()) {
+        if (key.toLowerCase() === 'contextualppvid') {
+          url.searchParams.delete(key);
+        }
+      }
+      await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => { });
+      await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => { });
+
+      // Scroll to bottom again on the new page
+      await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' }));
+      await page.waitForTimeout(1000);
+
+      found = await noPpvLink.isVisible().catch(() => false);
+    }
+  }
+
+  // Step 4: Fallback — check body text and try alternative selectors
+  // Set the temporary page-type detection marker BEFORE the click
+  process.env.SUBSCRIBE_WITHOUT_PPV_ACTIVE = 'true';
+
+  if (!found) {
+    const bodyText = await page.locator('body').innerText({ timeout: 3000 }).catch(() => '');
+    const hasText = bodyText.toLowerCase().includes('subscribe without');
+    console.log(`⚠️  [handleNoPpvClick] noPpvLink not visible after scroll. Body has "subscribe without": ${hasText}`);
+    if (hasText) {
+      // Try clicking by exact text content
+      await page.locator(':text-is("Subscribe without a pay-per-view")').first().click({ timeout: 5000 });
+    } else {
+      process.env.SUBSCRIBE_WITHOUT_PPV_ACTIVE = 'false';
+      throw new Error('❌ [handleNoPpvClick] "Subscribe without a pay-per-view" link not found on page after all retries');
+    }
+  } else {
+    await safeScrollToElement(page, noPpvLink);
+    await noPpvLink.click();
+  }
+
+  // Step 5: Wait for navigation to complete and page to load fully
+  try {
+    console.log('⏳ [handleNoPpvClick] Waiting for URL to contain "noPpv=true"...');
+    await page.waitForURL(url => url.href.toLowerCase().includes('noppv=true'), { timeout: 15000 });
+    console.log('⏳ [handleNoPpvClick] URL matches! Waiting for page to load (networkidle)...');
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
+    await page.waitForLoadState('domcontentloaded', { timeout: 5000 }).catch(() => { });
+  } catch (e) {
+    console.log('⚠️ [handleNoPpvClick] Timeout waiting for URL or load state:', e);
+  }
+
+  // Step 6: Verify navigation destination
+  const finalUrl = page.url().toLowerCase();
+  if (finalUrl.includes('page=tierplans') && finalUrl.includes('noppv=true')) {
+    console.log('[handleNoPpvClick] Click successful.');
+    console.log(`[handleNoPpvClick] Navigated to: ${page.url()}`);
+    
+    // Step 7: Mark the business flow event flags
+    eventData.SUBSCRIBE_WITHOUT_PPV = 'true';
+    eventData['SUBSCRIBE_WITHOUT_PPV'] = 'true';
+    process.env.SUBSCRIBE_WITHOUT_PPV = 'true';
+    
+    return true;
+  } else {
+    console.log(`⚠️ [handleNoPpvClick] Navigated to unexpected URL: ${page.url()}`);
+    process.env.SUBSCRIBE_WITHOUT_PPV_ACTIVE = 'false';
+    return false;
+  }
 }

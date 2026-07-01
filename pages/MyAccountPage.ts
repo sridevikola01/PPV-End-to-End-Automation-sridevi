@@ -97,13 +97,17 @@ export class MyAccountPage {
 
     } else {
       console.log('⚠️  PPV heading not found — scrolling to mid-page');
-      await this.page.evaluate(() =>
-        window.scrollTo({
-          top: document.body.scrollHeight / 2,
-          behavior: 'instant',
-        })
-      );
-      await this.page.waitForTimeout(500);
+      try {
+        await this.page.evaluate(() =>
+          window.scrollTo({
+            top: document.body.scrollHeight / 2,
+            behavior: 'instant',
+          })
+        );
+        await this.page.waitForTimeout(500);
+      } catch (scrollErr: any) {
+        console.warn(`⚠️  Scroll failed (page may have navigated): ${scrollErr.message}`);
+      }
     }
 
     const finalY = await this.page
@@ -669,8 +673,7 @@ export class MyAccountPage {
     // Fallback: build base URL from env vars if not extractable from URL
     if (!base) {
       const env = (process.env.DAZN_ENV || 'stag').toLowerCase();
-      let region = (process.env.DAZN_REGION || 'GB').toUpperCase();
-      if (region === 'UAE') region = 'AE';
+      const region = (process.env.DAZN_REGION || 'GB').toUpperCase();
       const domain =
         env === 'prod' ? 'www.dazn.com' :
         env === 'beta' ? 'beta.dazn.com' :

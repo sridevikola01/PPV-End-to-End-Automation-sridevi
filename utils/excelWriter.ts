@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import * as fs   from 'fs';
 import * as path from 'path';
 import { compare } from './compare';
+import { sortValidationResults } from './helpers';
 
 // ── Column name maps ─────────────────────────────────────────────
 const SCHEDULE_HEADERS       = ['Field', 'Expected', 'Actual', 'Status'];
@@ -29,8 +30,7 @@ const applyStyles = (ws: XLSX.WorkSheet, data: any[]) => {
 };
 
 export const writeResults = async (
-  results: any[],
-  preferredVideoPath?: string | null
+  results: any[]
 ): Promise<{ excelPath: string | null; videoPath: string | null }> => {
 
   // Centralized cleanup of date/format combinations in expected values
@@ -51,38 +51,28 @@ export const writeResults = async (
   // ── Find video ───────────────────────────────────────────────
   let videoPath: string | null = null;
   try {
-    if (preferredVideoPath && fs.existsSync(preferredVideoPath)) {
-      videoPath = preferredVideoPath;
-    } else {
-      const videoDirs = [
-        path.resolve(process.cwd(), 'test-results', 'videos'),
-        path.resolve(process.cwd(), 'test-results', 'artifacts'),
-        path.resolve(process.cwd(), 'test-results'),
-      ];
-      const findVideo = (dir: string): string | null => {
-        if (!fs.existsSync(dir)) return null;
-        const entries = fs.readdirSync(dir, { withFileTypes: true })
-          .filter(e => e.name.endsWith('.webm') || e.name.endsWith('.mp4') || e.isDirectory())
-          .sort((a, b) => {
-            const aPath = path.join(dir, a.name);
-            const bPath = path.join(dir, b.name);
-            return fs.statSync(bPath).mtimeMs - fs.statSync(aPath).mtimeMs;
-          });
-        for (const e of entries) {
-          const full = path.join(dir, e.name);
-          if (e.isDirectory()) {
-            const found = findVideo(full);
-            if (found) return found;
-          } else if (e.name.endsWith('.webm') || e.name.endsWith('.mp4')) {
-            return full;
-          }
+    const videoDirs = [
+      path.resolve(process.cwd(), 'test-results', 'videos'),
+      path.resolve(process.cwd(), 'test-results', 'artifacts'),
+      path.resolve(process.cwd(), 'test-results'),
+    ];
+    const findVideo = (dir: string): string | null => {
+      if (!fs.existsSync(dir)) return null;
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          const found = findVideo(full);
+          if (found) return found;
+        } else if (e.name.endsWith('.webm') || e.name.endsWith('.mp4')) {
+          return full;
         }
-        return null;
-      };
-      for (const dir of videoDirs) {
-        videoPath = findVideo(dir);
-        if (videoPath) break;
       }
+      return null;
+    };
+    for (const dir of videoDirs) {
+      videoPath = findVideo(dir);
+      if (videoPath) break;
     }
   } catch {}
 
@@ -91,7 +81,27 @@ export const writeResults = async (
     const dir = path.resolve(process.cwd(), 'test-results');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const validRows = results.filter((r: any) => r?.field && String(r.status || '').toUpperCase() !== 'SKIP');
+    // Filter out non-applicable fields (where expected is N/A or empty)
+    const filteredResults = results.filter((r: any) => {
+      if (!r || !r.field) return false;
+      const expNA = String(r.expected ?? '').trim().toUpperCase() === 'N/A';
+      const expEmpty = String(r.expected ?? '').trim() === '';
+      return !expNA && !expEmpty;
+    });
+
+    // Deduplicate results by page and field
+    const seen = new Set<string>();
+    const deduplicatedResults = filteredResults.filter((r: any) => {
+      const key = `${r.page}::${r.field}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Sort validation results deterministically
+    const sortedResults = sortValidationResults(deduplicatedResults);
+
+    const validRows = sortedResults;
 
     // ── Row mapper ───────────────────────────────────────────
     const toRow = (

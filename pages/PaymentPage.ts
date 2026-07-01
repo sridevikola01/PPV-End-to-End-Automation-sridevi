@@ -3,6 +3,7 @@ import { BasePage } from './BasePage';
 import { resolveExpected } from '../utils/resolveExpected';
 import { compare } from '../utils/compare';
 import { captureFailures } from '../utils/failureCapture';
+import { deduplicateRules } from '../utils/helpers';
 
 const CARD_NUMBER_FRAME = 'Secure card number input frame';
 const EXPIRY_DATE_FRAME = 'Secure card expiration date input frame';
@@ -123,8 +124,23 @@ export class PaymentPage extends BasePage {
 
     // Normalise flow for filtering
     const normalizedFlow = (flow || '').trim().toLowerCase();
+    const tier = (eventData.TIER || 'standard').toLowerCase();
+    const ratePlan = (eventData.RATE_PLAN || '').toLowerCase();
 
-    for (const row of data) {
+    // Filter rows by Flow columns first if specified
+    const filteredRows = data.filter(row => {
+      const rowFlow = (row['Flow'] || '').trim().toLowerCase();
+      if (rowFlow) {
+        if (!normalizedFlow) return false;
+        if (rowFlow !== normalizedFlow) return false;
+      }
+      return true;
+    });
+
+    // Deduplicate the filtered rows
+    const deduplicatedRows = deduplicateRules(filteredRows, tier, ratePlan, 'paywall', normalizedFlow);
+
+    for (const row of deduplicatedRows) {
       const field = (row['Field'] || '').trim();
       if (!field) continue;
 
@@ -136,12 +152,6 @@ export class PaymentPage extends BasePage {
       if (fieldLower === 'ultimate upsell price') {
         console.log(`  ⏭️  Skipping [${field}] in standard loop — should not be validated before switching`);
         continue;
-      }
-
-      const rowFlow = (row['Flow'] || '').trim().toLowerCase();
-      if (rowFlow) {
-        if (!normalizedFlow) continue;
-        if (rowFlow !== normalizedFlow) continue;
       }
 
       const expected = resolveExpected(row, eventData);
@@ -171,9 +181,7 @@ export class PaymentPage extends BasePage {
 
     // Determine planType
     let planType = '1_month_free_trial';
-    const tier = (eventData.TIER || 'standard').toLowerCase();
     const offerType = (eventData.OFFER_TYPE || '').toLowerCase();
-    const ratePlan = (eventData.RATE_PLAN || '').toLowerCase();
     if (tier === 'ultimate') {
       planType = 'ultimate';
     } else if (ratePlan.includes('annual')) {
@@ -207,6 +215,17 @@ export class PaymentPage extends BasePage {
   ): Promise<void> {
     if (this.page.isClosed()) {
       console.log('⚠️  Page is closed — skipping next payment validation');
+      return;
+    }
+
+    const labelExpectedVal = resolveExpected({ Field: 'Next Payment Label', Expected: 'Next payment on {{NEXT_PAYMENT_DATE}}' }, eventData);
+    const priceExpectedVal = resolveExpected({ Field: 'Next Payment Price', Expected: '{{ANNUAL_PAY_MONTHLY_PRICE}}' }, eventData);
+
+    const isLabelNA = labelExpectedVal.toUpperCase() === 'N/A';
+    const isPriceNA = priceExpectedVal.toUpperCase() === 'N/A';
+
+    if (isLabelNA && isPriceNA) {
+      console.log(`  ⏭️  Skipping next payment details validation — not applicable for this plan/region`);
       return;
     }
 
@@ -1015,6 +1034,20 @@ export class PaymentPage extends BasePage {
     if (fieldLower === 'today you pay text') {
       return lower.includes('today you pay') ? 'Today you pay' : 'N/A';
     }
+
+    // ── Excluding Tax Text ──────────────────────────────────────
+    if (fieldLower === 'excluding tax text' || fieldLower === 'excluding tax') {
+      const live = await this.page.locator('[data-testid*="excluding-tax" i], [id*="excluding-tax" i], span:has-text("(excluding tax)"), span:has-text("excluding tax")').first().innerText().catch(() => '');
+      if (live.trim()) return live.trim();
+
+      for (const line of lines) {
+        if (line.toLowerCase().includes('excluding tax')) {
+          return line;
+        }
+      }
+      return 'N/A';
+    }
+
 
     // ── Today You Pay Price ────────────────────────────────────
     if (fieldLower === 'today you pay price' || fieldLower === 'today price') {

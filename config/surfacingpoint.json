@@ -51,18 +51,6 @@
     "source": "home-boxing-upcoming",
     "endPage": "payment"
   },
-  "search": {
-    "source": "search",
-    "endPage": "payment"
-  },
-  "schedule": {
-    "source": "schedule",
-    "endPage": "payment"
-  },
-  "myaccount": {
-    "source": "myaccount",
-    "endPage": "payment"
-  },
   "myaccount-subscription-status": {
     "source": "myaccount-subscription-status",
     "endPage": "payment",
