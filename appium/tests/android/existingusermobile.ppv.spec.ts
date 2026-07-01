@@ -585,7 +585,18 @@ async function scrollScheduleToPPVTile(driver: WdBrowser): Promise<WdElement | n
 
 // ── Navigate to Boxing page via Sports nav tab ───────────────────────────────
 async function navigateToBoxingPage(driver: WdBrowser): Promise<void> {
-  console.log('🥊 Navigating to Boxing page via Sports tab...');
+  console.log('🥊 Navigating to Boxing page...');
+  
+  // Try directly tapping on "Boxing" option on the home page first
+  console.log('  Checking if "Boxing" is directly available on Home page...');
+  if (await tapByText(driver, 'Boxing', 3000)) {
+    await driver.pause(2000);
+    console.log('✅ Navigated to Boxing page directly from Home');
+    return;
+  }
+
+  // Fallback: Navigate via Sports tab
+  console.log('  "Boxing" not directly found. Navigating via Sports tab...');
   const sportsTapped = await tapByText(driver, 'Sports', 5000) || await tapByText(driver, 'Sport', 4000);
   if (sportsTapped) {
     await driver.pause(1500);
@@ -595,7 +606,6 @@ async function navigateToBoxingPage(driver: WdBrowser): Promise<void> {
       return;
     }
   }
-  if (await tapByText(driver, 'Boxing', 5000)) { await driver.pause(2000); return; }
   console.log('⚠️  Could not confirm Boxing page — continuing from current screen');
 }
 
@@ -1210,13 +1220,31 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
       // ── boxing-upcoming-fights ────────────────────────────────────────────
       else if (SOURCE === 'boxing-upcoming-fights') {
         await navigateToBoxingPage(driver);
-        console.log(`🔍 Searching for "${PPV_NAME}" in Upcoming Big Fights...`);
+        
+        console.log('🔍 Tapping Upcoming Fights filter...');
+        const filterTapped = await tapByText(driver, 'Upcoming Fights', 5000) || 
+                             await tapByText(driver, 'Upcoming fights', 3000) || 
+                             await tapByText(driver, 'Upcoming', 3000);
+        if (filterTapped) {
+          console.log('✅ Tapped Upcoming Fights filter');
+          await driver.pause(2000);
+        } else {
+          console.log('⚠️ Could not find Upcoming Fights filter, proceeding with scroll...');
+        }
 
-        let found = await findPPVBanner(driver);
+        console.log(`🔍 Checking visibility of PPV event: "${PPV_NAME}"...`);
+        let found = await isVisible(driver, PPV_NAME, 2000);
         if (!found) {
-          for (let i = 0; i < 12; i++) {
-            await scrollDown(driver);
-            if (await isVisible(driver, PPV_NAME, 1200)) { found = true; break; }
+          for (let i = 0; i < 20; i++) {
+            console.log(`  Scrolling step ${i + 1} to find "${PPV_NAME}"...`);
+            const screenSize = getScreenSize();
+            const startX = Math.round(screenSize.width / 2);
+            const startY = Math.round(screenSize.height * 0.65);
+            const endY = Math.round(screenSize.height * 0.45);
+            adbSwipe(startX, startY, startX, endY);
+            await driver.pause(1500); // Allow time for cards to load and settle
+            
+            if (await isVisible(driver, PPV_NAME, 2000)) { found = true; break; }
           }
         }
         if (!found) {
@@ -1224,18 +1252,59 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
           throw new Error(`❌ "${PPV_NAME}" not found on Boxing page. Check test-results/android_boxing_debug.png`);
         }
 
-        console.log(`✅ Found "${PPV_NAME}" — tapping card...`);
-        await driver.saveScreenshot('./test-results/android_ppv_found.png');
-        await tapByText(driver, PPV_NAME);
-        await driver.pause(2500);
-        await driver.saveScreenshot('./test-results/android_ppv_detail.png');
+        console.log(`✅ Found PPV event: "${PPV_NAME}"`);
 
-        for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV', 'Purchase']) {
-          if (await tapByText(driver, cta, 6000)) { buyTapped = true; console.log(`✅ Tapped "${cta}"`); break; }
+        // Center the PPV card
+        try {
+          const ppvEl = await driver.$(`//android.widget.TextView[contains(@text, "${PPV_NAME}")]`);
+          const rect = await ppvEl.getRect();
+          const screenH = getScreenSize().height;
+          const centerThreshold = screenH * 0.5;
+          if (rect.y > centerThreshold) {
+            console.log(`  Centering PPV card...`);
+            adbSwipe(
+              Math.round(getScreenSize().width / 2),
+              Math.round(screenH * 0.8),
+              Math.round(getScreenSize().width / 2),
+              Math.round(screenH * 0.4)
+            );
+            await driver.pause(1500);
+          }
+        } catch (err) {}
+
+        await driver.saveScreenshot('./test-results/android_ppv_found.png');
+
+        console.log('🔍 Clicking Buy Now button on the PPV card...');
+        let buyClicked = false;
+        try {
+          // Precise relative XPath to target the specific PPV card's button
+          const specificBuyBtn = await driver.$(`//*[self::android.view.ViewGroup or self::android.view.View][.//android.widget.TextView[contains(@text, "${PPV_NAME}")]]//*[contains(@text, "Buy") or contains(@text, "now")]`);
+          if (await specificBuyBtn.isDisplayed()) {
+            await specificBuyBtn.click();
+            buyTapped = true;
+            buyClicked = true;
+            console.log(`✅ Tapped specific Buy Now button for PPV "${PPV_NAME}" via relative XPath`);
+          }
+        } catch (err) {
+          console.warn(`⚠️ Failed to find specific Buy Now button via XPath: ${err.message}`);
+        }
+
+        if (!buyClicked) {
+          console.log('  Trying generic tapByText fallback...');
+          for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV', 'Purchase']) {
+            if (await tapByText(driver, cta, 5000)) { buyTapped = true; console.log(`✅ Tapped "${cta}" via fallback`); break; }
+          }
         }
         if (!buyTapped) {
-          for (let i = 0; i < 4; i++) {
-            await scrollDown(driver);
+          for (let i = 0; i < 6; i++) {
+            console.log(`  Scrolling step ${i + 1} for Buy Now CTA fallback...`);
+            const screenSize = getScreenSize();
+            const startX = Math.round(screenSize.width / 2);
+            const startY = Math.round(screenSize.height * 0.65);
+            const endY = Math.round(screenSize.height * 0.45);
+            adbSwipe(startX, startY, startX, endY);
+            await driver.pause(1500);
+
             for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV']) {
               if (await tapByText(driver, cta, 2000)) { buyTapped = true; console.log(`✅ Tapped "${cta}" after scroll`); break; }
             }
