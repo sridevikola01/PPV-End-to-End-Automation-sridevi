@@ -1381,73 +1381,157 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
 
       // ── home-boxing-banner ────────────────────────────────────────────────
       else if (SOURCE === 'home-boxing-banner') {
-        // 1. Navigate to Boxing page via direct filter on Home
-        await navigateToBoxingPage(driver);
-        await driver.pause(2000);
-        
-        // 2. Find and click PPV banner in hero carousel
-        let targetText = PPV_NAME;
-        try {
-          const fs = require('fs');
-          const path = require('path');
-          const configFileName = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
-          const configPath = path.resolve(__dirname, '../../..', 'config/events', configFileName);
-          if (fs.existsSync(configPath)) {
-            const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            if (configData.PPV_NAME) {
-              targetText = configData.PPV_NAME;
-            }
-          }
-        } catch (e) {}
+        console.log('🏠 Home → Boxing filter → Boxing page → PPV banner → Buy now → Paywall (Copy button)');
 
-        const vsMatch = targetText.match(/vs\.?\s+(\w+)/i);
-        const uniqueKeyword = vsMatch ? vsMatch[1] : targetText;
+        // Step 1: Click the Boxing filter chip directly from the home page
+        // (horizontal filter rail visible under the home hero banner — no need to go via Sports tab)
+        console.log('  Step 1: Clicking Boxing filter chip on home page...');
+        let boxingFilterClickedHbb = false;
+        const boxingFilterSelectorsHbb = [
+          `android=new UiSelector().text("Boxing")`,
+          `android=new UiSelector().textContains("Boxing")`,
+          `//android.widget.TextView[@text="Boxing"]`,
+        ];
 
-        console.log(`🔍 Swiping hero banner carousel to find PPV banner (primary: "${PPV_NAME}", fallback: "${uniqueKeyword}")...`);
-        let ppvEl: any = null;
-        for (let i = 0; i < 8; i++) {
-          // FIRST check before swiping the banner carousel
-          console.log(`  Checking if PPV banner is visible (attempt ${i + 1})...`);
+        for (const sel of boxingFilterSelectorsHbb) {
           try {
-            let el = await driver.$(`android=new UiSelector().textMatches("(?i).*${PPV_NAME}.*")`);
-            if (!await el.isDisplayed()) {
-              el = await driver.$(`android=new UiSelector().descriptionMatches("(?i).*${PPV_NAME}.*")`);
-            }
-            if (!await el.isDisplayed() && uniqueKeyword) {
-              el = await driver.$(`android=new UiSelector().textMatches("(?i).*${uniqueKeyword}.*")`);
-            }
-            if (!await el.isDisplayed() && uniqueKeyword) {
-              el = await driver.$(`android=new UiSelector().descriptionMatches("(?i).*${uniqueKeyword}.*")`);
-            }
-
+            const el = await driver.$(sel);
             if (await el.isDisplayed()) {
-              ppvEl = el;
-              console.log(`✅ PPV banner located successfully on attempt ${i + 1}`);
+              await el.click();
+              console.log(`  ✅ Boxing filter clicked`);
+              boxingFilterClickedHbb = true;
               break;
             }
-          } catch (e) {}
-
-          // Swipe hero carousel horizontal-left
-          console.log(`  PPV banner not visible yet, swiping left (attempt ${i + 1})...`);
-          await swipeLeft(driver);
-          await driver.pause(1500);
+          } catch {}
         }
 
-        if (!ppvEl) {
-          await driver.saveScreenshot('./test-results/android_boxing_debug.png');
-          throw new Error(`❌ PPV banner "${PPV_NAME}" not found on Boxing page`);
+        if (!boxingFilterClickedHbb) {
+          // Swipe left in filter rail area (~22% from top) to reveal Boxing chip
+          console.log('  ⚠️ Boxing filter not immediately visible — swiping filter rail...');
+          const screenSzHbb = getScreenSize();
+          for (let i = 0; i < 5; i++) {
+            adbSwipe(Math.round(screenSzHbb.width * 0.75), Math.round(screenSzHbb.height * 0.22),
+                     Math.round(screenSzHbb.width * 0.25), Math.round(screenSzHbb.height * 0.22));
+            await driver.pause(700);
+            for (const sel of boxingFilterSelectorsHbb) {
+              try {
+                const el = await driver.$(sel);
+                if (await el.isDisplayed()) {
+                  await el.click();
+                  console.log(`  ✅ Boxing filter clicked after ${i + 1} swipe(s)`);
+                  boxingFilterClickedHbb = true;
+                  break;
+                }
+              } catch {}
+            }
+            if (boxingFilterClickedHbb) break;
+          }
         }
 
-        // Tap the PPV banner
-        console.log('  Tapping the PPV banner...');
-        await ppvEl.click();
-        await driver.pause(2500);
-
-        // Click the "Buy now" / CTA button
-        console.log('  Clicking "Buy now" button...');
-        for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV']) {
-          if (await tapByText(driver, cta, 6000)) { buyTapped = true; break; }
+        if (!boxingFilterClickedHbb) {
+          await driver.saveScreenshot('./test-results/android_boxing_filter_not_found.png');
+          throw new Error('❌ Boxing filter chip not found on home page. See test-results/android_boxing_filter_not_found.png');
         }
+
+        await driver.pause(2000);
+        await driver.saveScreenshot('./test-results/android_boxing_page.png');
+
+        // Step 2: Find the PPV banner on the boxing page by swiping the banner carousel
+        console.log(`  Step 2: Finding PPV banner for "${PPV_NAME}" on boxing page...`);
+        let ppvBannerFoundHbb = false;
+
+        // First check if PPV banner is already visible
+        if (await isVisible(driver, PPV_NAME, 3000)) {
+          console.log(`  ✅ PPV banner "${PPV_NAME}" is already visible`);
+          ppvBannerFoundHbb = true;
+        } else {
+          // Swipe horizontally on the banner carousel until PPV banner is found
+          console.log('  PPV banner not immediately visible — swiping banner carousel...');
+          const screenSzHbb = getScreenSize();
+          const bannerSwipeY = Math.round(screenSzHbb.height * 0.35); // Banner carousel vertical position
+
+          for (let swipeAttempt = 0; swipeAttempt < 10; swipeAttempt++) {
+            // Check current banner title before swiping
+            console.log(`  Swipe attempt ${swipeAttempt + 1}: Checking current banner title...`);
+            try {
+              // Look for prominent text elements in the top half of the screen (banner area)
+              const textViews = await driver.$$('android=new UiSelector().className("android.widget.TextView")');
+              let bannerTitleFound = false;
+              for (const tv of textViews) {
+                const text = await tv.getText().catch(() => '');
+                if (text && text.length > 3 && text.length < 100) {
+                  const rect = await tv.getRect().catch(() => null);
+                  if (rect && rect.y < screenSzHbb.height * 0.5 && rect.y > screenSzHbb.height * 0.1) {
+                    console.log(`  Current banner title: "${text}"`);
+                    bannerTitleFound = true;
+                    break;
+                  }
+                }
+              }
+              if (!bannerTitleFound) {
+                console.log('  No banner title text found in top half of screen');
+              }
+            } catch (e) {
+              console.log('  Could not determine current banner title');
+            }
+
+            // Check if PPV is visible now
+            if (await isVisible(driver, PPV_NAME, 1000)) {
+              console.log(`  ✅ Found PPV banner: "${PPV_NAME}" after ${swipeAttempt + 1} swipe(s)`);
+              ppvBannerFoundHbb = true;
+              break;
+            }
+
+            // Swipe left on the banner carousel
+            console.log(`  Swiping banner carousel left (attempt ${swipeAttempt + 1})...`);
+            adbSwipe(
+              Math.round(screenSzHbb.width * 0.85),
+              bannerSwipeY,
+              Math.round(screenSzHbb.width * 0.15),
+              bannerSwipeY
+            );
+            await driver.pause(1500);
+          }
+        }
+
+        if (!ppvBannerFoundHbb) {
+          await driver.saveScreenshot('./test-results/android_ppv_banner_not_found.png');
+          throw new Error(`❌ PPV banner "${PPV_NAME}" not found on boxing page after swiping carousel. See test-results/android_ppv_banner_not_found.png`);
+        }
+        console.log(`  ✅ Found PPV banner: "${PPV_NAME}"`);
+        await driver.saveScreenshot('./test-results/android_ppv_banner_found.png');
+
+        // Step 3: Click "Buy now" button on the PPV banner
+        console.log('  Step 3: Clicking "Buy now" on the PPV banner...');
+        let buyCTAFoundHbb = false;
+        for (const cta of ['Buy now', 'Buy Now', 'Buy this fight', 'Buy', 'Get PPV']) {
+          if (await tapByText(driver, cta, 6000)) {
+            console.log(`  ✅ Tapped "${cta}" on PPV banner`);
+            buyCTAFoundHbb = true;
+            break;
+          }
+        }
+        if (!buyCTAFoundHbb) {
+          await scrollDown(driver);
+          await driver.pause(1000);
+          for (const cta of ['Buy now', 'Buy Now', 'Buy']) {
+            if (await tapByText(driver, cta, 3000)) {
+              console.log(`  ✅ Tapped "${cta}" after scroll`);
+              buyCTAFoundHbb = true;
+              break;
+            }
+          }
+        }
+        if (!buyCTAFoundHbb) {
+          await driver.saveScreenshot('./test-results/android_buy_cta_not_found.png');
+          throw new Error(`❌ Could not tap Buy CTA on PPV banner. See test-results/android_buy_cta_not_found.png`);
+        }
+
+        await driver.pause(3000);
+
+        // Paywall is now displayed — proceed to URL capture via Copy button (same as search flow)
+        console.log('  On paywall screen - will capture URL via Copy button');
+        buyTapped = true;
       }
 
       // ── home-boxing-tile ──────────────────────────────────────────────────
