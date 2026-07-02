@@ -12,9 +12,11 @@ type PrepareAndroidAppOptions = {
   clearAppData?: boolean;
 };
 
-function adb(cmd: string): string {
+function adb(cmd: string, driver?: any): string {
   try {
-    return execSync(`${ADB} ${cmd}`, {
+    const udid = driver?.capabilities?.['appium:udid'] || driver?.capabilities?.udid || process.env.DEVICE_SERIAL || '';
+    const prefix = udid ? `-s ${udid} ` : '';
+    return execSync(`${ADB} ${prefix}${cmd}`, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 15000,
@@ -145,7 +147,7 @@ export async function prepareAndroidApp(driver: WdBrowser, options: PrepareAndro
 
   if (clearAppData) {
     try {
-      adb(`shell pm clear ${APP_PACKAGE}`);
+      adb(`shell pm clear ${APP_PACKAGE}`, driver);
       console.log('✅ App data cleared');
     } catch {
       console.log('⚠️ Unable to clear app data');

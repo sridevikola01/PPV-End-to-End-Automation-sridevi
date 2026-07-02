@@ -47,7 +47,10 @@ const ADB         = `${ANDROID_SDK}/platform-tools/adb`;
 // ── Helper: run ADB command ──────────────────────────────────────────────────
 function adb(cmd: string): string {
   try {
-    return execSync(`${ADB} ${cmd}`, { encoding: 'utf-8', timeout: 15000 }).trim();
+    const targetDriver = typeof browser !== 'undefined' ? browser : (typeof driver !== 'undefined' ? driver : null);
+    const udid = targetDriver?.capabilities?.['appium:udid'] || targetDriver?.capabilities?.udid || process.env.DEVICE_SERIAL || '';
+    const prefix = udid ? `-s ${udid} ` : '';
+    return execSync(`${ADB} ${prefix}${cmd}`, { encoding: 'utf-8', timeout: 15000 }).trim();
   } catch {
     return '';
   }
