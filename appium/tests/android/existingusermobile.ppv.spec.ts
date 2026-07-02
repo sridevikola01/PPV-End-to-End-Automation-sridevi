@@ -2911,6 +2911,7 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
           videoPath,
           userType: 'existing-user',
           userState: USER_STATE,
+          planKey: process.env.PLAN || '',
           platform: 'Android',
         });
         reportGenerated = true;
@@ -2990,6 +2991,7 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
               videoPath: written.videoPath,
               userType: 'existing-user',
               userState: USER_STATE,
+              planKey: process.env.PLAN || '',
               platform: 'Android',
             });
 

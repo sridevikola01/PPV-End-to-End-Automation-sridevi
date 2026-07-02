@@ -35,8 +35,10 @@ export interface ReportMeta {
   excelPath?: string | null;
   userType?: 'new-user' | 'existing-user';
   userStatus?: string;
+  userState?: string;   // e.g. "active_standard_monthly", "freemium", "frozen"
   paymentMethod?: string;
   platform?: 'Android' | 'Web' | string;
+  planKey?: string;     // e.g. "standard_monthly" from PLAN env var
 }
 
 function inlineImage(p?: string): string | null {
@@ -96,6 +98,19 @@ function prettyTier(tier: string): string {
   return tier.charAt(0).toUpperCase() + tier.slice(1);
 }
 
+/** Convert userState like "active_standard_monthly" → "Active Standard Monthly" */
+function prettyUserState(userState: string): string {
+  return (userState || '')
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/** Check if user state represents an active subscriber */
+function isActiveUser(userState?: string): boolean {
+  return (userState || '').toLowerCase().startsWith('active');
+}
+
 function fmtDuration(ms: number): string {
   if (!ms || ms < 0) return '—';
   const s = Math.round(ms / 1000);
@@ -129,8 +144,24 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
   const now = meta.endTime || new Date();
   const dur = meta.startTime ? now.getTime() - meta.startTime.getTime() : 0;
 
-  const userStatus = meta.userStatus || (meta.userType === 'existing-user' ? 'Existing User' : 'New User');
+  // Derive user status from userState (e.g. "active_standard_monthly" → "Active Standard Monthly")
+  const userStatus = meta.userState
+    ? prettyUserState(meta.userState)
+    : (meta.userStatus || (meta.userType === 'existing-user' ? 'Existing User' : 'New User'));
   const platform = meta.platform || ((meta.flowName || '').toLowerCase().includes('handoff') ? 'Android' : 'Web');
+
+  // For active standard users without an explicit PLAN, show "PPV" in tier/rate plan
+  const isActiveSub = isActiveUser(meta.userState || meta.userStatus);
+  const hasPlanKey = !!(meta.planKey);
+  const tierDisplay = (isActiveSub && !hasPlanKey) ? 'PPV' : prettyTier(meta.tier);
+  const planDisplay = (isActiveSub && !hasPlanKey) ? 'Pay-Per-View Only' : prettyPlan(meta.ratePlan);
+
+  // Build flow display: for active users → "Android → Active Standard User → Schedule → PPV"
+  let flowDisplay = meta.flowName;
+  if (meta.userType === 'existing-user' && isActiveSub) {
+    const srcLabel = prettySource(meta.source);
+    flowDisplay = `${platform} → ${userStatus} → ${srcLabel} → PPV`;
+  }
   const videoExt = meta.videoPath ? path.extname(meta.videoPath) : '.webm';
   const videoName = `PPV_Video${videoExt}`;
 
@@ -219,9 +250,9 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
       <div class="meta-item"><div class="k">Country / Region</div><div class="v">🌍 ${esc(meta.region)}</div></div>
       ${meta.userType === 'existing-user' ? `<div class="meta-item"><div class="k">User Status</div><div class="v">👤 ${esc(userStatus)}</div></div>` : ''}
       <div class="meta-item"><div class="k">Surfacing Point</div><div class="v">📍 ${esc(prettySource(meta.source))}</div></div>
-      <div class="meta-item"><div class="k">Tier & Rate Plan</div><div class="v">💎 ${esc(prettyTier(meta.tier))} &middot; 💳 ${esc(prettyPlan(meta.ratePlan))}</div></div>
+      <div class="meta-item"><div class="k">Tier & Rate Plan</div><div class="v">${(isActiveSub && !hasPlanKey) ? 'ppv' : `💎 ${esc(tierDisplay)} &middot; 💳 ${esc(planDisplay)}`}</div></div>
       ${(meta.env || '').toLowerCase() === 'stag' ? `<div class="meta-item"><div class="k">Payment Method</div><div class="v">💳 ${esc(meta.paymentMethod || 'N/A')}</div></div>` : ''}
-      <div class="meta-item"><div class="k">Flow</div><div class="v">🔀 ${esc(meta.flowName)}</div></div>`;
+      <div class="meta-item"><div class="k">Flow</div><div class="v">🔀 ${esc(flowDisplay)}</div></div>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
