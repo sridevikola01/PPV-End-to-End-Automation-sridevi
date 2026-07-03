@@ -17,7 +17,8 @@
 //        schedule                 → Bottom tab → Schedule → scroll to event → Buy
 //        boxing-upcoming-fights   → Sports tab → Boxing → Upcoming Big Fights → Buy
 //        boxing-page-banner       → Sports tab → Boxing → hero banner → Buy
-//        home-boxing-banner       → Home hero banner → Buy
+//        home-boxing-banner       → Home Boxing filter → Boxing page → hero banner → Buy
+//        home-boxing-upcoming     → Home Boxing filter → Upcoming Fights → Buy
 //        home-boxing-tile         → Home Boxing rail → Buy
 //        search                   → Search icon/tab → Search for event → Buy
 //   5. App opens Chrome Custom Tab with DAZN checkout URL
@@ -548,6 +549,56 @@ async function findPPVBanner(driver: WdBrowser): Promise<boolean> {
   for (let i = 0; i < 5; i++) { await swipeLeft(driver); if (await isVisible(driver, PPV_NAME, 1500)) return true; }
   for (let i = 0; i < 8; i++) { await scrollDown(driver); if (await isVisible(driver, PPV_NAME, 1500)) return true; }
   return false;
+}
+
+// ── Click Boxing filter chip from Home page ─────────────────────────────────
+async function clickHomeBoxingFilter(driver: WdBrowser): Promise<void> {
+  console.log('  Clicking Boxing filter chip on home page...');
+
+  const boxingFilterSelectors = [
+    `android=new UiSelector().text("Boxing")`,
+    `android=new UiSelector().textContains("Boxing")`,
+    `//android.widget.TextView[@text="Boxing"]`,
+  ];
+
+  const tryClickBoxingFilter = async (): Promise<boolean> => {
+    for (const sel of boxingFilterSelectors) {
+      try {
+        const el = await driver.$(sel);
+        if (await el.isDisplayed()) {
+          await el.click();
+          console.log('  ✅ Boxing filter clicked');
+          return true;
+        }
+      } catch { }
+    }
+    return false;
+  };
+
+  if (await tryClickBoxingFilter()) {
+    await driver.pause(2500);
+    return;
+  }
+
+  console.log('  ⚠️ Boxing filter not immediately visible — swiping filter rail...');
+  const screen = getScreenSize();
+  for (let i = 0; i < 5; i++) {
+    adbSwipe(
+      Math.round(screen.width * 0.75),
+      Math.round(screen.height * 0.22),
+      Math.round(screen.width * 0.25),
+      Math.round(screen.height * 0.22),
+    );
+    await driver.pause(700);
+    if (await tryClickBoxingFilter()) {
+      console.log(`  ✅ Boxing filter clicked after ${i + 1} swipe(s)`);
+      await driver.pause(2500);
+      return;
+    }
+  }
+
+  await driver.saveScreenshot('./test-results/android_boxing_filter_not_found.png');
+  throw new Error('❌ Boxing filter chip not found on home page. See test-results/android_boxing_filter_not_found.png');
 }
 
 // ── Navigate to Schedule tab ─────────────────────────────────────────────────
@@ -1311,6 +1362,230 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
         recordAndroidPPVAvailability(true, undefined, 'Home of Boxing');
         for (const cta of ['Buy this fight', 'Buy now', 'Buy Now', 'Buy']) {
           if (await tapByText(driver, cta, 7000)) { buyTapped = true; console.log(`✅ Tapped "${cta}"`); break; }
+        }
+      }
+
+      // ── home-boxing-upcoming ──────────────────────────────────────────────
+      else if (SOURCE === 'home-boxing-upcoming') {
+        console.log('🥊 Home → Boxing filter → Upcoming Fights → smart scroll → Buy now');
+
+        let ppvMonth = '';
+        let ppvMonthShort = '';
+        let ppvDay = '';
+
+        try {
+          const fsUp = require('fs');
+          const pathUp = require('path');
+          const configFileName = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
+          const configPath = pathUp.resolve(__dirname, '../../..', 'config/events', configFileName);
+          if (fsUp.existsSync(configPath)) {
+            const cfg = JSON.parse(fsUp.readFileSync(configPath, 'utf8'));
+            const utcDate = cfg?.global?.PPV_UTC_DATE || cfg?.PPV_UTC_DATE || '';
+            if (utcDate) {
+              const d = new Date(utcDate);
+              ppvMonth = d.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+              ppvMonthShort = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase();
+              ppvDay = String(d.getUTCDate());
+              console.log(`  📅 PPV date from config: ${ppvMonth} ${ppvDay} (${ppvMonthShort})`);
+            }
+          }
+        } catch (e: any) {
+          console.log(`  ⚠️ Could not read PPV date from config: ${e.message}`);
+        }
+
+        if (!ppvMonth) {
+          ppvMonth = 'July';
+          ppvMonthShort = 'JUL';
+          ppvDay = '';
+          console.log('  ⚠️ Using fallback month: July');
+        }
+
+        await clickHomeBoxingFilter(driver);
+        await driver.saveScreenshot('./test-results/android_boxing_page.png');
+
+        console.log('  Clicking "Upcoming Fights" filter on boxing page...');
+        let upcomingFilterClicked = false;
+        const upcomingSelectors = [
+          `android=new UiSelector().text("Upcoming Fights")`,
+          `android=new UiSelector().textContains("Upcoming Fights")`,
+          `android=new UiSelector().textContains("Upcoming")`,
+          `//android.widget.TextView[contains(@text,"Upcoming")]`,
+        ];
+
+        for (const sel of upcomingSelectors) {
+          try {
+            const el = await driver.$(sel);
+            if (await el.isDisplayed()) {
+              await el.click();
+              console.log('  ✅ "Upcoming Fights" filter clicked');
+              upcomingFilterClicked = true;
+              break;
+            }
+          } catch { }
+        }
+
+        if (!upcomingFilterClicked) {
+          const screen = getScreenSize();
+          for (let i = 0; i < 4; i++) {
+            adbSwipe(
+              Math.round(screen.width * 0.75),
+              Math.round(screen.height * 0.22),
+              Math.round(screen.width * 0.25),
+              Math.round(screen.height * 0.22),
+            );
+            await driver.pause(700);
+            for (const sel of upcomingSelectors) {
+              try {
+                const el = await driver.$(sel);
+                if (await el.isDisplayed()) {
+                  await el.click();
+                  console.log('  ✅ "Upcoming Fights" filter clicked after swiping');
+                  upcomingFilterClicked = true;
+                  break;
+                }
+              } catch { }
+            }
+            if (upcomingFilterClicked) break;
+          }
+        }
+
+        if (!upcomingFilterClicked) {
+          console.log('  ⚠️ "Upcoming Fights" filter not found — continuing without it...');
+          await driver.saveScreenshot('./test-results/android_upcoming_filter_not_found.png');
+        }
+
+        await driver.pause(2000);
+        await driver.saveScreenshot('./test-results/android_upcoming_fights.png');
+
+        console.log(`  Scrolling to PPV — fast to "${ppvMonth}", slow to day "${ppvDay}"...`);
+        const screenScroll = getScreenSize();
+        const cx = Math.round(screenScroll.width / 2);
+
+        const monthOnScreen = async (): Promise<boolean> => {
+          for (const label of [ppvMonth, ppvMonthShort]) {
+            if (label && await isVisible(driver, label, 300)) return true;
+          }
+          return false;
+        };
+
+        const dateOnScreen = async (): Promise<boolean> => {
+          if (!ppvDay) return false;
+          for (const label of [ppvDay, `${ppvMonthShort} ${ppvDay}`, `${ppvMonth} ${ppvDay}`]) {
+            if (await isVisible(driver, label, 300)) return true;
+          }
+          return await isVisible(driver, PPV_NAME, 300);
+        };
+
+        let monthFound = await monthOnScreen();
+        if (!monthFound) {
+          for (let i = 0; i < 25 && !monthFound; i++) {
+            adbSwipe(cx, Math.round(screenScroll.height * 0.78), cx, Math.round(screenScroll.height * 0.18));
+            await driver.pause(400);
+            monthFound = await monthOnScreen();
+          }
+        }
+
+        if (!monthFound) {
+          await driver.saveScreenshot('./test-results/android_month_not_found.png');
+          console.log(`  ⚠️ Could not find "${ppvMonth}" — proceeding with slow scroll`);
+        }
+
+        let ppvDateFound = await dateOnScreen();
+        if (!ppvDateFound) {
+          for (let i = 0; i < 20 && !ppvDateFound; i++) {
+            adbSwipe(cx, Math.round(screenScroll.height * 0.60), cx, Math.round(screenScroll.height * 0.40));
+            await driver.pause(700);
+            ppvDateFound = await dateOnScreen();
+          }
+        }
+
+        if (!ppvDateFound) {
+          await driver.saveScreenshot('./test-results/android_ppv_date_not_found.png');
+          console.log(`  ⚠️ PPV date "${ppvDay}" not found — trying Buy now from current position`);
+        }
+
+        if (!await isVisible(driver, PPV_NAME, 3000)) {
+          for (let i = 0; i < 5; i++) {
+            adbSwipe(cx, Math.round(screenScroll.height * 0.60), cx, Math.round(screenScroll.height * 0.40));
+            await driver.pause(600);
+            if (await isVisible(driver, PPV_NAME, 1000)) break;
+          }
+        }
+
+        if (await isVisible(driver, PPV_NAME, 1000)) {
+          recordAndroidPPVAvailability(true, undefined, 'Home of Boxing');
+        }
+
+        try {
+          const buyNowEl = await driver.$(`(//android.widget.TextView[@text="Buy now"])[2]`);
+          await buyNowEl.waitForDisplayed({ timeout: 5000 });
+          await buyNowEl.click();
+          console.log('  ✅ Tapped "Buy now" (PPV tile button)');
+          buyTapped = true;
+        } catch (e: any) {
+          console.log(`  ⚠️ Indexed Buy now tap failed: ${e.message} — trying fallback selectors`);
+        }
+
+        if (!buyTapped) {
+          adbSwipe(cx, Math.round(screenScroll.height * 0.65), cx, Math.round(screenScroll.height * 0.45));
+          await driver.pause(1000);
+          for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV']) {
+            if (await tapByText(driver, cta, 3000)) {
+              console.log(`  ✅ Tapped "${cta}"`);
+              buyTapped = true;
+              break;
+            }
+          }
+        }
+
+        if (!buyTapped) {
+          const shot = await saveAndroidScreenshot(driver, './test-results/android_home_boxing_upcoming_buy_not_found.png');
+          recordAndroidPPVAvailability(false, shot, 'Home of Boxing');
+          await generateAndroidAvailabilityFailureReport(`Buy CTA for PPV "${PPV_NAME}" not found in Home Boxing Upcoming`);
+        }
+      }
+
+      // ── home-boxing-banner ────────────────────────────────────────────────
+      else if (SOURCE === 'home-boxing-banner') {
+        console.log('🏠 Home → Boxing filter → Boxing page → PPV banner → Buy now');
+
+        await clickHomeBoxingFilter(driver);
+        await driver.saveScreenshot('./test-results/android_boxing_page.png');
+
+        console.log(`  Finding PPV banner for "${PPV_NAME}" on boxing page...`);
+        let ppvBannerFound = await findPPVBanner(driver);
+        if (!ppvBannerFound) {
+          for (let i = 0; i < 8; i++) {
+            await scrollDown(driver);
+            if (await isVisible(driver, PPV_NAME, 1500)) { ppvBannerFound = true; break; }
+          }
+        }
+        if (!ppvBannerFound) {
+          const shot = await saveAndroidScreenshot(driver, './test-results/android_ppv_banner_not_found.png');
+          recordAndroidPPVAvailability(false, shot, 'Home of Boxing');
+          await generateAndroidAvailabilityFailureReport(`PPV banner "${PPV_NAME}" not found on Boxing page`);
+          throw new Error(`❌ PPV banner "${PPV_NAME}" not found on boxing page. See test-results/android_ppv_banner_not_found.png`);
+        }
+        recordAndroidPPVAvailability(true, undefined, 'Home of Boxing');
+
+        await driver.saveScreenshot('./test-results/android_ppv_banner_found.png');
+        for (const cta of ['Buy now', 'Buy Now', 'Buy this fight', 'Buy', 'Get PPV']) {
+          if (await tapByText(driver, cta, 6000)) {
+            buyTapped = true;
+            console.log(`✅ Tapped "${cta}"`);
+            break;
+          }
+        }
+        if (!buyTapped) {
+          await scrollDown(driver);
+          await driver.pause(1000);
+          for (const cta of ['Buy now', 'Buy Now', 'Buy']) {
+            if (await tapByText(driver, cta, 3000)) {
+              buyTapped = true;
+              console.log(`✅ Tapped "${cta}" after scroll`);
+              break;
+            }
+          }
         }
       }
 
