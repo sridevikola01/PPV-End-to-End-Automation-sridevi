@@ -577,9 +577,24 @@ export async function getActualValue(
 
       case 'ppv price':
         if (ppvPrice) {
-          return findExactish(ppvPrice) || findLine(line => extractCurrency(line) === ppvPrice) || 'N/A';
+          const standalonePriceLine = findLine((line, lower) =>
+            extractCurrency(line) === ppvPrice &&
+            !lower.includes('ultimate') &&
+            !lower.includes('/month') &&
+            !lower.includes('per month') &&
+            !lower.includes('for 12 months') &&
+            !lower.includes('annual')
+          );
+          return standalonePriceLine || findExactish(ppvPrice) || 'N/A';
         }
-        return findLine((line, lower) => extractCurrency(line) !== '' && !lower.includes('/month')) || 'N/A';
+        return findLine((line, lower) =>
+          extractCurrency(line) !== '' &&
+          !lower.includes('ultimate') &&
+          !lower.includes('/month') &&
+          !lower.includes('per month') &&
+          !lower.includes('for 12 months') &&
+          !lower.includes('annual')
+        ) || 'N/A';
 
       case 'currency': {
         const priceLine = ppvPrice
@@ -2343,6 +2358,116 @@ export async function getActualValue(
         if (ppvPrice && ppvPrice !== 'N/A') return ppvPrice;
       }
 
+      // Strategy -2: Locate the price inside standard card container (has PPV name, does not contain "ultimate")
+      try {
+        const priceEls = page.locator('span, div, p, label').filter({ hasText: /[\$£€₹]\d+/ });
+        const count = await priceEls.count().catch(() => 0);
+        for (let i = 0; i < count; i++) {
+          const el = priceEls.nth(i);
+          if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
+            let container = el;
+            let hasPPVName = false;
+            let hasUltimate = false;
+            for (let j = 0; j < 5; j++) {
+              const parent = container.locator('xpath=..');
+              if (await parent.count() > 0) {
+                container = parent;
+                const text = await container.innerText().catch(() => '');
+                const textLower = text.toLowerCase();
+                const ppvNameLower = (eventData?.PPV_NAME || 'Joshua').toLowerCase();
+                if (textLower.includes(ppvNameLower)) {
+                  hasPPVName = true;
+                }
+                if (textLower.includes('ultimate')) {
+                  hasUltimate = true;
+                }
+              }
+            }
+            if (hasPPVName && !hasUltimate) {
+              const txt = (await el.textContent().catch(() => '')) || '';
+              const priceMatch = txt.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
+              if (priceMatch) {
+                const resolvedVal = priceMatch[0].trim();
+                console.log(`🎯 DOM traversal resolved PPV Price from standard card: "${resolvedVal}"`);
+                return resolvedVal;
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        console.log(`⚠️ Card container price extraction failed: ${e.message}`);
+      }
+
+      // Strategy -1: Use dynamic price locators matching expectedPrice (excluding Ultimate plans)
+      if (expectedPrice) {
+        try {
+          const priceLocators = [
+            page.locator(`xpath=//span[normalize-space()="${expectedPrice}"]`),
+            page.locator(`xpath=//*[normalize-space()="${expectedPrice}"]`),
+            page.locator(`text="${expectedPrice}"`)
+          ];
+
+          for (const loc of priceLocators) {
+            const count = await loc.count().catch(() => 0);
+            for (let i = 0; i < count; i++) {
+              const el = loc.nth(i);
+              if (await el.isVisible({ timeout: 1500 }).catch(() => false)) {
+                let container = el;
+                let isUltimate = false;
+                for (let j = 0; j < 4; j++) {
+                  const parent = container.locator('xpath=..');
+                  if (await parent.count() > 0) {
+                    container = parent;
+                    const text = await container.innerText().catch(() => '');
+                    if (text.toLowerCase().includes('ultimate')) {
+                      isUltimate = true;
+                      break;
+                    }
+                  }
+                }
+                if (!isUltimate) {
+                  const txt = (await el.textContent().catch(() => '')) || '';
+                  if (txt.trim()) {
+                    console.log(`🎯 Found standard PPV price via locator: "${txt.trim()}"`);
+                    return txt.trim();
+                  }
+                }
+              }
+            }
+          }
+        } catch (e: any) {
+          console.log(`⚠️ Expected price locator matching failed: ${e.message}`);
+        }
+      }
+
+      // Strategy 0: Use DOM hierarchy to locate the price inside the PPV card container directly
+      try {
+        const nameLocator = page.locator('div, span, p, label, h2, h3')
+          .filter({ hasText: eventData?.PPV_NAME || 'Joshua' })
+          .first();
+        
+        if (await nameLocator.isVisible({ timeout: 2000 }).catch(() => false)) {
+          let container = nameLocator;
+          for (let i = 0; i < 4; i++) {
+            const parent = container.locator('xpath=..');
+            if (await parent.count() > 0) {
+              container = parent;
+              const text = await container.innerText().catch(() => '');
+              if (/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/.test(text) && !text.toLowerCase().includes('ultimate')) {
+                const prices = text.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g);
+                if (prices && prices.length > 0) {
+                  const resolvedPrice = prices[0].trim();
+                  console.log(`🎯 DOM container parsing found PPV price: "${resolvedPrice}"`);
+                  return resolvedPrice;
+                }
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        console.log(`⚠️ DOM container parsing failed: ${e.message}`);
+      }
+
       // Context-aware: find price near our specific PPV name
       // Build name matchers
       const priceNameParts = ppvNameForPrice
@@ -2377,8 +2502,11 @@ export async function getActualValue(
         }
         if (foundName) {
           nodesAfterName++;
-          if (n.childCount === 0 && /^(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?$/.test(n.text.trim())) {
-            return n.text.trim();
+          if (n.childCount === 0) {
+            const match = n.text.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})/);
+            if (match) {
+              return match[0].trim();
+            }
           }
           // Stop after 8 nodes or if we hit another event name
           if (nodesAfterName > 8) break;

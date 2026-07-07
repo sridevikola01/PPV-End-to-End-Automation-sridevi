@@ -934,32 +934,33 @@ export class PaymentPage extends BasePage {
       if (isDefaultSignup) return 'N/A';
 
       const ppvName = eventData.PPV_NAME || '';
-      let ppvIndex = -1;
 
-      // Try to find matchup part in the text
+      // Try to find matchup part in the text, avoiding ultimate upsell sections
       const parts = ppvName.toLowerCase().split(/[:\-–]/).map(p => p.trim());
       for (const part of parts) {
-        const idx = lower.indexOf(part);
-        if (idx >= 0) {
-          ppvIndex = idx;
-          break;
-        }
-      }
-      if (ppvIndex === -1) {
-        const words = ppvName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-        for (const word of words) {
-          const idx = lower.indexOf(word);
-          if (idx >= 0) {
-            ppvIndex = idx;
-            break;
+        let idx = -1;
+        while ((idx = lower.indexOf(part, idx + 1)) >= 0) {
+          const nearText = bodyText.substring(idx, idx + 300);
+          const nearTextLower = nearText.toLowerCase();
+          if (!nearTextLower.includes('ultimate') && !nearTextLower.includes('switch') && !nearTextLower.includes('upgrade')) {
+            const priceMatch = nearText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
+            if (priceMatch) return priceMatch[0].trim();
           }
         }
       }
 
-      if (ppvIndex >= 0) {
-        const nearText = bodyText.substring(ppvIndex, ppvIndex + 300);
-        const priceMatch = nearText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
-        if (priceMatch) return priceMatch[0].trim();
+      // If no price found with matchup parts, try individual words
+      const words = ppvName.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      for (const word of words) {
+        let idx = -1;
+        while ((idx = lower.indexOf(word, idx + 1)) >= 0) {
+          const nearText = bodyText.substring(idx, idx + 300);
+          const nearTextLower = nearText.toLowerCase();
+          if (!nearTextLower.includes('ultimate') && !nearTextLower.includes('switch') && !nearTextLower.includes('upgrade')) {
+            const priceMatch = nearText.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/);
+            if (priceMatch) return priceMatch[0].trim();
+          }
+        }
       }
 
       const expectedPrice = eventData.PPV_PRICE || '';
@@ -1018,6 +1019,38 @@ export class PaymentPage extends BasePage {
 
     // ── Today You Pay Price ────────────────────────────────────
     if (fieldLower === 'today you pay price' || fieldLower === 'today price') {
+      const expectedTodayPrice =
+        eventData.TODAY_YOU_PAY_PRICE ||
+        eventData.TODAY_YOU_PAY ||
+        eventData.PPV_PRICE ||
+        '';
+
+      if (expectedTodayPrice) {
+        const expectedLivePrice = await this.page.evaluate((targetPrice: string) => {
+          const cleanText = (value: string | null | undefined) =>
+            String(value ?? '').replace(/\s+/g, ' ').trim();
+          const samePrice = (value: string) =>
+            cleanText(value) === targetPrice ||
+            cleanText(value).replace(/\s/g, '') === targetPrice.replace(/\s/g, '');
+          const elements = Array.from(document.querySelectorAll<HTMLElement>('*'));
+          for (const el of elements) {
+            if (el.children.length > 0) continue;
+            const text = cleanText(el.textContent);
+            if (!samePrice(text)) continue;
+            let current: HTMLElement | null = el;
+            for (let depth = 0; current && current !== document.body && depth < 5; depth++) {
+              const sectionText = cleanText(current.innerText).toLowerCase();
+              if (sectionText.includes('switch to dazn ultimate') || sectionText.includes('upsell')) break;
+              if (sectionText.includes('today you pay')) return text;
+              current = current.parentElement;
+            }
+          }
+          return null;
+        }, expectedTodayPrice).catch(() => null);
+
+        if (expectedLivePrice) return expectedLivePrice;
+      }
+
       const livePrice = await this.page.evaluate(() => {
         const isStrike = (el: HTMLElement): boolean => {
           if (el.closest('del, s') !== null) return true;
@@ -1048,6 +1081,12 @@ export class PaymentPage extends BasePage {
         if (todayEl) {
           let curr: HTMLElement | null = todayEl;
           while (curr && curr !== document.body) {
+            const sectionText = cleanText(curr.innerText || '').toLowerCase();
+            if (sectionText.includes('switch to dazn ultimate') || sectionText.includes('upsell')) {
+              curr = curr.parentElement;
+              continue;
+            }
+
             const pricesInSection = Array.from(curr.querySelectorAll<HTMLElement>('*'))
               .filter(el => priceElements.includes(el));
             
@@ -1055,15 +1094,22 @@ export class PaymentPage extends BasePage {
             const activePrices = pricesInSection.filter(el => !isStrike(el));
             
             if (activePrices.length > 0) {
-              // Expose duplicate active prices in the section if there are more than 1
-              const activePriceVal = activePrices.map(el => el.textContent?.trim() || '').filter(Boolean).join(' ');
+              const todayTop = todayEl.getBoundingClientRect().top;
+              const nearestPrice = activePrices
+                .map(el => ({
+                  el,
+                  text: el.textContent?.trim() || '',
+                  distance: Math.abs(el.getBoundingClientRect().top - todayTop),
+                }))
+                .sort((a, b) => a.distance - b.distance)[0];
+              const firstActivePrice = nearestPrice?.text || '';
               if (activePrices.length === 1 && strikePrices.length > 0) {
                 const strikePriceVal = strikePrices[0].textContent?.trim();
-                if (strikePriceVal === activePriceVal) {
+                if (strikePriceVal === firstActivePrice) {
                   console.warn(`⚠️ Redundant strike-through price found showing same value: ${strikePriceVal}`);
                 }
               }
-              return activePriceVal;
+              return firstActivePrice;
             }
             curr = curr.parentElement;
           }
@@ -1075,7 +1121,7 @@ export class PaymentPage extends BasePage {
 
       const todaySplit = bodyText.split(/today\s+you\s+pay/i);
       if (todaySplit.length > 1) {
-        const afterToday = todaySplit[1];
+        const afterToday = todaySplit[1].split(/switch\s+to\s+dazn\s+ultimate|ultimate\s+upsell/i)[0];
         const prices = afterToday.match(/(?:AED\s?|[\$£€₹]\s?)\d+(?:\.\d{2})?/g) || [];
         const origPrice = eventData.ANNUAL_PAY_MONTHLY_ORIGINAL_PRICE || eventData.UPSELL_ORIGINAL_PRICE || '';
         const cleanOrig = origPrice.replace(/[^\d.]/g, '');
@@ -1088,7 +1134,7 @@ export class PaymentPage extends BasePage {
           filteredPrices.push(p.trim());
         }
         if (filteredPrices.length > 0) {
-          return filteredPrices.join(' ');
+          return filteredPrices[0];
         }
         if (prices[0]) return prices[0].trim();
       }

@@ -64,10 +64,34 @@ export async function detectPageType(
   if (urlLower.includes('upgradetier') && !urlLower.includes('isupgradetierflow')) return 'confirmation';
 
   // Choose How To Buy page (active existing user addon purchase)
-  if (urlLower.includes('/addon/purchase')) return 'choose-how-to-buy';
+  if (urlLower.includes('/addon/purchase')) {
+    if (urlLower.includes('redirecturl=') || urlLower.includes('/auth/login') || urlLower.includes('/login')) {
+      // Don't detect as choose-how-to-buy. Let it fall through to email / login check.
+    } else if (
+      urlLower.includes('/payment') ||
+      urlLower.includes('/checkout') ||
+      urlLower.includes('/pay') ||
+      urlLower.includes('paymentdetails') ||
+      body.includes('today you pay') ||
+      body.includes('pay now') ||
+      body.includes('payment method')
+    ) {
+      return 'payment';
+    } else {
+      return 'choose-how-to-buy';
+    }
+  }
 
   // Payment page
-  if (urlLower.includes('paymentdetails') || urlLower.includes('page=payment')) return 'payment';
+  if (
+    urlLower.includes('paymentdetails') ||
+    urlLower.includes('page=payment') ||
+    urlLower.includes('/addon/purchase/payment') ||
+    urlLower.includes('/addon/purchase/checkout') ||
+    urlLower.includes('/addon/purchase/pay')
+  ) {
+    return 'payment';
+  }
 
   // Personal details / Email page — MUST be before upsellTierSelected check
   if (urlLower.includes('page=personaldetails')) return 'email';

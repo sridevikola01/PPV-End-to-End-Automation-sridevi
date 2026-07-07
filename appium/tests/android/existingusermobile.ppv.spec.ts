@@ -998,8 +998,293 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
       let buyTapped = false;
       let bannerUrlCaptured = false;
       let bannerCheckoutUrl = "";
+      let paywallValidated = false;
 
       const isMyAccount = SOURCE === 'myaccount' || SOURCE === 'myaccount-subscription-status';
+
+      const fs = require('fs');
+      const path = require('path');
+      const { buildEventData } = require('../../../utils/buildEventData');
+      const { loadEventConfig } = require('../../../utils/testHelpers');
+      const EVENT_CONFIG = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
+      const PLAN = process.env.PLAN || 'standard_monthly';
+
+      const json = loadEventConfig(EVENT_CONFIG, PLAN);
+      const plansPath = path.resolve(process.cwd(), 'config/DaznPlan.json');
+      const plans = JSON.parse(fs.readFileSync(plansPath, 'utf-8'));
+      const planData = plans[PLAN] || { TIER: 'standard', RATE_PLAN: 'monthly' };
+      const planTier = (planData.TIER || 'standard').toLowerCase();
+      const ratePlan = (planData.RATE_PLAN || 'monthly').toLowerCase();
+
+      const eventData = buildEventData(json, REGION, planTier, ratePlan.replace(/-/g, ' '), SOURCE);
+
+      // Merge mobile overrides
+      try {
+        const mobileConfigPath = path.resolve(__dirname, '../../config/events', EVENT_CONFIG);
+        if (fs.existsSync(mobileConfigPath)) {
+          const mobileJson = JSON.parse(fs.readFileSync(mobileConfigPath, 'utf8'));
+          const mobileRegional = mobileJson.regions?.[REGION] || {};
+          Object.assign(eventData, mobileRegional);
+          console.log(`📱 Loaded mobile-specific overrides from ${mobileConfigPath}`);
+        }
+      } catch (e: any) {
+        console.warn(`⚠️ Failed to load mobile overrides: ${e.message}`);
+      }
+
+      async function validateMobilePaywall() {
+        if (paywallValidated) {
+          console.log('⏭️ Mobile Paywall already validated. Skipping duplicate validation.');
+          return;
+        }
+        console.log('\n🔍 [Mobile Paywall] Running validations on native paywall screen...');
+        eventData.CURRENT_PAGE = 'Mobile Paywall';
+        
+        // Wait up to 10 seconds for a key paywall element to be displayed first to ensure page is loaded!
+        let isLoaded = false;
+        for (let i = 0; i < 20; i++) {
+          const pageSource = await driver.getPageSource().catch(() => '');
+          if (pageSource.toLowerCase().includes('copy') || pageSource.toLowerCase().includes('how to watch')) {
+            isLoaded = true;
+            break;
+          }
+          await driver.pause(500);
+        }
+        
+        if (!isLoaded) {
+          console.warn('⚠️ Mobile paywall page did not load fully within timeout.');
+        }
+
+        paywallValidated = true;
+        await driver.pause(1000);
+        
+        const textsSet = new Set<string>();
+        const fetchCurrentTexts = async () => {
+          try {
+            const textEls = await driver.$$('//android.widget.TextView | //android.widget.Button | //android.widget.EditText');
+            for (const el of textEls) {
+              const txt = await el.getText().catch(() => '');
+              if (txt && txt.trim()) {
+                textsSet.add(txt.trim());
+              }
+            }
+          } catch (e: any) {
+            console.log(`⚠️ Failed to fetch TextView/Button/EditText elements: ${e.message}`);
+          }
+        };
+
+        // First pass text query
+        await fetchCurrentTexts();
+
+        // Scroll down slightly (swipe up) to ensure bottom elements (Copy button, Instruction text) are visible and loaded
+        console.log("  Scrolling down (swiping up) on paywall to capture off-screen elements...");
+        try {
+          const screenSize = getScreenSize();
+          adbSwipe(Math.round(screenSize.width / 2), 
+                   Math.round(screenSize.height * 0.85), 
+                   Math.round(screenSize.width / 2), 
+                   Math.round(screenSize.height * 0.65));
+          await driver.pause(1200);
+        } catch (e: any) {
+          console.log(`⚠️ Scroll down failed: ${e.message}`);
+        }
+
+        // Second pass text query after scroll
+        await fetchCurrentTexts();
+
+        const texts = Array.from(textsSet);
+        console.log(`📋 Total unique texts gathered:`, texts);
+
+        let pageSource = '';
+        try {
+          pageSource = await driver.getPageSource();
+        } catch {}
+
+        // Find date element explicitly by looking for month + digit pattern
+        let mobileDateText = 'Not found';
+        const monthRegex = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+        const foundDate = texts.find(t => monthRegex.test(t) && /\d/.test(t));
+        if (foundDate) {
+          mobileDateText = foundDate;
+          console.log(`💡 Detected mobile paywall date element: "${mobileDateText}"`);
+        }
+
+        const { getMobilePaywallData } = require('../../../utils/excelReader');
+        const { resolveExpected: resolveExp } = require('../../../utils/resolveExpected');
+        const { compare } = require('../../../utils/compare');
+
+        try {
+          const paywallRows = getMobilePaywallData();
+          console.log(`📊 Mobile Paywall sheet rows: ${paywallRows.length}`);
+
+          for (const row of paywallRows) {
+            const fieldName = (row['Field'] || '').trim();
+            if (!fieldName) continue;
+
+            let expectedValue = '';
+            try {
+              expectedValue = resolveExp(row, eventData);
+            } catch {
+              expectedValue = String(row['Expected'] || '');
+            }
+
+            if (!expectedValue || expectedValue.toUpperCase() === 'N/A') {
+              console.log(`  ⏭️ Skipping [${fieldName}] (N/A)`);
+              continue;
+            }
+
+            let actualValue = 'Not found';
+            let isMatch = false;
+
+            const isDateField = fieldName.toLowerCase().includes('date') || fieldName.toLowerCase().includes('time');
+
+            if (isDateField && mobileDateText !== 'Not found') {
+              actualValue = mobileDateText;
+              
+              // Timezone-aware date matching using parseConfigDate
+              let matches = false;
+              try {
+                const { parseConfigDate } = require('../../../utils/dateUtils');
+                const expD = parseConfigDate(expectedValue, new Date());
+                const actD = parseConfigDate(actualValue, new Date());
+                const diffHours = Math.abs(expD.getTime() - actD.getTime()) / (1000 * 60 * 60);
+                if (diffHours < 12) {
+                  matches = true;
+                }
+              } catch {}
+
+              if (matches || compare(actualValue, expectedValue)) {
+                isMatch = true;
+              }
+            } else {
+              const matched = texts.find(t => compare(t, expectedValue) || t.toLowerCase().includes(expectedValue.replace(/[\u200b\u200c\u200d\ufeff]/g, '').trim().toLowerCase()));
+
+              if (matched) {
+                actualValue = matched;
+                isMatch = true;
+              } else if (compare(pageSource, expectedValue)) {
+                actualValue = expectedValue;
+                isMatch = true;
+              }
+            }
+
+            const status = isMatch ? 'PASS' : 'FAIL';
+            console.log(`  ${status === 'PASS' ? '✅' : '❌'} [${fieldName}] expected="${expectedValue}" actual="${actualValue}"`);
+            androidAvailabilityResults.push({
+              page: 'Mobile Paywall',
+              field: fieldName,
+              expected: expectedValue,
+              actual: actualValue,
+              status
+            });
+          }
+        } catch (err: any) {
+          console.warn('⚠️ Mobile paywall validation sheet error:', err.message);
+        }
+      }
+
+      async function validateMobileBannerOrTile(surface: 'PPV Banner' | 'PPV Tile') {
+        console.log(`\n🔍 [${surface}] Running validations...`);
+
+        const textsSet = new Set<string>();
+        let pageSource = '';
+
+        try {
+          // Fast local extraction from page source to prevent the carousel from sliding away
+          pageSource = await driver.getPageSource();
+          const regex = /(?:text|content-desc)="([^"]+)"/g;
+          let match;
+          while ((match = regex.exec(pageSource)) !== null) {
+            const val = match[1].trim();
+            if (val) textsSet.add(val);
+          }
+        } catch (e: any) {
+          console.log(`⚠️ Failed to fetch page source: ${e.message}`);
+        }
+
+        const texts = Array.from(textsSet);
+        console.log(`📱 Gathered texts for ${surface}:`, texts);
+
+        const checkField = (fieldName: string, expectedValue: string) => {
+          if (!expectedValue || expectedValue.toUpperCase() === 'N/A') {
+            console.log(`  ⏭️ Skipping [${fieldName}] (N/A)`);
+            return;
+          }
+
+          let actualValue = 'Not found';
+          let status: 'PASS' | 'FAIL' = 'FAIL';
+
+          const isDateField = fieldName.toLowerCase().includes('date') || fieldName.toLowerCase().includes('time');
+
+          if (isDateField) {
+            const monthRegex = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+            const matchedDate = texts.find(t => monthRegex.test(t) && /\d/.test(t));
+            if (matchedDate) {
+              actualValue = matchedDate;
+              let matches = false;
+              try {
+                const { parseConfigDate } = require('../../../utils/dateUtils');
+                const expD = parseConfigDate(expectedValue, new Date());
+                const actD = parseConfigDate(actualValue, new Date());
+                const diffHours = Math.abs(expD.getTime() - actD.getTime()) / (1000 * 60 * 60);
+                if (diffHours < 12) {
+                  matches = true;
+                }
+              } catch {}
+
+              const { compare } = require('../../../utils/compare');
+              if (matches || compare(actualValue, expectedValue)) {
+                status = 'PASS';
+              }
+            }
+          }
+
+          if (status === 'FAIL') {
+            const { compare } = require('../../../utils/compare');
+            const matched = texts.find(t => compare(t, expectedValue) || t.toLowerCase().includes(expectedValue.replace(/[\u200b\u200c\u200d\ufeff]/g, '').trim().toLowerCase()));
+
+            if (matched) {
+              actualValue = matched;
+              status = 'PASS';
+            } else if (compare(pageSource, expectedValue)) {
+              actualValue = expectedValue;
+              status = 'PASS';
+            }
+          }
+
+          console.log(`  ${status === 'PASS' ? '✅' : '❌'} [${fieldName}] expected="${expectedValue}" actual="${actualValue}"`);
+          androidAvailabilityResults.push({
+            page: surface,
+            field: fieldName,
+            expected: expectedValue,
+            actual: actualValue,
+            status
+          });
+        };
+
+        // Check Presence
+        const titleExpected = eventData.MOBILE_BANNER_TITLE || eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME;
+        const cleanStr = (s: string) => (s || '').replace(/[\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        const isPresent = texts.some(t => cleanStr(t).includes(cleanStr(titleExpected)) || cleanStr(titleExpected).includes(cleanStr(t)));
+        const presenceField = surface === 'PPV Banner' ? 'Banner Present' : 'Tile Present';
+        
+        console.log(`  ${isPresent ? '✅' : '❌'} [${presenceField}] expected="Present" actual="${isPresent ? 'Present' : 'Not present'}"`);
+        androidAvailabilityResults.push({
+          page: surface,
+          field: presenceField,
+          expected: 'Present',
+          actual: isPresent ? 'Present' : 'Not present',
+          status: isPresent ? 'PASS' : 'FAIL'
+        });
+
+        if (isPresent) {
+          checkField('Title', titleExpected);
+          checkField('Date and Time', eventData.MOBILE_BANNER_DATE_TIME || eventData.MOBILE_BANNER_DATE || eventData.PPV_DATE);
+          
+          if (surface === 'PPV Banner') {
+            checkField('Description', eventData.MOBILE_BANNER_DESCRIPTION || eventData.BANNER_DESCRIPTION);
+          }
+        }
+      }
 
       // ── Pre-Login Phase ───────────────────────────────────────────────────
       if (isMyAccount || LOGIN_FIRST) {
@@ -1136,6 +1421,12 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
 
           console.log(`Navigating to ${PPV_NAME} using adaptive schedule navigator...`);
           try {
+            try {
+              const ppvTile = await driver.$(`//android.widget.TextView[contains(@text, "${PPV_NAME}")]`);
+              if (await ppvTile.isDisplayed().catch(() => false)) {
+                await validateMobileBannerOrTile('PPV Tile');
+              }
+            } catch {}
             await navigateToPPVTile(driver, event);
             recordAndroidPPVAvailability(true, undefined, 'Schedule');
           } catch (e: any) {
@@ -1150,6 +1441,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
           // After clicking PPV tile, we should be on paywall screen with Copy button
           // Skip looking for Buy button and go straight to URL capture
           console.log('  On paywall screen - will capture URL via Copy button');
+          try {
+            await validateMobilePaywall();
+          } catch (err: any) {
+            console.warn('⚠️ Mobile paywall validation failed:', err.message);
+          }
           buyTapped = true;  // Skip Buy button step
         } else {
           await driver.saveScreenshot('./test-results/schedule_navigation_failed.png');
@@ -1293,6 +1589,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
         if (ppvTile) {
           recordAndroidPPVAvailability(true, undefined, 'Search');
           console.log(`✅ Found PPV tile - tapping it...`);
+          try {
+            await validateMobileBannerOrTile('PPV Tile');
+          } catch (err: any) {
+            console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+          }
           await ppvTile.click();
           await driver.pause(4000);
           await driver.saveScreenshot('./test-results/android_search_after_tile_click.png');
@@ -1330,6 +1631,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
 
         console.log(`✅ Found "${PPV_NAME}" — tapping card...`);
         await driver.saveScreenshot('./test-results/android_ppv_found.png');
+        try {
+          await validateMobileBannerOrTile('PPV Tile');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+        }
         await tapByText(driver, PPV_NAME);
         await driver.pause(2500);
         await driver.saveScreenshot('./test-results/android_ppv_detail.png');
@@ -1360,6 +1666,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
           throw new Error(`❌ PPV banner "${PPV_NAME}" not found on Boxing page. See test-results/android_boxing_page_ppv_banner_not_found.png`);
         }
         recordAndroidPPVAvailability(true, undefined, 'Home of Boxing');
+        try {
+          await validateMobileBannerOrTile('PPV Banner');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+        }
         for (const cta of ['Buy this fight', 'Buy now', 'Buy Now', 'Buy']) {
           if (await tapByText(driver, cta, 7000)) { buyTapped = true; console.log(`✅ Tapped "${cta}"`); break; }
         }
@@ -1517,18 +1828,60 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
         }
 
         try {
-          const buyNowEl = await driver.$(`(//android.widget.TextView[@text="Buy now"])[2]`);
-          await buyNowEl.waitForDisplayed({ timeout: 5000 });
-          await buyNowEl.click();
-          console.log('  ✅ Tapped "Buy now" (PPV tile button)');
-          buyTapped = true;
-        } catch (e: any) {
-          console.log(`  ⚠️ Indexed Buy now tap failed: ${e.message} — trying fallback selectors`);
+          await validateMobileBannerOrTile('PPV Tile');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
         }
 
+        // 1. Try to find the Buy Now button geographically tied to the PPV title
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            console.log(`  🔍 Looking for Buy Now button belonging to "${PPV_NAME}" (attempt ${attempt + 1})...`);
+            const ppvEls = await driver.$$(`//*[contains(@text, "${PPV_NAME}")]`);
+            let ppvLoc = null;
+            for (const el of ppvEls) {
+              if (await el.isDisplayed().catch(() => false)) {
+                ppvLoc = await el.getLocation();
+                break;
+              }
+            }
+
+            if (ppvLoc) {
+              const buyBtns = await driver.$$(`//android.widget.TextView[@text="Buy now" or @text="Buy Now" or @text="Buy" or @text="Get PPV"]`);
+              let targetBtn = null;
+              let minDiff = Infinity;
+              
+              for (const btn of buyBtns) {
+                if (await btn.isDisplayed().catch(() => false)) {
+                  const btnLoc = await btn.getLocation();
+                  const diffY = btnLoc.y - ppvLoc.y;
+                  if (diffY >= -150 && diffY < minDiff && diffY < 1200) {
+                    minDiff = diffY;
+                    targetBtn = btn;
+                  }
+                }
+              }
+              
+              if (targetBtn) {
+                await targetBtn.click();
+                console.log('  ✅ Tapped "Buy now" specific to the PPV card');
+                buyTapped = true;
+                break;
+              }
+            }
+          } catch (e: any) {
+            console.log(`  ⚠️ PPV-specific Buy now check error: ${e.message}`);
+          }
+          
+          if (!buyTapped) {
+            adbSwipe(cx, Math.round(screenScroll.height * 0.65), cx, Math.round(screenScroll.height * 0.45));
+            await driver.pause(1500);
+          }
+        }
+
+        // Fallback to pure tapByText if geographical pairing failed
         if (!buyTapped) {
-          adbSwipe(cx, Math.round(screenScroll.height * 0.65), cx, Math.round(screenScroll.height * 0.45));
-          await driver.pause(1000);
+          console.log(`  ⚠️ Falling back to pure tapByText...`);
           for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV']) {
             if (await tapByText(driver, cta, 3000)) {
               console.log(`  ✅ Tapped "${cta}"`);
@@ -1569,6 +1922,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
         recordAndroidPPVAvailability(true, undefined, 'Home of Boxing');
 
         await driver.saveScreenshot('./test-results/android_ppv_banner_found.png');
+        try {
+          await validateMobileBannerOrTile('PPV Banner');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+        }
         for (const cta of ['Buy now', 'Buy Now', 'Buy this fight', 'Buy', 'Get PPV']) {
           if (await tapByText(driver, cta, 6000)) {
             buyTapped = true;
@@ -1652,6 +2010,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
 
         // Step 4: Click Buy now button on the PPV banner
         console.log('  Step 4: Clicking "Buy now" on the PPV banner...');
+        try {
+          await validateMobileBannerOrTile('PPV Banner');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+        }
         let buyCTAFoundHpb = false;
         for (const cta of ['Buy now', 'Buy Now', 'Buy this fight', 'Buy', 'Get PPV']) {
           if (await tapByText(driver, cta, 6000)) {
@@ -1681,6 +2044,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
         console.log('  ⚡ Paywall overlay displayed — clicking Copy button immediately...');
         await driver.pause(800); // minimal wait for paywall to render
         await driver.saveScreenshot('./test-results/android_home_paywall.png');
+        try {
+          await validateMobilePaywall();
+        } catch (err: any) {
+          console.warn('⚠️ Mobile paywall validation failed:', err.message);
+        }
         const screenSizeHpb = getScreenSize();
         try {
           // Use the exact XPath provided for the Copy button
@@ -1778,6 +2146,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
 
         // ── Step 2: Click "Buy now" IMMEDIATELY before carousel auto-swipes ──
         console.log('  Step 2: Clicking "Buy now" IMMEDIATELY (before carousel auto-swipes)...');
+        try {
+          await validateMobileBannerOrTile('PPV Banner');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+        }
         let buyCTAFoundLpb = false;
         
         // Try to click Buy now with very short timeout to act fast
@@ -1809,6 +2182,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
 
         // ── Step 3: Wait for Copy button to appear, then click it ────────────
         console.log('  Step 3: Waiting for Copy button to appear on paywall...');
+        try {
+          await validateMobilePaywall();
+        } catch (err: any) {
+          console.warn('⚠️ Mobile paywall validation failed:', err.message);
+        }
         const screenSizeLpb = getScreenSize();
         const copyXLpb = Math.round(screenSizeLpb.width * 0.19);
         const copyYLpb = Math.round(screenSizeLpb.height * 0.89);
@@ -1952,6 +2330,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
           throw new Error(`❌ "${PPV_NAME}" not found on Home Boxing rail. See test-results/android_home_boxing_tile_not_found.png`);
         }
         recordAndroidPPVAvailability(true, undefined, 'Home of Boxing');
+        try {
+          await validateMobileBannerOrTile('PPV Tile');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+        }
         await tapByText(driver, PPV_NAME, 8000);
         await driver.pause(2000);
         for (const cta of ['Buy now', 'Buy Now', 'Buy']) {
@@ -1970,6 +2353,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
           throw new Error(`❌ "${PPV_NAME}" not found`);
         }
         recordAndroidPPVAvailability(true);
+        try {
+          await validateMobileBannerOrTile('PPV Banner');
+        } catch (err: any) {
+          console.warn('⚠️ Mobile banner/tile validation failed:', err.message);
+        }
         await tapByText(driver, PPV_NAME);
         await driver.pause(2000);
         for (const cta of ['Buy now', 'Buy Now', 'Buy']) {
@@ -2007,6 +2395,11 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
 
       // ── Step 3: Capture checkout URL from paywall screen ──────────────────
       console.log("📋 Capturing checkout URL from paywall...");
+      try {
+        await validateMobilePaywall();
+      } catch (err: any) {
+        console.warn('⚠️ Mobile paywall validation failed:', err.message);
+      }
       await driver.saveScreenshot("./test-results/android_paywall_screen.png");
 
       let checkoutUrl = "";
@@ -2445,6 +2838,7 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
         let reachedEndPage = false;
         let ppvValidated = false;
         let planValidated = false;
+        let chooseBuyValidated = false;
         let planClickCount = 0;
         let emailProcessedCount = 0;
         let stuckCount = 0;
@@ -3075,16 +3469,47 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
           }
 
           // ── Choose How To Buy Page (existing active subscriber) ────────────────
-          if (pageType === 'choose-how-to-buy') {
+          if (pageType === 'choose-how-to-buy' && !chooseBuyValidated) {
             console.log('\n══════════════════════════════════════════════');
             console.log('🛒 Active Standard — Choose How To Buy');
             console.log('══════════════════════════════════════════════');
             stuckCount = 0;
 
+            // ── Page readiness: wait for the actual page content to render ──
+            console.log('⏳ Waiting for Choose How To Buy page to fully render...');
+            await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+            await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+
+            // Wait for the h1 heading with "choose how to" text
+            try {
+              await page.waitForFunction(
+                () => {
+                  const h1 = document.querySelector('h1');
+                  return h1 && /choose how to/i.test(h1.innerText);
+                },
+                { timeout: 15000 }
+              );
+              console.log('✅ Page heading "Choose how to buy" detected');
+            } catch {
+              console.warn('⚠️ h1 "Choose how to buy" not found after 15s — checking page content...');
+              // Log what's actually on the page for debugging
+              const currentH1 = await page.locator('h1').first().innerText({ timeout: 3000 }).catch(() => 'N/A');
+              const currentUrl = page.url();
+              console.log(`  📍 Current URL: ${currentUrl}`);
+              console.log(`  📍 Current h1: "${currentH1}"`);
+            }
+
+            // Also wait for radio buttons (PPV vs Ultimate options)
             await page.waitForSelector(
-              '[class*="addon" i], [class*="purchase" i], input[type="radio"]',
+              'input[type="radio"], [role="radio"], label:has-text("DAZN Ultimate"), label:has-text("pay-per-view")',
               { state: 'visible', timeout: 8000 }
-            ).catch(() => { });
+            ).catch(() => {
+              console.warn('⚠️ Radio buttons / option cards not visible after 8s');
+            });
+
+            // Extra settle time for React hydration
+            await page.waitForTimeout(1500);
+
 
             try {
               const chooseBuyData = getChooseHowToBuyData();
@@ -3093,9 +3518,9 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
               // ── Inline choosebuy validator ──────────────────────────────────────────
               // Scroll through page to trigger lazy-loaded sections (mobile 375px)
               await page.evaluate(() => { window.scrollTo(0, document.body.scrollHeight); }).catch(() => {});
-              await page.waitForTimeout(800);
+              await page.waitForTimeout(1000);
               await page.evaluate(() => { window.scrollTo(0, 0); }).catch(() => {});
-              await page.waitForTimeout(400);
+              await page.waitForTimeout(800);
 
               // innerText respects CSS display/visibility and inserts visual newlines between
               // block elements — essential for splitting into meaningful lines on a React SPA.
@@ -3226,15 +3651,43 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
                       }
                       break;
                     }
-                    case 'ppv option price': {
-                      for (const line of bodyLines) {
-                        const m = line.match(/[$£€]\d+[\.,]\d{2}/);
-                        if (m && !line.toLowerCase().includes('month') && !line.toLowerCase().includes('annual')) {
-                          cbActual = m[0]; break;
-                        }
+                  case 'ppv option price': {
+                    const expectedPrice = String(eventData.PPV_PRICE || cbExpected || '').trim();
+                    if (expectedPrice) {
+                      const standaloneExpected = bodyLines.find((l: string) => {
+                        const lowerLine = l.toLowerCase();
+                        return l.includes(expectedPrice) &&
+                          !lowerLine.includes('ultimate') &&
+                          !lowerLine.includes('/month') &&
+                          !lowerLine.includes('per month') &&
+                          !lowerLine.includes('for 12 months') &&
+                          !lowerLine.includes('annual');
+                      });
+                      if (standaloneExpected) {
+                        cbActual = expectedPrice;
+                        break;
                       }
+                    }
+                    for (const line of bodyLines) {
+                      const m = line.match(/[$£€]\d+[\.,]\d{2}/);
+                      const lowerLine = line.toLowerCase();
+                      if (m &&
+                        !lowerLine.includes('ultimate') &&
+                        !lowerLine.includes('month') &&
+                        !lowerLine.includes('annual')) {
+                        cbActual = m[0]; break;
+                      }
+                    }
                       if (cbActual === 'N/A') {
-                        const priceLine = bodyLines.find((l: string) => /[$£€]\d+[\.,]\d{2}/.test(l));
+                        const priceLine = bodyLines.find((l: string) => {
+                          const lowerLine = l.toLowerCase();
+                          return /[$£€]\d+[\.,]\d{2}/.test(l) &&
+                            !lowerLine.includes('ultimate') &&
+                            !lowerLine.includes('/month') &&
+                            !lowerLine.includes('per month') &&
+                            !lowerLine.includes('for 12 months') &&
+                            !lowerLine.includes('annual');
+                        });
                         if (priceLine) { const m2 = priceLine.match(/[$£€]\d+[\.,]\d{2}/); if (m2) cbActual = m2[0]; }
                       }
                       break;
@@ -3466,6 +3919,7 @@ async function acceptAppCookies(driver: WdBrowser): Promise<void> {
             } catch (e: any) {
               console.warn('⚠️ Choose How To Buy validation error:', e.message);
             }
+            chooseBuyValidated = true;
 
             if (purchaseOption === 'ultimate') {
               console.log('\n💎 Selecting DAZN Ultimate...');

@@ -147,6 +147,11 @@ export const writeResults = async (
     const standalonePPVRows= byPage(/^standalone ppv$/i);
     const phoneRows        = byPage(/^phone number$/i);
 
+    // ── Mobile-only pages ─────────────────────────────────────
+    const ppvBannerRows    = byPage(/^ppv banner$/i);
+    const ppvTileRows      = byPage(/^ppv tile$/i);
+    const mobilePaywallRows = byPage(/^mobile paywall$/i);
+
     // ── Both specs — PPV page ─────────────────────────────────
     const ppvRows          = byPage(/^ppv$/i,                  true,  false, false);
     const defaultSignupRows= byPage(/^default signup$/i,       true,  false, false);
@@ -161,7 +166,7 @@ export const writeResults = async (
     // ── Existing user spec pages ──────────────────────────────
     const myAccountRows    = byPage(/^my account$/i);
     const chooseBuyRows    = byPage(/^choose how to buy$/i);
-    const ppvPaymentRows   = byPage(/^ppv payment$/i,          false, false, true);
+    const ppvPaymentRows   = byPage(/^ppv payment/i,           false, false, true);
     const confirmationRows = byPage(/^upgrade confirmation$/i, false, true,  false);
 
     // ── Upsell flow pages ─────────────────────────────────────
@@ -178,6 +183,9 @@ export const writeResults = async (
       ...searchRows,
       ...standalonePPVRows,
       ...phoneRows,
+      ...ppvBannerRows,
+      ...ppvTileRows,
+      ...mobilePaywallRows,
       ...ppvRows,
       ...defaultSignupRows,
       ...bundlePpvRows,
@@ -216,6 +224,9 @@ export const writeResults = async (
       { name: 'Search',              rows: searchRows       },
       { name: 'Standalone PPV',      rows: standalonePPVRows},
       { name: 'Phone Number',        rows: phoneRows        },
+      { name: 'PPV Banner',          rows: ppvBannerRows    },
+      { name: 'PPV Tile',            rows: ppvTileRows      },
+      { name: 'Mobile Paywall',      rows: mobilePaywallRows},
       { name: 'My Account',          rows: myAccountRows    },
       { name: 'Choose How To Buy',   rows: chooseBuyRows    },
       { name: 'PPV',                 rows: ppvRows          },
@@ -304,6 +315,14 @@ export const writeResults = async (
       addSheet('My Account',         myAccountRows,    MY_ACCOUNT_HEADERS);
     if (chooseBuyRows.length)
       addSheet('Choose How To Buy',  chooseBuyRows,    CHOOSE_BUY_HEADERS);
+
+    // ── Mobile Spec sheets ───────────────────────────────────
+    if (ppvBannerRows.length)
+      addSheet('PPV Banner',         ppvBannerRows,    LANDING_HEADERS);
+    if (ppvTileRows.length)
+      addSheet('PPV Tile',           ppvTileRows,      LANDING_HEADERS);
+    if (mobilePaywallRows.length)
+      addSheet('Mobile Paywall',     mobilePaywallRows, LANDING_HEADERS);
 
     // ── Shared sheets ────────────────────────────────────────
     if (ppvRows.length)
