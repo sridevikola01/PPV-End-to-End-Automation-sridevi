@@ -128,10 +128,6 @@ export class AndroidValidationPage extends AndroidBasePage {
     let targetXml = '';
 
     try {
-      if (surface === 'PPV Banner') {
-        console.log('⏳ Waiting 3 seconds for the banner image to fully load...');
-        await this.driver.pause(3000);
-      }
       pageSource = await this.driver.getPageSource();
       targetXml = pageSource;
 

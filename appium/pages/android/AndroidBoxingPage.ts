@@ -343,6 +343,14 @@ export class AndroidBoxingPage extends AndroidBasePage {
       await this.runSurfaceValidation(hooks, 'PPV Banner');
     }
 
+    const isUltimateUser = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+
+    if (isUltimateUser && isLoginFirst) {
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV banner verified. Skipping Buy click and returning true.');
+      return true;
+    }
+
     return this.tapBuyCtaWithFallback(['Buy this fight', 'Buy now', 'Buy Now', 'Buy'], {
       primaryTimeoutMs: 7000,
       scrollBeforeFallback: false,
@@ -413,6 +421,15 @@ export class AndroidBoxingPage extends AndroidBasePage {
     }
 
     await this.runSurfaceValidation(hooks, 'PPV Tile');
+
+    const isUltimateUser = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+
+    if (isUltimateUser && isLoginFirst) {
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV Tile verified on upcoming section. Skipping Buy click and returning true.');
+      return true;
+    }
+
     const buyTapped = await this.tapBuyNowNearPPV();
     if (!buyTapped) {
       const shot = hooks.saveScreenshot

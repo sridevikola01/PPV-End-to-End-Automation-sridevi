@@ -276,6 +276,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
     it('navigates to PPV buy button as existing user, opens Chrome, captures checkout URL', async () => {
       const driver = browser;
       const baseUrl = 'https://www.dazn.com';
+      const runStart = new Date();
 
       console.log('✅ Startup handled by prepareAndroidApp; beginning existing-user PPV navigation');
 
@@ -297,6 +298,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       const { loadEventConfig } = require('../../../utils/testHelpers');
       const EVENT_CONFIG = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
       const PLAN = process.env.PLAN || 'standard_monthly';
+      const ENV = (process.env.DAZN_ENV || 'stag').toLowerCase();
 
       const json = loadEventConfig(EVENT_CONFIG, PLAN);
       const plansPath = path.resolve(process.cwd(), 'config/DaznPlan.json');
@@ -330,6 +332,76 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       async function validateMobileBannerOrTile(surface: 'PPV Banner' | 'PPV Tile') {
         await validateMobileBannerOrTilePage(driver, surface, eventData, SOURCE, androidAvailabilityResults);
       }
+
+      // ── completeAppiumFlowEarly: generate reports & exit early ──────────────
+      async function completeAppiumFlowEarly() {
+        console.log('\n=======================================');
+        console.log('🎉 [Early Complete] Ending flow early from Appium phase');
+        console.log('👉 CONFIRMED: User has PPV (Already Purchased / Subscribed)');
+        console.log('=======================================\n');
+
+        const results: any[] = [];
+        results.push(...androidAvailabilityResults);
+        results.push(...appiumResults);
+
+        console.log('📱 Closing DAZN app...');
+        adb("shell am force-stop " + APP_PACKAGE);
+        await driver.pause(1000);
+
+        const { writeResults } = require('../../../utils/excelWriter');
+        const { displayResultsTable } = require('../../../utils/resultsDisplay');
+        const { generateReports } = require('../../../utils/reportGenerator');
+
+        const nativeVideoPath = await driver.stopRecordingScreen().catch(() => '');
+
+        const formattedUserState = USER_STATE
+          .split('_')
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
+
+        const srcLabel = SOURCE.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+        const flowConfig = {
+          name: `Android ${formattedUserState}: ${srcLabel} → ${planTier.charAt(0).toUpperCase() + planTier.slice(1)} → ${ratePlan === 'monthly' ? 'Flex Monthly' : (ratePlan.includes('upfront') ? 'APU' : 'APM')}`,
+          source: SOURCE,
+          tier: planTier,
+          ratePlan: ratePlan,
+        };
+
+        results.forEach((r: any) => {
+          r.flowName = r.flowName || flowConfig.name;
+          r.source = r.source || flowConfig.source;
+          r.tier = r.tier || flowConfig.tier;
+          r.ratePlan = r.ratePlan || flowConfig.ratePlan;
+        });
+
+        const written = await writeResults(results, nativeVideoPath);
+
+        displayResultsTable(results, 'ppv', {
+          event: json.PPV_NAME || PPV_NAME,
+          region: REGION,
+          excelPath: written.excelPath,
+          videoPath: written.videoPath,
+        });
+
+        await generateReports(results, {
+          event: json.PPV_NAME || PPV_NAME,
+          region: REGION,
+          source: flowConfig.source,
+          ratePlan: flowConfig.ratePlan,
+          tier: flowConfig.tier,
+          env: ENV,
+          flowName: flowConfig.name,
+          startTime: runStart,
+          endTime: new Date(),
+          excelPath: written.excelPath,
+          videoPath: written.videoPath,
+          userType: 'existing-user',
+          userStatus: USER_STATE,
+          platform: 'Android',
+        });
+      }
+
 
       // ── Pre-Login Phase ───────────────────────────────────────────────────
       if (isMyAccount || LOGIN_FIRST) {
@@ -447,6 +519,18 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       // ── boxing-page-banner ────────────────────────────────────────────────
       else if (SOURCE === 'boxing-page-banner') {
         buyTapped = await openBoxingPageBannerPaywall(driver, PPV_NAME, androidFlowHooks, { requireBanner: true });
+
+        const isUltimateUser = USER_STATE === 'active_ultimate_apm' || USER_STATE === 'active_ultimate_upfront';
+        const hasAlreadyPurchasedBannerText = androidAvailabilityResults.some(r => {
+          const actualLower = String(r.actual || '').toLowerCase();
+          return actualLower.includes('purchased') || actualLower.includes('subscribed') || actualLower.includes('reminder');
+        });
+
+        if (hasAlreadyPurchasedBannerText || (isUltimateUser && LOGIN_FIRST)) {
+          console.log('✨ [boxing-page-banner] Banner validated. Already purchased. Ending flow early.');
+          await completeAppiumFlowEarly();
+          return;
+        }
       }
 
       // ── home-boxing-upcoming ──────────────────────────────────────────────
@@ -457,11 +541,36 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       // ── home-boxing-banner ────────────────────────────────────────────────
       else if (SOURCE === 'home-boxing-banner') {
         buyTapped = await openHomeBoxingBannerPaywall(driver, PPV_NAME, androidFlowHooks);
+
+        const isUltimateUser = USER_STATE === 'active_ultimate_apm' || USER_STATE === 'active_ultimate_upfront';
+        const hasAlreadyPurchasedBannerText = androidAvailabilityResults.some(r => {
+          const actualLower = String(r.actual || '').toLowerCase();
+          return actualLower.includes('purchased') || actualLower.includes('subscribed') || actualLower.includes('reminder');
+        });
+
+        if (hasAlreadyPurchasedBannerText || (isUltimateUser && LOGIN_FIRST)) {
+          console.log('✨ [home-boxing-banner] Banner validated. Already purchased. Ending flow early.');
+          await completeAppiumFlowEarly();
+          return;
+        }
       }
 
       // ── home-page-banner ──────────────────────────────────────────────────
       else if (SOURCE === 'home-page-banner') {
         buyTapped = await openHomeBannerPaywall(driver, PPV_NAME, androidFlowHooks);
+
+        const isUltimateUser = USER_STATE === 'active_ultimate_apm' || USER_STATE === 'active_ultimate_upfront';
+        const hasAlreadyPurchasedBannerText = androidAvailabilityResults.some(r => {
+          const actualLower = String(r.actual || '').toLowerCase();
+          return actualLower.includes('purchased') || actualLower.includes('subscribed') || actualLower.includes('reminder');
+        });
+
+        if (hasAlreadyPurchasedBannerText || (isUltimateUser && LOGIN_FIRST)) {
+          console.log('✨ [home-page-banner] Banner validated on Home. Already purchased. Ending flow early.');
+          await completeAppiumFlowEarly();
+          return;
+        }
+
         if (androidFlowHooks.validatePaywall) {
           await androidFlowHooks.validatePaywall();
         }
@@ -477,6 +586,25 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       else {
         console.log(`⚠️  Unknown SOURCE "${SOURCE}" — generic Home screen fallback`);
         buyTapped = await openGenericPPVPaywall(driver, PPV_NAME, androidFlowHooks);
+      }
+
+      // For banner, upcoming tile, search and schedule flows, if the user already has the PPV (active ultimate user, or we see "purchased" / "subscribed" / "set reminder" actual text),
+      // complete validations and end the flow right here (close browser/app, generate reports).
+      const isUltimateUser = USER_STATE === 'active_ultimate_apm' || USER_STATE === 'active_ultimate_upfront';
+      const isEarlyExitSource =
+        SOURCE.includes('banner') ||
+        SOURCE === 'home-boxing-upcoming' ||
+        ((SOURCE === 'search' || SOURCE === 'schedule') && isUltimateUser && LOGIN_FIRST);
+
+      const hasAlreadyPurchasedText = androidAvailabilityResults.some(r => {
+        const actualLower = String(r.actual || '').toLowerCase();
+        return actualLower.includes('purchased') || actualLower.includes('subscribed') || actualLower.includes('reminder');
+      });
+
+      if (isEarlyExitSource && (hasAlreadyPurchasedText || (isUltimateUser && LOGIN_FIRST))) {
+        console.log('✨ [Already Purchased/Subscribed] Validated on Home/Landing/Boxing/Search/Schedule page. Ending flow early.');
+        await completeAppiumFlowEarly();
+        return;
       }
 
       if (!buyTapped) {
@@ -518,11 +646,6 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
 
       let checkoutUrl = "";
 
-      // Dump page source to help debug why "Copy" button is not found/clickable
-      console.log("\n── Page Source (for debugging Copy button) ──────────────────");
-      const pageSource = await driver.getPageSource();
-      console.log(pageSource.substring(0, 5000)); // Log first 5000 chars to avoid overwhelming output
-      console.log("────────────────────────────────────────────────────────────\n");
 
       // Method 1: Click Copy button and get URL from clipboard
       console.log("  Method 1: Clicking Copy button and reading clipboard...");
@@ -605,7 +728,6 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       const originalCwd = process.cwd();
       let playwrightBrowser: any = null;
       let context: any = null;
-      const runStart = new Date();
       let finalResults: any[] = [];
       let finalJson: any = null;
       let finalFlowConfig: any = null;
@@ -688,7 +810,6 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         const WANT_ULTIMATE = SWITCH_TO_ULTIMATE || PLAN_TARGET === 'ultimate_apm' || PLAN_TARGET === 'ultimate_apu';
         const WANT_ULTIMATE_APU = PLAN_TARGET === 'ultimate_apu';
         const purchaseOption = WANT_ULTIMATE ? 'ultimate' : 'ppv';
-        const ENV = (process.env.DAZN_ENV || 'stag').toLowerCase();
         const PAYMENT_METHOD = (process.env.PAYMENT_METHOD || 'credit_card').toLowerCase();
 
         // Screenshot helper for failed fields

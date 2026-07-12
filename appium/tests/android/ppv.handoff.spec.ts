@@ -142,7 +142,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
     require('fs').mkdirSync('./test-results', { recursive: true });
 
     const shouldWaitHome = SOURCE !== 'landing-page-banner';
-    const clearData = SOURCE === 'landing-page-banner';
+    const clearData = true;
     await prepareAndroidApp(browser, { clearAppData: clearData, waitForHome: shouldWaitHome });
     console.log(`\n╔════════════════════════════════════════════════════╗`);
     console.log(`║  DAZN Android PPV Handoff                          ║`);
