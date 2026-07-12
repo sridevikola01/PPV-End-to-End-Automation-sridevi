@@ -49,7 +49,7 @@ import {
   openHomeBoxingBannerPaywall,
   openHomeBoxingUpcomingPaywall,
 } from '../../pages/android/AndroidBoxingPage';
-import { openMyAccountPPVPaywall, preLoginFlow as sharedPreLoginFlow } from '../../pages/android/AndroidMyAccountPage';
+import { AndroidMyAccountPage, openMyAccountPPVPaywall, preLoginFlow as sharedPreLoginFlow } from '../../pages/android/AndroidMyAccountPage';
 import { openHomeBannerPaywall, openGenericPPVPaywall } from '../../pages/android/AndroidHomePage';
 import { openLandingBannerPaywall } from '../../pages/android/AndroidLandingPage';
 import { copyImmediateCheckoutUrl } from '../../pages/android/AndroidPaywallPage';
@@ -288,6 +288,9 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
 
       const isMyAccount = SOURCE === 'myaccount' || SOURCE === 'myaccount-subscription-status';
 
+      // Results array for Appium-phase validations (e.g., already-purchased PPV)
+      const appiumResults: any[] = [];
+
       const fs = require('fs');
       const path = require('path');
       const { buildEventData } = require('../../../utils/buildEventData');
@@ -349,7 +352,60 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
 
       // ── myaccount ─────────────────────────────────────────────────────────
       if (isMyAccount) {
-        buyTapped = await openMyAccountPPVPaywall(driver, PPV_NAME, androidFlowHooks);
+        // ── Special case: already purchased (Ultimate users) ──
+        // When PPV is already purchased, the card shows "Purchased" / "Included"
+        // instead of "Buy now". Detect this early and skip the buy flow.
+        const myAccountPage = new AndroidMyAccountPage(driver, PPV_NAME);
+        const ppvStatus = await myAccountPage.getPPVStatus(PPV_NAME);
+        if (ppvStatus === 'Purchased' || ppvStatus === 'Included') {
+          console.log(`\n✅ [Already Purchased] PPV "${PPV_NAME}" status: ${ppvStatus}`);
+          console.log('   Skipping buy flow — PPV is already owned by this user.');
+
+          // Validate PPV card details
+          const imagePresent = await myAccountPage.hasPPVImage(PPV_NAME);
+          appiumResults.push({
+            page: 'My Account',
+            field: 'PPV Image Present',
+            expected: 'Yes',
+            actual: imagePresent ? 'Yes' : 'No',
+            status: imagePresent ? 'PASS' : 'FAIL',
+          });
+
+          const title = await myAccountPage.getPPVName(PPV_NAME);
+          const expectedTitle = eventData.PPV_NAME || PPV_NAME;
+          const titleStatus = title.toLowerCase().includes(expectedTitle.toLowerCase()) ? 'PASS' : 'FAIL';
+          appiumResults.push({
+            page: 'My Account',
+            field: 'PPV Title',
+            expected: expectedTitle,
+            actual: title,
+            status: titleStatus,
+          });
+
+          const dateTime = await myAccountPage.getPPVDate(PPV_NAME);
+          appiumResults.push({
+            page: 'My Account',
+            field: 'PPV Date & Time',
+            expected: eventData.PPV_DATE || '',
+            actual: dateTime,
+            status: dateTime !== 'N/A' ? 'PASS' : 'FAIL',
+          });
+
+          const purchasedText = ppvStatus;
+          const purchasedStatus = purchasedText.toLowerCase().includes('purchased') ? 'PASS' : 'FAIL';
+          appiumResults.push({
+            page: 'My Account',
+            field: 'Purchased Text',
+            expected: 'Purchased',
+            actual: purchasedText,
+            status: purchasedStatus,
+          });
+
+          buyTapped = true;
+        } else {
+          console.log(`\n🛒 PPV "${PPV_NAME}" not yet purchased (status: ${ppvStatus}) — proceeding with buy flow`);
+          buyTapped = await openMyAccountPPVPaywall(driver, PPV_NAME, androidFlowHooks);
+        }
       }
       // ── schedule ────────────────────────────────────────────────────────────
       else if (SOURCE === 'schedule') {
@@ -694,6 +750,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
 
         const results: any[] = [];
         results.push(...androidAvailabilityResults);
+        results.push(...appiumResults);
         finalJson = json;
         finalFlowConfig = flowConfig;
         finalResults = results;
@@ -828,18 +885,14 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
           } catch { }
         });
 
-        // Force opening a brand-new page/tab to prevent showing any pre-existing/restored pages
-        console.log('Opening a new browser tab for the checkout page...');
-        const page = await context.newPage();
-
-        // Clean up all other background/restored tabs (including Amazon) immediately
-        console.log('Cleaning up any other open tabs in Chrome...');
-        const openPages = context.pages();
-        for (const p of openPages) {
-          if (p !== page) {
-            await p.close().catch(() => { });
-          }
+        // Use the existing page from the fresh launchBrowser() call (avoids opening a new tab)
+        console.log('Using fresh Chrome browser page (no new tab)...');
+        const existingPages = context.pages();
+        // Close any extra pages that may have been restored, keep only the first one
+        for (let i = 1; i < existingPages.length; i++) {
+          await existingPages[i].close().catch(() => { });
         }
+        const page = existingPages[0] ?? await context.newPage();
 
         console.log('Bringing Chrome browser UI to the foreground...');
         await device.shell(`am start -n ${MOBILE_BROWSER_PACKAGE}/com.google.android.apps.chrome.Main`);
@@ -903,16 +956,61 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         let firstPaymentDone = false;
         let firstSuccessValidated = false;
         let savedCardPaymentDone = false;
+        let pageType: string = 'unknown';
 
         // Traverse checkout funnel
         for (let step = 0; step < 15; step++) {
           if (page.isClosed()) throw new Error('❌ Page closed unexpectedly');
 
-          const pageType = await detectPageType(page, pagesConfig, planClickCount);
+          pageType = await detectPageType(page, pagesConfig, planClickCount);
           await handleCookies(page, step === 0 ? 5000 : 500);
           await stabilisePage(page);
           await dismissMarketingPopup(page);
           console.log(`\nstep ${step + 1} → pageType: ${pageType} | planClicks: ${planClickCount} | url: ${page.url()}`);
+
+          // ── My Account PPV Page (Ultimate users / already purchased) ──
+          if (pageType === 'myaccount-ppv') {
+            console.log('\n✅ [Purchased] Landed on My Account PPV page — PPV is already purchased/included.');
+            reachedEndPage = true;
+
+            try {
+              const myAccountPage = new MyAccountPage(page);
+              // Page was auto-redirected here after login — no extra navigation needed
+              await myAccountPage.validatePPVOnCurrentPage(
+                eventData.PPV_NAME,
+                results,
+                eventData
+              );
+            } catch (myAccountErr: any) {
+              console.warn(`⚠️ [My Account PPV] Validation error: ${myAccountErr.message}`);
+              results.push({
+                page: 'My Account',
+                field: 'PPV Status After Login',
+                expected: 'Purchased',
+                actual: `Error: ${myAccountErr.message}`,
+                status: 'FAIL',
+              });
+            }
+
+            const passedCount = results.filter(r => r.status === 'PASS').length;
+            const failedCount = results.filter(r => r.status === 'FAIL').length;
+            console.log(`\n✅ [My Account PPV] Validation complete: ${passedCount}/${results.length} passed`);
+            if (failedCount > 0) {
+              console.log(`⚠️ [My Account PPV] ${failedCount} validations failed`);
+            }
+
+            // Close the browser after validation
+            console.log('🌐 [My Account PPV] Closing browser...');
+            await page.close().catch(() => {});
+            if (context) await context.close().catch(() => {});
+            if (playwrightBrowser) {
+              await playwrightBrowser.close().catch(() => {});
+              playwrightBrowser = null;
+            }
+            closeMobileBrowser();
+            console.log('✅ [My Account PPV] Browser closed. Ending flow.');
+            break;
+          }
 
           // ── Default Signup validation check: Fail if no PPV ──
           const isBoxingSubscriptionSource =
@@ -1383,6 +1481,25 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
             }
 
             if (emailProcessedCount > 5) {
+              // Check page title — after login with ultimate user the URL stays the same
+              // but the page title changes away from sign-in content to "My Account"
+              const currentUrl = page.url().toLowerCase();
+              if (currentUrl.includes('/myaccount') || currentUrl.includes('/account')) {
+                const titleNow = await page.title().catch(() => '');
+                const titleLowerNow = titleNow.toLowerCase();
+                const isStillLogin =
+                  titleLowerNow.includes('sign in') ||
+                  titleLowerNow.includes('sign up') ||
+                  titleLowerNow.includes('log in') ||
+                  titleLowerNow.includes('email');
+                if (!isStillLogin) {
+                  console.log(`✅ [Email Loop] Page title changed to "${titleNow}" — login done, on My Account`);
+                  continue;  // let detectPageType pick up myaccount-ppv
+                }
+                console.log(`⏳ [Email Loop] Still on login step (title: "${titleNow}"), waiting...`);
+                await page.waitForTimeout(3000);
+                continue;
+              }
               console.log('⚠️  Email/Login loop detected — breaking');
               try {
                 await page.screenshot({ path: 'test-results/email_loop_error.png', fullPage: true });
@@ -2626,11 +2743,11 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         console.log(`\n✅ Flow "${flowConfig.name}" complete: ${passed}/${total} passed (${total > 0 ? ((passed / total) * 100).toFixed(1) : 0}%)`);
         console.log(`${'─'.repeat(55)}`);
 
-        if (total === 0) {
+        if (total === 0 && !reachedEndPage) {
           throw new Error(`❌ Flow "${flowConfig.name}" had 0 validation checks`);
         }
 
-        if (!reachedEndPage) {
+        if (!reachedEndPage && pageType !== 'myaccount-ppv') {
           throw new Error(`❌ Flow "${flowConfig.name}" did not reach the expected end page`);
         }
 

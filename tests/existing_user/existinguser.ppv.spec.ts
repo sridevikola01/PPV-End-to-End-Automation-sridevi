@@ -311,11 +311,23 @@ for (const stateKey of userStatesToRun) {
       size: { width: 1280, height: 720 },
     } : undefined;
 
+    const regionLocaleMap: Record<string, { locale: string; timezoneId: string }> = {
+      GB: { locale: 'en-GB', timezoneId: 'Europe/London' },
+      US: { locale: 'en-US', timezoneId: 'America/New_York' },
+      AE: { locale: 'en-AE', timezoneId: 'Asia/Dubai' },
+      AU: { locale: 'en-AU', timezoneId: 'Australia/Sydney' },
+      BR: { locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' },
+    };
+    const { locale: regionLocale, timezoneId: regionTimezone } =
+      regionLocaleMap[REGION] ?? { locale: 'en-GB', timezoneId: 'Europe/London' };
+
+    console.log(`Creating browser context with Locale: ${regionLocale}, Timezone: ${regionTimezone}...`);
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
       colorScheme: 'dark',
       reducedMotion: 'no-preference',
-      locale: 'en-IN',
+      locale: regionLocale,
+      timezoneId: regionTimezone,
       ...(recordVideo ? { recordVideo } : {}),
     });
 

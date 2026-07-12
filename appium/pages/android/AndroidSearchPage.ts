@@ -213,6 +213,15 @@ export class AndroidSearchPage extends AndroidBasePage {
     await ppvTile.click();
     await this.driver.pause(4000);
     await this.driver.saveScreenshot('./test-results/android_search_after_tile_click.png');
+
+    const isUltimateUser = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+
+    if (isUltimateUser && isLoginFirst) {
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Search tile clicked, navigated to fixture page. Ending flow.');
+      return true;
+    }
+
     console.log('  On paywall screen - will capture URL via Copy button');
     return true;
   }

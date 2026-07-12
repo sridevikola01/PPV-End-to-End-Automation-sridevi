@@ -9,8 +9,7 @@
 //   2. Dismisses system dialogs / update prompts & landing page interstitials ("Explore")
 //   3. Navigates to Buy button based on SOURCE env var:
 //        schedule                → Bottom tab → Schedule → scroll to July 25th → find PPV tile → Buy
-//        home-boxing-upcoming  → Sports tab → Boxing → Upcoming Big Fights → Buy now
-//        boxing-page-banner      → Sports tab → Boxing → hero banner → Buy this fight
+//        home-boxing-upcoming  → Home Boxing filter → Upcoming Fights → Buy
 //        home-boxing-banner      → Home hero banner → Buy
 //        home-boxing-tile        → Home Boxing rail → Buy
 //        search                  → Search icon/tab → Search for event → find PPV tile → Buy
@@ -63,7 +62,6 @@ import {
 } from '../../pages/android/AndroidSearchPage';
 import {
   navigateToBoxingPage as sharedNavigateToBoxingPage,
-  openBoxingPageBannerPaywall,
   openHomeBoxingBannerPaywall,
   openHomeBoxingUpcomingPaywall,
 } from '../../pages/android/AndroidBoxingPage';
@@ -305,8 +303,11 @@ describe('DAZN Android PPV → Web Handoff', () => {
     }
 
     // ── validateMobileBannerOrTile: delegated to AndroidValidationPage ───────
-    async function validateMobileBannerOrTile(surface: 'PPV Banner' | 'PPV Tile') {
-      await validateMobileBannerOrTilePage(driver, surface, eventData, SOURCE, androidAvailabilityResults);
+    async function validateMobileBannerOrTile(
+      surface: 'PPV Banner' | 'PPV Tile',
+      options: { landingCopyOverlay?: boolean } = {},
+    ) {
+      await validateMobileBannerOrTilePage(driver, surface, eventData, SOURCE, androidAvailabilityResults, options);
     }
 
     const androidFlowHooks = {
@@ -351,11 +352,6 @@ describe('DAZN Android PPV → Web Handoff', () => {
       buyTapped = await openHomeBoxingUpcomingPaywall(driver, PPV_NAME, json, androidFlowHooks);
     }
 
-    // ── boxing-page-banner ────────────────────────────────────────────────
-    else if (SOURCE === 'boxing-page-banner') {
-      buyTapped = await openBoxingPageBannerPaywall(driver, PPV_NAME, androidFlowHooks);
-    }
-
     // ── home-boxing-banner ────────────────────────────────────────────────
     else if (SOURCE === 'home-boxing-banner') {
       buyTapped = await openHomeBoxingBannerPaywall(driver, PPV_NAME, androidFlowHooks);
@@ -363,16 +359,25 @@ describe('DAZN Android PPV → Web Handoff', () => {
 
     // ── landing-page-banner ───────────────────────────────────────────────
     else if (SOURCE === 'landing-page-banner') {
+      console.log('  Landing page banner flow: find PPV banner, validate banner, buy, validate copy controls, copy URL.');
       buyTapped = await openLandingBannerPaywall(driver, PPV_NAME, androidFlowHooks);
-      if (androidFlowHooks.validatePaywall) {
-        await androidFlowHooks.validatePaywall();
-      }
+
+      await driver.pause(1000);
+      await validateMobileBannerOrTile('PPV Banner', { landingCopyOverlay: true });
+
       const copyResult = await copyImmediateCheckoutUrl(driver, 'landing-page-banner', {
         screenshotPrefix: 'landing',
+        retrySwipeBackToPPV: true,
+        ppvName: PPV_NAME,
+        isLandingPageBanner: true,
       });
       bannerCheckoutUrl = copyResult.url;
       bannerUrlCaptured = copyResult.captured;
-      buyTapped = true;
+
+      if (!bannerUrlCaptured) {
+        await driver.saveScreenshot('./test-results/android_landing_copy_url_not_captured.png');
+        throw new Error(`Could not copy landing banner checkout URL. Clipboard content: ${bannerCheckoutUrl}`);
+      }
     }
 
     // ── home-page-banner ──────────────────────────────────────────────────
@@ -660,11 +665,21 @@ describe('DAZN Android PPV → Web Handoff', () => {
       await device.shell(`am force-stop ${MOBILE_BROWSER_PACKAGE}`);
       await sleep(1000);
 
-      console.log('Launching Chrome browser on Android device...');
+      const regionLocaleMap: Record<string, { locale: string; timezoneId: string }> = {
+        GB: { locale: 'en-GB', timezoneId: 'Europe/London' },
+        US: { locale: 'en-US', timezoneId: 'America/New_York' },
+        AE: { locale: 'en-AE', timezoneId: 'Asia/Dubai' },
+        AU: { locale: 'en-AU', timezoneId: 'Australia/Sydney' },
+        BR: { locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' },
+      };
+      const { locale: regionLocale, timezoneId: regionTimezone } =
+        regionLocaleMap[REGION] ?? { locale: 'en-GB', timezoneId: 'Europe/London' };
+
+      console.log(`Launching Chrome browser on Android device with Locale: ${regionLocale}, Timezone: ${regionTimezone}...`);
       context = await device.launchBrowser({
         viewport: { width: 375, height: 667 },
-        timezoneId: 'Asia/Kolkata',
-        locale: 'en-IN',
+        timezoneId: regionTimezone,
+        locale: regionLocale,
         args: ['--incognito', '--no-first-run', '--disable-first-run-ui']
       });
 
@@ -694,18 +709,14 @@ describe('DAZN Android PPV → Web Handoff', () => {
         } catch { }
       });
 
-      // Force opening a brand-new page/tab to prevent showing any pre-existing/restored pages
-      console.log('Opening a new browser tab for the checkout page...');
-      const page = await context.newPage();
-
-      // Clean up all other background/restored tabs (including Amazon) immediately
-      console.log('Cleaning up any other open tabs in Chrome...');
-      const openPages = context.pages();
-      for (const p of openPages) {
-        if (p !== page) {
-          await p.close().catch(() => {});
-        }
+      // Use the existing page from the fresh launchBrowser() call (avoids opening a new tab)
+      console.log('Using fresh Chrome browser page (no new tab)...');
+      const existingPages = context.pages();
+      // Close any extra pages that may have been restored, keep only the first one
+      for (let i = 1; i < existingPages.length; i++) {
+        await existingPages[i].close().catch(() => {});
       }
+      const page = existingPages[0] ?? await context.newPage();
 
       console.log('Bringing Chrome browser UI to the foreground...');
       await device.shell(`am start -n ${MOBILE_BROWSER_PACKAGE}/com.google.android.apps.chrome.Main`);

@@ -7,7 +7,7 @@ export async function detectPageType(
   p: any,
   pc: Record<string, { detection: string }>,
   planClickCount: number
-): Promise<'ppv' | 'plan' | 'email' | 'payment' | 'phone' | 'otp' | 'unknown' | 'standalone-ppv' | 'success-upsell' | 'saved-card-payment' | 'bet-upsell' | 'default-signup' | 'choose-how-to-buy' | 'confirmation'> {
+): Promise<'ppv' | 'plan' | 'email' | 'payment' | 'phone' | 'otp' | 'unknown' | 'standalone-ppv' | 'success-upsell' | 'saved-card-payment' | 'bet-upsell' | 'default-signup' | 'choose-how-to-buy' | 'confirmation' | 'myaccount-ppv'> {
   if (!p || p.isClosed()) return 'unknown';
 
   // ── Wait for SPA routing / initial load to settle if needed ──
@@ -82,6 +82,37 @@ export async function detectPageType(
   // ── URL-based detection ──────────────
   const url = p.url();
   const urlLower = url.toLowerCase();
+
+  // My Account PPV page — ultimate users auto-redirected here after login.
+  // After login, the URL may STILL show page=emailDetails (DAZN SPA doesn't change it)
+  // but the page TITLE changes to "My Account" / "Account" / "PPV" etc.
+  // → Use page title as the primary signal when URL has /myaccount.
+  const isMyAccountUrl =
+    urlLower.includes('/myaccount') ||
+    urlLower.endsWith('/account') ||
+    urlLower.endsWith('/account/') ||
+    urlLower.includes('/account?');
+
+  if (isMyAccountUrl) {
+    const pageTitle = await p.title().catch(() => '');
+    const titleLower = pageTitle.toLowerCase();
+    console.log(`  [detectPageType] /myaccount URL — title: "${pageTitle}"`);
+
+    // If title contains login/signup keywords, we're still on the sign-in step
+    const isStillLoginPage =
+      titleLower.includes('sign in') ||
+      titleLower.includes('sign up') ||
+      titleLower.includes('log in') ||
+      titleLower.includes('create account') ||
+      titleLower.includes('email');
+
+    if (!isStillLoginPage) {
+      // Title no longer shows sign-in content — we're on the real My Account page
+      return 'myaccount-ppv';
+    }
+    // Still on login step within /myaccount URL — fall through to email detection
+  }
+
 
   // Phone/OTP pages (highest priority URL checks)
   if (urlLower.includes('phonenumbercollection')) return 'phone';

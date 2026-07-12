@@ -17,6 +17,8 @@ export function compare(
   const norm = (s: string) =>
     s.replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u00A0]/g, '')
       .replace(/[£$€₹]|AED\s?/g, '')
+      .replace(/a\.\s*m\./gi, 'am')
+      .replace(/p\.\s*m\./gi, 'pm')
       .replace(/'/gi, "'")
       .replace(/&#39;/gi, "'")
       .replace(/&apos;/gi, "'")
@@ -163,7 +165,8 @@ export function compare(
   // ── Time match flexibility ─────────────────────────────────────
   // Helper to convert time string (12-hour or 24-hour) to minutes since midnight
   const parseToMinutes = (str: string): number | null => {
-    const m12 = str.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
+    const normalizedStr = str.replace(/a\.\s*m\./gi, 'am').replace(/p\.\s*m\./gi, 'pm');
+    const m12 = normalizedStr.match(/(\d{1,2}):(\d{2})\s*(am|pm)/i);
     if (m12) {
       let h = parseInt(m12[1], 10);
       const m = parseInt(m12[2], 10);
@@ -172,7 +175,7 @@ export function compare(
       if (period === 'am' && h === 12) h = 0;
       return h * 60 + m;
     }
-    const m24 = str.match(/(\d{1,2}):(\d{2})/);
+    const m24 = normalizedStr.match(/(\d{1,2}):(\d{2})/);
     if (m24) {
       const h = parseInt(m24[1], 10);
       const m = parseInt(m24[2], 10);

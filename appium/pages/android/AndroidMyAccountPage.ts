@@ -3,10 +3,11 @@ import { AndroidBasePage, AndroidFlowHooks, WdBrowser, adbTap, getScreenSize } f
 export interface AndroidLoginCredentials {
   email?: string;
   password?: string;
+  navigateToHomeAfterLogin?: boolean;
 }
 
 export class AndroidMyAccountPage extends AndroidBasePage {
-  async preLoginFlow(baseUrl: string, credentials: AndroidLoginCredentials): Promise<void> {
+  async preLoginFlow(baseUrl: string, credentials: AndroidLoginCredentials = {}): Promise<void> {
     void baseUrl;
     console.log('\nPRE-LOGIN FLOW: Signing in existing user...');
     await this.driver.pause(500);
@@ -160,7 +161,43 @@ export class AndroidMyAccountPage extends AndroidBasePage {
       }
     }
 
-    console.log('Pre-login flow completed\n');
+    await this.driver.pause(2000);
+    
+    // Only navigate to Home if requested (skip for myaccount flow which navigates directly to My Account)
+    if (credentials.navigateToHomeAfterLogin !== false) {
+      console.log('Ensuring navigation to Home page after login...');
+      const homeSelectorsAfterLogin = [
+        'android=new UiSelector().text("Home")',
+        'android=new UiSelector().descriptionContains("Home")',
+        '//android.widget.ImageView[contains(@content-desc, "Home")]',
+        '//android.widget.TextView[contains(@text, "Home")]',
+      ];
+
+      let homeFound = false;
+      for (const selector of homeSelectorsAfterLogin) {
+        try {
+          const homeEl = await this.driver.$(selector);
+          if (await homeEl.isDisplayed()) {
+            console.log('  Found Home tab, tapping to navigate home...');
+            await homeEl.click();
+            await this.driver.pause(2000);
+            homeFound = true;
+            break;
+          }
+        } catch {}
+      }
+
+      if (!homeFound) {
+        console.log('  Home tab not found via selectors, trying coordinate tap...');
+        const screenSize = getScreenSize();
+        adbTap(Math.round(screenSize.width * 0.125), Math.round(screenSize.height * 0.95));
+        await this.driver.pause(2000);
+      }
+      
+      console.log('Post-login navigation to Home completed\n');
+    } else {
+      console.log('Skipping Home navigation (myaccount flow)\n');
+    }
   }
 
   async navigateToMyAccount(): Promise<void> {
@@ -245,6 +282,139 @@ export class AndroidMyAccountPage extends AndroidBasePage {
 
     await this.driver.saveScreenshot('./test-results/myaccount_buy_not_found.png');
     throw new Error(`Could not find Buy button for PPV: "${this.ppvName}" in My Account`);
+  }
+
+  async getPPVStatus(ppvName: string): Promise<string> {
+    await this.navigateToMyAccount();
+    await this.driver.pause(2000);
+
+    // Scroll to find the PPV card
+    for (let i = 0; i < 10; i++) {
+      if (await this.isVisible(ppvName, 2000)) break;
+      await this.scrollDown();
+      await this.driver.pause(800);
+    }
+
+    // Check for Purchased / Included status first
+    const statusSelectors = [
+      'android=new UiSelector().textContains("Purchased")',
+      'android=new UiSelector().textContains("Included")',
+      'android=new UiSelector().textContains("Owned")',
+    ];
+    for (const selector of statusSelectors) {
+      try {
+        const el = await this.driver.$(selector);
+        if (await el.isDisplayed()) {
+          const text = await el.getText();
+          if (text) return text.trim();
+        }
+      } catch {}
+    }
+
+    // Check for Buy button (not purchased)
+    const buySelectors = [
+      'android=new UiSelector().textContains("Buy now")',
+      'android=new UiSelector().textContains("Buy Now")',
+      'android=new UiSelector().textContains("Buy")',
+      'android=new UiSelector().textContains("Purchase")',
+    ];
+    for (const selector of buySelectors) {
+      try {
+        const el = await this.driver.$(selector);
+        if (await el.isDisplayed()) {
+          return 'Available';
+        }
+      } catch {}
+    }
+
+    return 'Unknown';
+  }
+
+  async hasPPVImage(ppvName: string): Promise<boolean> {
+    await this.navigateToMyAccount();
+    await this.driver.pause(2000);
+
+    for (let i = 0; i < 10; i++) {
+      if (await this.isVisible(ppvName, 2000)) break;
+      await this.scrollDown();
+      await this.driver.pause(800);
+    }
+
+    // Look for image near the PPV card (ImageView)
+    const imageSelectors = [
+      '//android.widget.ImageView',
+      '//android.widget.ImageButton',
+      '//*[contains(@class, "ImageView")]',
+    ];
+    for (const selector of imageSelectors) {
+      try {
+        const els = await this.driver.$(selector);
+        if (await els.isDisplayed()) return true;
+      } catch {}
+    }
+    return false;
+  }
+
+  async getPPVName(ppvName: string): Promise<string> {
+    await this.navigateToMyAccount();
+    await this.driver.pause(2000);
+
+    for (let i = 0; i < 10; i++) {
+      if (await this.isVisible(ppvName, 2000)) break;
+      await this.scrollDown();
+      await this.driver.pause(800);
+    }
+
+    try {
+      const el = await this.driver.$(`android=new UiSelector().textContains("${ppvName}")`);
+      if (await el.isDisplayed()) {
+        return (await el.getText())?.trim() || ppvName;
+      }
+    } catch {}
+
+    // Fallback: look for any TextView near the top of the PPV card
+    try {
+      const cardText = await this.driver.$('//android.widget.TextView');
+      if (await cardText.isDisplayed()) {
+        return (await cardText.getText())?.trim() || ppvName;
+      }
+    } catch {}
+
+    return ppvName;
+  }
+
+  async getPPVDate(ppvName: string): Promise<string> {
+    await this.navigateToMyAccount();
+    await this.driver.pause(2000);
+
+    for (let i = 0; i < 10; i++) {
+      if (await this.isVisible(ppvName, 2000)) break;
+      await this.scrollDown();
+      await this.driver.pause(800);
+    }
+
+    // Look for date patterns in any TextView (e.g. "Sat 12 Jul", "12 Jul 2026", "HH:MM")
+    try {
+      const textViews = await this.driver.$$('//android.widget.TextView');
+      const allTexts: string[] = [];
+      for (const tv of textViews) {
+        try {
+          const text = await tv.getText();
+          if (text && text.trim()) allTexts.push(text.trim());
+        } catch {}
+      }
+
+      // Match common date/time patterns
+      const dateRe = /\b(\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})\b/i;
+      const timeRe = /(\d{1,2}:\d{2}(\s*[aApP][mM])?)/;
+      const dateMatch = allTexts.find(t => dateRe.test(t));
+      if (dateMatch) return dateMatch;
+
+      const timeMatch = allTexts.find(t => timeRe.test(t));
+      if (timeMatch) return timeMatch;
+    } catch {}
+
+    return 'N/A';
   }
 }
 

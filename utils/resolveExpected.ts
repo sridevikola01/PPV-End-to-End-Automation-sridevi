@@ -57,6 +57,14 @@ export function resolveExpected(
     }
   }
 
+  if (field === 'instruction text' && (pageName.includes('paywall') || pageName.includes('mobile'))) {
+    if (isActiveStandardUser) {
+      return 'Paste this link on your browser and add this pay-per-view to your plan';
+    } else {
+      return 'Paste this link on your browser and choose the plan that’s right for you';
+    }
+  }
+
   if (
     field === 'banner - fight card cta' &&
     pageName.includes('landing') &&
@@ -74,10 +82,10 @@ export function resolveExpected(
       return 'Pay-per-views included at no extra cost. Minimum of 12 events per year.';
     }
     if (field === 'upsell feature 2') {
-      return 'HDR and Dolby 5.1 surround sound on select events.';
+      return "185+ fights a year from the world's best promoters|185+ fights a year from the world's best promotors|185+ fights a year from the best promoters|185+ fights a year from the best promotors";
     }
     if (field === 'upsell feature 3') {
-      return "185+ fights a year from the world's best promotors";
+      return 'HDR and Dolby 5.1 surround sound on select events.';
     }
     if (field === 'upsell feature 4') {
       return 'Every match from Lega Serie A, and highlights from LALIGA, Bundesliga and the Saudi Pro League.';

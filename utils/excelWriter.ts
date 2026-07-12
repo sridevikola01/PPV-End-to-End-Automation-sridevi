@@ -138,6 +138,14 @@ export const writeResults = async (
         .filter((r: any) => pattern.test(String(r.page ?? '')))
         .map((r: any) => toRow(r, includeVariant, includeTier, includeRatePlan));
 
+    // ── Android-specific page mappings ──────────────────────
+    const androidLandingPageRows = byPage(/^(Andriod_Landing_Page|Landing)$/i);
+    const androidHomePageRows = byPage(/^(Andriod_Home_Page|Home Page)$/i);
+    const androidHomeBoxingPageRows = byPage(/^(Andriod_Home_Boxing_Page|Home of Boxing)$/i);
+    const androidSearchPageRows = byPage(/^(Andriod_Search_Page|Search)$/i);
+    const androidSchedulePageRows = byPage(/^(Andriod_Schedule_Page|Schedule)$/i);
+    const androidPaywallRows = byPage(/^(Andriod_Paywall|Mobile Paywall|PPV Banner)$/i);
+
     // ── New user spec pages ───────────────────────────────────
     const scheduleRows     = byPage(/^schedule$/i);
     const landingRows      = byPage(/^landing$/i);
@@ -323,6 +331,20 @@ export const writeResults = async (
       addSheet('PPV Tile',           ppvTileRows,      LANDING_HEADERS);
     if (mobilePaywallRows.length)
       addSheet('Mobile Paywall',     mobilePaywallRows, LANDING_HEADERS);
+
+    // ── Android-specific sheets ──────────────────────────────
+    if (androidLandingPageRows.length)
+      addSheet('Andriod_Landing_Page', androidLandingPageRows, LANDING_HEADERS);
+    if (androidHomePageRows.length)
+      addSheet('Andriod_Home_Page',    androidHomePageRows,    LANDING_HEADERS);
+    if (androidHomeBoxingPageRows.length)
+      addSheet('Andriod_Home_Boxing_Page', androidHomeBoxingPageRows, LANDING_HEADERS);
+    if (androidSearchPageRows.length)
+      addSheet('Andriod_Search_Page',  androidSearchPageRows,  LANDING_HEADERS);
+    if (androidSchedulePageRows.length)
+      addSheet('Andriod_Schedule_Page', androidSchedulePageRows, LANDING_HEADERS);
+    if (androidPaywallRows.length)
+      addSheet('Andriod_Paywall',       androidPaywallRows,      LANDING_HEADERS);
 
     // ── Shared sheets ────────────────────────────────────────
     if (ppvRows.length)

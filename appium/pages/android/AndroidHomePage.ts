@@ -54,6 +54,15 @@ export class AndroidHomePage extends AndroidLandingPage {
     await this.runSurfaceValidation(hooks, 'PPV Banner');
     await this.tapByText(this.ppvName);
     await this.driver.pause(2000);
+
+    const isUltimateUser = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+
+    if (isUltimateUser && isLoginFirst) {
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Tile clicked (generic). Skipping Buy click and returning true.');
+      return true;
+    }
+
     return this.tapBuyCtaWithFallback(['Buy now', 'Buy Now', 'Buy'], { scrollBeforeFallback: false });
   }
 }

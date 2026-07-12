@@ -31,6 +31,21 @@ export const readSheet = (sheetName: string) => {
   return rawData;
 };
 
+const readFirstAvailableSheet = (sheetNames: string[]) => {
+  let lastError: any;
+  for (const sheetName of sheetNames) {
+    try {
+      return {
+        sheetName,
+        data: readSheet(sheetName),
+      };
+    } catch (err: any) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+};
+
 // =========================
 // LANDING DATA (Field | Value)
 // =========================
@@ -381,6 +396,90 @@ export const getHomePageData = (flowName: string) => {
 };
 
 // =========================
+// ANDROID LANDING PAGE DATA
+// =========================
+export const getAndroidLandingPageData = () => {
+  try {
+    const data = readSheet('Andriod_Landing_Page');
+    console.log(`📱 Android Landing Page rows: ${data.length}`);
+    return data;
+  } catch (err: any) {
+    console.warn(`⚠️ Android Landing Page sheet not found: ${err.message}`);
+    return [];
+  }
+};
+
+// =========================
+// ANDROID HOME PAGE DATA
+// =========================
+export const getAndroidHomePageData = () => {
+  try {
+    const data = readSheet('Andriod_Home_Page');
+    console.log(`📱 Android Home Page rows: ${data.length}`);
+    return data;
+  } catch (err: any) {
+    console.warn(`⚠️ Android Home Page sheet not found: ${err.message}`);
+    return [];
+  }
+};
+
+// =========================
+// ANDROID HOME BOXING PAGE DATA
+// =========================
+export const getAndroidHomeBoxingPageData = () => {
+  try {
+    const data = readSheet('Andriod_Home_Boxing_Page');
+    console.log(`📱 Android Home Boxing Page rows: ${data.length}`);
+    return data;
+  } catch (err: any) {
+    console.warn(`⚠️ Android Home Boxing Page sheet not found: ${err.message}`);
+    return [];
+  }
+};
+
+// =========================
+// ANDROID SEARCH PAGE DATA
+// =========================
+export const getAndroidSearchPageData = () => {
+  try {
+    const data = readSheet('Andriod_Search_Page');
+    console.log(`📱 Android Search Page rows: ${data.length}`);
+    return data;
+  } catch (err: any) {
+    console.warn(`⚠️ Android Search Page sheet not found: ${err.message}`);
+    return [];
+  }
+};
+
+// =========================
+// ANDROID SCHEDULE PAGE DATA
+// =========================
+export const getAndroidSchedulePageData = () => {
+  try {
+    const data = readSheet('Andriod_Schedule_Page');
+    console.log(`📱 Android Schedule Page rows: ${data.length}`);
+    return data;
+  } catch (err: any) {
+    console.warn(`⚠️ Android Schedule Page sheet not found: ${err.message}`);
+    return [];
+  }
+};
+
+// =========================
+// ANDROID PAYWALL DATA
+// =========================
+export const getAndroidPaywallData = () => {
+  try {
+    const data = readSheet('Andriod_Paywall');
+    console.log(`📱 Android Paywall rows: ${data.length}`);
+    return data;
+  } catch (err: any) {
+    console.warn(`⚠️ Android Paywall sheet not found: ${err.message}`);
+    return [];
+  }
+};
+
+// =========================
 // STANDALONE PPV PAGE DATA
 // =========================
 export const getStandalonePPVPageData = () => {
@@ -435,7 +534,11 @@ export const getUpsellPaymentData = () => {
 // MOBILE NATIVE PAYWALL PAGE DATA
 // =========================
 export const getMobilePaywallData = () => {
-  const data = readSheet('paywall');
-  console.log(`📊 Mobile Paywall rows: ${data.length}`);
+  const { sheetName, data } = readFirstAvailableSheet([
+    'Andriod_Paywall',
+    'Mobile Paywall',
+    'paywall',
+  ]);
+  console.log(`📊 Mobile Paywall rows: ${data.length} (sheet: ${sheetName})`);
   return data;
 };

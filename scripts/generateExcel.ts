@@ -653,7 +653,7 @@ const upsellPaymentData = [
 const paywallData = [
   { Field: 'Event Name', Expected: '{{MOBILE_BANNER_TITLE}}' },
   { Field: 'Event Date and Time', Expected: '{{MOBILE_PPV_DATE}}' },
-  { Field: 'Category', Expected: 'Matchroom Boxing' },
+  { Field: 'Category', Expected: '{{PPV_PROMOTER}}' },
   { Field: 'Instruction Header', Expected: 'How to watch this and more?' },
   { Field: 'Instruction Text', Expected: 'Paste this link on your browser and choose the plan that’s right for you' },
   { Field: 'Copy Button', Expected: 'Copy' },

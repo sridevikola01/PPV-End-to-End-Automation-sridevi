@@ -1,4 +1,4 @@
-import { AndroidBasePage, AndroidFlowHooks, WdBrowser, adbSwipe, getScreenSize } from './AndroidBasePage';
+import { AndroidBasePage, AndroidFlowHooks, WdBrowser, adbSwipe, adbTap, getScreenSize } from './AndroidBasePage';
 
 export interface AndroidPPVDateParts {
   month: string;
@@ -200,6 +200,22 @@ export class AndroidBoxingPage extends AndroidBasePage {
   }
 
   async tapBuyNowNearPPV(): Promise<boolean> {
+    const isUltimateUser = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+
+    if (isUltimateUser && isLoginFirst) {
+      console.log(`✨ [Ultimate Active User with LOGIN_FIRST=true] Clicking the PPV tile itself for "${this.ppvName}"...`);
+      const ppvEls = await this.driver.$$(`//*[contains(@text, "${this.ppvName}")]`);
+      for (const el of ppvEls) {
+        if (await el.isDisplayed().catch(() => false)) {
+          await el.click();
+          console.log(`  Tapped PPV tile text: "${this.ppvName}"`);
+          return true;
+        }
+      }
+      return false;
+    }
+
     const screen = getScreenSize();
     const cx = Math.round(screen.width / 2);
 
@@ -250,6 +266,17 @@ export class AndroidBoxingPage extends AndroidBasePage {
   }
 
   async openBoxingUpcomingFightsPaywall(hooks: AndroidFlowHooks = {}): Promise<boolean> {
+    // Ensure we're on Home page before navigating to Sports (post-login behavior)
+    const homeTab = await this.driver.$('android=new UiSelector().text("Home")');
+    if (!(await homeTab.isDisplayed().catch(() => false))) {
+      const homeClicked = await this.tapByText('Home', 3000);
+      if (!homeClicked) {
+        const screen = getScreenSize();
+        adbTap(Math.round(screen.width * 0.15), Math.round(screen.height * 0.92));
+      }
+      await this.driver.pause(3000);
+    }
+    
     await this.navigateViaSports();
     console.log(`Searching for "${this.ppvName}" in Upcoming Big Fights...`);
 
@@ -287,6 +314,17 @@ export class AndroidBoxingPage extends AndroidBasePage {
   }
 
   async openBoxingPageBannerPaywall(hooks: AndroidFlowHooks = {}, options: { requireBanner?: boolean } = {}): Promise<boolean> {
+    // Ensure we're on Home page before navigating to Sports (post-login behavior)
+    const homeTab = await this.driver.$('android=new UiSelector().text("Home")');
+    if (!(await homeTab.isDisplayed().catch(() => false))) {
+      const homeClicked = await this.tapByText('Home', 3000);
+      if (!homeClicked) {
+        const screen = getScreenSize();
+        adbTap(Math.round(screen.width * 0.15), Math.round(screen.height * 0.92));
+      }
+      await this.driver.pause(3000);
+    }
+    
     await this.navigateViaSports();
     await this.driver.pause(1500);
 
@@ -334,11 +372,32 @@ export class AndroidBoxingPage extends AndroidBasePage {
     hooks.recordAvailability?.(true, undefined, 'Home of Boxing');
     await this.driver.saveScreenshot('./test-results/android_ppv_banner_found.png');
     await this.runSurfaceValidation(hooks, 'PPV Banner');
+
+    const isUltimateUser = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+
+    if (isUltimateUser && isLoginFirst) {
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV banner verified (boxing). Skipping Buy click and returning true.');
+      return true;
+    }
+
     return this.tapBuyCtaWithFallback();
   }
 
   async openHomeBoxingUpcomingPaywall(eventConfig?: any, hooks: AndroidFlowHooks = {}): Promise<boolean> {
     console.log('Home -> Boxing filter -> Upcoming Fights -> smart scroll -> Buy now');
+    
+    // Ensure we're on Home page before clicking Boxing filter (post-login behavior)
+    const homeTab = await this.driver.$('android=new UiSelector().text("Home")');
+    if (!(await homeTab.isDisplayed().catch(() => false))) {
+      const homeClicked = await this.tapByText('Home', 3000);
+      if (!homeClicked) {
+        const screen = getScreenSize();
+        adbTap(Math.round(screen.width * 0.15), Math.round(screen.height * 0.92));
+      }
+      await this.driver.pause(3000);
+    }
+    
     const dateParts = getPPVDateParts(eventConfig);
     console.log(`  PPV date from config/fallback: ${dateParts.month} ${dateParts.day} (${dateParts.monthShort})`);
 

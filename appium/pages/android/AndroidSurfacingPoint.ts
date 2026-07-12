@@ -24,7 +24,7 @@ export function loadAndroidSurfacingPoints(): AndroidSurfacingPointMap {
   const configPath = path.resolve(__dirname, '../../config/surfacingpoint.json');
   const raw = fs.readFileSync(configPath, 'utf8');
   cachedConfig = JSON.parse(raw);
-  return cachedConfig;
+  return cachedConfig as AndroidSurfacingPointMap;
 }
 
 export function getAndroidSurfacingPoint(source: string): AndroidSurfacingPointConfig {
@@ -40,9 +40,25 @@ export function getAndroidSurfacingPoint(source: string): AndroidSurfacingPointC
 }
 
 export function getAndroidValidationSheet(source: string, surface: AndroidSurface): string {
+  const normalizedSource = (source || '').trim().toLowerCase();
   const config = getAndroidSurfacingPoint(source);
+
+  // Map to Android-specific sheets based on source and surface
+  if (surface === 'PPV Banner') {
+    if (normalizedSource === 'landing-page-banner') return 'Andriod_Landing_Page';
+    if (normalizedSource === 'home-page-banner') return 'Andriod_Home_Page';
+    if (normalizedSource === 'home-boxing-banner') return 'Andriod_Home_Boxing_Page';
+  }
+  if (surface === 'PPV Tile') {
+    if (normalizedSource === 'home-boxing-upcoming' || normalizedSource === 'home-boxing-tile') return 'Andriod_Home_Boxing_Page';
+    if (normalizedSource === 'schedule') return 'Andriod_Schedule_Page';
+    if (normalizedSource === 'search') return 'Andriod_Search_Page';
+    if (normalizedSource === 'home-page-tile' || normalizedSource === 'home-page-dont-miss') return 'Andriod_Home_Page';
+  }
+
   if (config.surface === surface && config.validationSheet) {
     return config.validationSheet;
   }
+  
   return '';
 }

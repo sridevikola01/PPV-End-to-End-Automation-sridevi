@@ -803,22 +803,28 @@ export class MyAccountPage {
     }
 
     const myAccountUrl = `${base}/myaccount`;
-    console.log(`🔗 [Post-Payment] Navigating to: ${myAccountUrl}`);
 
-    // STEP 2: Navigate to My Account
-    try {
-      await this.page.goto(myAccountUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // STEP 2: Navigate to My Account (skip if already there after login redirect)
+    const currentUrlLower = this.page.url().toLowerCase();
+    if (currentUrlLower.includes('myaccount') || currentUrlLower.includes('/account')) {
+      console.log(`✅ [Post-Payment] Already on My Account page — skipping navigation`);
       await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    } catch (e: any) {
-      console.log(`⚠️ [Post-Payment] Navigation to My Account failed: ${e.message}`);
-      results.push({
-        page: 'My Account (Post-Payment)',
-        field: 'PPV Status After Purchase',
-        expected: 'Purchased',
-        actual: `Navigation failed: ${e.message}`,
-        status: 'FAIL',
-      });
-      return;
+    } else {
+      console.log(`🔗 [Post-Payment] Navigating to: ${myAccountUrl}`);
+      try {
+        await this.page.goto(myAccountUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+      } catch (e: any) {
+        console.log(`⚠️ [Post-Payment] Navigation to My Account failed: ${e.message}`);
+        results.push({
+          page: 'My Account (Post-Payment)',
+          field: 'PPV Status After Purchase',
+          expected: 'Purchased',
+          actual: `Navigation failed: ${e.message}`,
+          status: 'FAIL',
+        });
+        return;
+      }
     }
 
     console.log(`✅ [Post-Payment] On My Account: ${this.page.url()}`);
@@ -940,12 +946,307 @@ export class MyAccountPage {
       status: finalStatus,
     });
 
+    // Detailed validations for PPV card contents: PPV Image, PPV Title, PPV Date/Time, and Purchased Text
+    console.log('🔍 [Post-Payment] Extracting detailed PPV card information for validations...');
+    const cardData = await this.page.evaluate((name: string) => {
+      // Helper to check match of name parts
+      const matchesName = (text: string) => {
+        const nameParts = name.toLowerCase().split(/\s+/).filter(part => part.length > 1);
+        return nameParts.every(part => text.toLowerCase().includes(part));
+      };
+
+      // 1. Try finding card containers
+      const cards = document.querySelectorAll('[id*="ppv-card"], [id*="ppv-list"] > div > div, [class*="card" i]');
+      for (const card of cards) {
+        const text = (card as HTMLElement).innerText || '';
+        if (text.length > 300 || text.length < 15) continue;
+        if (!matchesName(text)) continue;
+
+        const img = card.querySelector('img');
+        const imgPresent = img && (img.getAttribute('src') || img.getAttribute('srcset')) ? 'Yes' : 'No';
+
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        let title = '';
+        let dateTimeStr = '';
+        let purchasedText = '';
+
+        for (const line of lines) {
+          if (matchesName(line)) {
+            title = line;
+          } else if (/purchased/i.test(line) || /included/i.test(line)) {
+            purchasedText = line;
+          } else if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(line) || /\d/.test(line)) {
+            dateTimeStr = line;
+          }
+        }
+
+        return {
+          found: true,
+          imagePresent: imgPresent,
+          title: title || lines[0] || '',
+          dateTime: dateTimeStr || lines[1] || '',
+          purchasedText: purchasedText || 'Not found',
+          fullText: text
+        };
+      }
+
+      // 2. Fallback: Search all elements containing name
+      const allEls = document.querySelectorAll('div, li, span');
+      for (const el of allEls) {
+        const text = (el as HTMLElement).innerText || '';
+        if (text.length > 200 || text.length < 15) continue;
+        if (!matchesName(text)) continue;
+
+        const img = el.querySelector('img');
+        const imgPresent = img ? 'Yes' : 'No';
+
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        let title = '';
+        let dateTimeStr = '';
+        let purchasedText = '';
+
+        for (const line of lines) {
+          if (matchesName(line)) {
+            title = line;
+          } else if (/purchased/i.test(line) || /included/i.test(line)) {
+            purchasedText = line;
+          } else if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(line) || /\d/.test(line)) {
+            dateTimeStr = line;
+          }
+        }
+
+        return {
+          found: true,
+          imagePresent: imgPresent,
+          title: title || lines[0] || '',
+          dateTime: dateTimeStr || lines[1] || '',
+          purchasedText: purchasedText || 'Not found',
+          fullText: text
+        };
+      }
+
+      return { found: false };
+    }, ppvName).catch(() => ({ found: false }));
+
+    if (cardData && cardData.found) {
+      console.log('✅ PPV card details found: ', JSON.stringify(cardData));
+
+      // 1. PPV Image Present
+      const imgStatus = cardData.imagePresent === 'Yes' ? 'PASS' : 'FAIL';
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'PPV Image Present',
+        expected: 'Yes',
+        actual: cardData.imagePresent,
+        status: imgStatus,
+      });
+
+      // 2. PPV Title
+      const expectedTitle = eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME || ppvName;
+      const titleStatus = cardData.title.toLowerCase().includes(expectedTitle.toLowerCase()) ? 'PASS' : 'FAIL';
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'PPV Title',
+        expected: expectedTitle,
+        actual: cardData.title,
+        status: titleStatus,
+      });
+
+      // 3. PPV Date & Time
+      const expectedDate = eventData.PPV_DATE || '';
+      const cleanStr = (s: string) => s.replace(/[\u200b\u200c\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const dateStatus = cleanStr(cardData.dateTime).includes(cleanStr(expectedDate)) || cleanStr(expectedDate).includes(cleanStr(cardData.dateTime)) ? 'PASS' : 'FAIL';
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'PPV Date & Time',
+        expected: expectedDate,
+        actual: cardData.dateTime,
+        status: dateStatus,
+      });
+
+      // 4. Purchased Text
+      const purchasedStatus = cardData.purchasedText.toLowerCase().includes('purchased') ? 'PASS' : 'FAIL';
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'Purchased Text',
+        expected: 'Purchased',
+        actual: cardData.purchasedText,
+        status: purchasedStatus,
+      });
+    } else {
+      console.log('⚠️ PPV card details not found in My Account page.');
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'PPV Image Present',
+        expected: 'Yes',
+        actual: 'PPV event card not found',
+        status: 'FAIL',
+      });
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'PPV Title',
+        expected: eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME || ppvName,
+        actual: 'PPV event card not found',
+        status: 'FAIL',
+      });
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'PPV Date & Time',
+        expected: eventData.PPV_DATE || '',
+        actual: 'PPV event card not found',
+        status: 'FAIL',
+      });
+      results.push({
+        page: 'My Account (Post-Payment)',
+        field: 'Purchased Text',
+        expected: 'Purchased',
+        actual: 'PPV event card not found',
+        status: 'FAIL',
+      });
+    }
+
     if (finalStatus === 'PASS') {
       console.log(`✅ [Post-Payment] PPV status confirmed as "${ppvStatus}" — purchase verified!`);
     } else {
       console.log(`❌ [Post-Payment] PPV status is "${ppvStatus}" — expected "Purchased"`);
     }
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // VALIDATE PPV ON CURRENT PAGE (no navigation)
+  // Validates PPV image, title, date/time and purchased text on the page
+  // that is already loaded (e.g. My Account after auto-redirect post-login)
+  // ─────────────────────────────────────────────────────────────────────────
+  async validatePPVOnCurrentPage(
+    ppvName: string,
+    results: any[],
+    eventData: any
+  ): Promise<void> {
+    console.log(`\n🔍 [My Account] Validating PPV card on current page: ${this.page.url()}`);
+
+    // Wait for My Account content to load
+    await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await this.dismissConsentIfPresent();
+
+    await Promise.race([
+      this.page.waitForSelector(
+        'button:has-text("Manage subscription"), button:has-text("Manage"), ' +
+        '[data-testid*="subscription" i], h2, h3',
+        { state: 'visible', timeout: 15000 }
+      ).then(() => true).catch(() => false),
+    ]);
+
+    await this.page.waitForTimeout(1500);
+
+    // Scroll to PPV section
+    console.log('📺 [My Account] Scrolling to PPV section...');
+    const scrolled = await this.page.evaluate(() => {
+      const allEls = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,span,div'));
+      const ppvHeadings = ['pay-per-view', 'pay per view', 'available to buy'];
+      for (const el of allEls) {
+        const text = (el as HTMLElement).innerText?.trim().toLowerCase() || '';
+        if (ppvHeadings.some(h => text === h)) {
+          const rect = el.getBoundingClientRect();
+          const target = Math.max(0, window.scrollY + rect.top - 120);
+          window.scrollTo({ top: target, behavior: 'instant' });
+          return target;
+        }
+      }
+      window.scrollTo({ top: document.body.scrollHeight / 2, behavior: 'instant' });
+      return -1;
+    }).catch(() => -1);
+
+    if (scrolled >= 0) {
+      console.log(`✅ [My Account] Scrolled to PPV section at ${scrolled}px`);
+    } else {
+      console.log('⚠️ [My Account] PPV section heading not found — scrolled to mid-page');
+    }
+
+    await this.page.waitForTimeout(1000);
+
+    // Extract PPV card data
+    const cardData = await this.page.evaluate((name: string) => {
+      const matchesName = (text: string) => {
+        const nameParts = name.toLowerCase().split(/\s+/).filter(part => part.length > 1);
+        return nameParts.every(part => text.toLowerCase().includes(part));
+      };
+
+      // Try card containers first
+      const cards = document.querySelectorAll('[id*="ppv-card"], [id*="ppv-list"] > div > div, [class*="card" i]');
+      for (const card of cards) {
+        const text = (card as HTMLElement).innerText || '';
+        if (text.length > 300 || text.length < 15) continue;
+        if (!matchesName(text)) continue;
+
+        const img = card.querySelector('img');
+        const imgPresent = img && (img.getAttribute('src') || img.getAttribute('srcset')) ? 'Yes' : 'No';
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        let title = '', dateTimeStr = '', purchasedText = '';
+        for (const line of lines) {
+          if (matchesName(line)) title = line;
+          else if (/purchased/i.test(line) || /included/i.test(line)) purchasedText = line;
+          else if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(line) || /\d/.test(line)) dateTimeStr = line;
+        }
+        return { found: true, imagePresent: imgPresent, title: title || lines[0] || '', dateTime: dateTimeStr || lines[1] || '', purchasedText: purchasedText || 'Not found', fullText: text };
+      }
+
+      // Fallback: any element containing the name
+      const allEls = document.querySelectorAll('div, li, span');
+      for (const el of allEls) {
+        const text = (el as HTMLElement).innerText || '';
+        if (text.length > 200 || text.length < 15) continue;
+        if (!matchesName(text)) continue;
+
+        const img = el.querySelector('img');
+        const imgPresent = img ? 'Yes' : 'No';
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        let title = '', dateTimeStr = '', purchasedText = '';
+        for (const line of lines) {
+          if (matchesName(line)) title = line;
+          else if (/purchased/i.test(line) || /included/i.test(line)) purchasedText = line;
+          else if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(line) || /\d/.test(line)) dateTimeStr = line;
+        }
+        return { found: true, imagePresent: imgPresent, title: title || lines[0] || '', dateTime: dateTimeStr || lines[1] || '', purchasedText: purchasedText || 'Not found', fullText: text };
+      }
+
+      return { found: false };
+    }, ppvName).catch(() => ({ found: false }));
+
+    const page = 'My Account';
+
+    if (cardData && cardData.found) {
+      console.log('✅ [My Account] PPV card found:', JSON.stringify(cardData));
+
+      // 1. PPV Image Present
+      results.push({ page, field: 'PPV Image Present', expected: 'Yes', actual: cardData.imagePresent, status: cardData.imagePresent === 'Yes' ? 'PASS' : 'FAIL' });
+
+      // 2. PPV Title
+      const expectedTitle = eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME || ppvName;
+      const titleMatch = cardData.title.toLowerCase().includes(expectedTitle.toLowerCase());
+      results.push({ page, field: 'PPV Title', expected: expectedTitle, actual: cardData.title, status: titleMatch ? 'PASS' : 'FAIL' });
+
+      // 3. PPV Date & Time
+      const expectedDate = eventData.PPV_DATE || '';
+      const cleanStr = (s: string) => s.replace(/[\u200b\u200c\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const dateMatch = cleanStr(cardData.dateTime).includes(cleanStr(expectedDate)) || cleanStr(expectedDate).includes(cleanStr(cardData.dateTime));
+      results.push({ page, field: 'PPV Date & Time', expected: expectedDate, actual: cardData.dateTime, status: dateMatch ? 'PASS' : 'FAIL' });
+
+      // 4. Purchased Text
+      const purchasedMatch = cardData.purchasedText.toLowerCase().includes('purchased');
+      results.push({ page, field: 'Purchased Text', expected: 'Purchased', actual: cardData.purchasedText, status: purchasedMatch ? 'PASS' : 'FAIL' });
+
+    } else {
+      console.log('⚠️ [My Account] PPV card not found on current page');
+      const expectedTitle = eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME || ppvName;
+      const expectedDate = eventData.PPV_DATE || '';
+      results.push({ page, field: 'PPV Image Present',  expected: 'Yes',         actual: 'PPV event card not found', status: 'FAIL' });
+      results.push({ page, field: 'PPV Title',          expected: expectedTitle,  actual: 'PPV event card not found', status: 'FAIL' });
+      results.push({ page, field: 'PPV Date & Time',    expected: expectedDate,   actual: 'PPV event card not found', status: 'FAIL' });
+      results.push({ page, field: 'Purchased Text',     expected: 'Purchased',    actual: 'PPV event card not found', status: 'FAIL' });
+    }
+  }
+
+
 
   // ─────────────────────────────
   // HANDLE SUBSCRIBE TO BUY MODAL

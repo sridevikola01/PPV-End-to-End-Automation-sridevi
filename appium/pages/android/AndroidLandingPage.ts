@@ -14,6 +14,8 @@ export interface AndroidBannerFlowOptions {
   validateSurface?: AndroidPPVSurface;
   immediatePaywall?: boolean;
   recordPage?: string;
+  ensureBannerStillVisibleBeforeBuy?: boolean;
+  waitForBannerImageBeforeBuy?: boolean;
 }
 
 export class AndroidLandingPage extends AndroidBasePage {
@@ -35,8 +37,31 @@ export class AndroidLandingPage extends AndroidBasePage {
     console.log(`  Verified banner title: "${this.ppvName}"`);
     await this.driver.saveScreenshot(options.foundScreenshot);
 
+    if (options.waitForBannerImageBeforeBuy) {
+      await this.waitForBannerImageBeforeBuy();
+    }
+
     if (options.validateSurface) {
       await this.runSurfaceValidation(hooks, options.validateSurface);
+    }
+
+    if (options.ensureBannerStillVisibleBeforeBuy) {
+      const stillOnPPVBanner = await this.findBannerOnCurrentPage(this.ppvName, {
+        horizontalSwipes: 6,
+        verticalScrolls: 0,
+      });
+      if (!stillOnPPVBanner) {
+        await this.driver.saveScreenshot(options.buyMissingScreenshot);
+        throw new Error(`PPV banner "${this.ppvName}" moved before Buy CTA tap. See ${options.buyMissingScreenshot}`);
+      }
+    }
+
+    const isUltimateUser = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+
+    if (isUltimateUser && isLoginFirst) {
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV banner verified. Skipping Buy click and returning true.');
+      return true;
     }
 
     console.log('  Clicking "Buy now" on the PPV banner...');
@@ -54,6 +79,34 @@ export class AndroidLandingPage extends AndroidBasePage {
     return true;
   }
 
+  private async waitForBannerImageBeforeBuy(timeoutMs = 10000): Promise<void> {
+    console.log('  Waiting for landing banner image before Buy Now...');
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const source = await this.driver.getPageSource().catch(() => '');
+      if (this.hasBannerImage(source)) {
+        console.log(`  ✅ Landing banner image detected after ${Date.now() - startedAt}ms`);
+        return;
+      }
+      await this.driver.pause(1000);
+    }
+
+    console.log(`  ⚠️ Landing banner image was not detected within ${timeoutMs}ms; running validation with current UI state.`);
+  }
+
+  private hasBannerImage(pageSource: string): boolean {
+    return (
+      pageSource.includes('resource-id="com.dazn:id/search_image"') ||
+      pageSource.includes('content-desc="Search result image"') ||
+      pageSource.includes('resource-id="com.dazn:id/image"') ||
+      /resource-id="[^"]*(image|poster|thumbnail|hero|banner)[^"]*"/i.test(pageSource) ||
+      /content-desc="[^"]*(image|poster|thumbnail|hero|banner)[^"]*"/i.test(pageSource) ||
+      /android\.widget\.ImageView[^>]*text=""[^>]*content-desc=""/.test(pageSource) ||
+      /class="android\.view\.View"[^>]*text=""[^>]*content-desc=""[^>]*bounds="\[\d+,\d+\]\[\d+,\d+\]"/.test(pageSource)
+    );
+  }
+
   async openLandingBannerPaywall(hooks: AndroidFlowHooks = {}): Promise<boolean> {
     return this.openBannerPaywall({
       label: 'Landing Page',
@@ -64,6 +117,8 @@ export class AndroidLandingPage extends AndroidBasePage {
       validateSurface: 'PPV Banner',
       immediatePaywall: true,
       recordPage: 'Landing',
+      ensureBannerStillVisibleBeforeBuy: true,
+      waitForBannerImageBeforeBuy: true,
     }, hooks);
   }
 }

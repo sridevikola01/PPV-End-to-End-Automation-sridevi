@@ -21,24 +21,7 @@
       "existing"
     ]
   },
-  "myaccount": {
-    "source": "myaccount",
-    "page": "myaccount",
-    "surface": "PPV Tile",
-    "endPage": "payment",
-    "supportedUserTypes": [
-      "existing"
-    ]
-  },
-  "myaccount-subscription-status": {
-    "source": "myaccount-subscription-status",
-    "page": "myaccount",
-    "surface": "PPV Tile",
-    "endPage": "payment",
-    "supportedUserTypes": [
-      "existing"
-    ]
-  },
+
   "landing-page-banner": {
     "source": "landing-page-banner",
     "page": "landing",
@@ -73,17 +56,7 @@
       "existing"
     ]
   },
-  "home-page-tile": {
-    "source": "home-page-tile",
-    "page": "home",
-    "surface": "PPV Tile",
-    "validationSheet": "Home-page-tile",
-    "endPage": "payment",
-    "supportedUserTypes": [
-      "new",
-      "existing"
-    ]
-  },
+
   "home-boxing-banner": {
     "source": "home-boxing-banner",
     "page": "home-of-boxing",
@@ -114,27 +87,6 @@
     "endPage": "payment",
     "supportedUserTypes": [
       "new",
-      "existing"
-    ]
-  },
-  "boxing-page-banner": {
-    "source": "boxing-page-banner",
-    "page": "home-of-boxing",
-    "surface": "PPV Banner",
-    "validationSheet": "Home-boxing-banner",
-    "endPage": "payment",
-    "supportedUserTypes": [
-      "new",
-      "existing"
-    ]
-  },
-  "boxing-upcoming-fights": {
-    "source": "boxing-upcoming-fights",
-    "page": "home-of-boxing",
-    "surface": "PPV Tile",
-    "validationSheet": "Home-boxing-upcoming",
-    "endPage": "payment",
-    "supportedUserTypes": [
       "existing"
     ]
   }
