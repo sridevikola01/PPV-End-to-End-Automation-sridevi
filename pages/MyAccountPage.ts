@@ -803,11 +803,12 @@ export class MyAccountPage {
     }
 
     const myAccountUrl = `${base}/myaccount`;
+    const isMobileWeb = String(eventData?.MOBILE_WEB_HANDOFF || '').toLowerCase() === 'true';
 
-    // STEP 2: Navigate to My Account (skip if already there after login redirect)
+    // STEP 2: Navigate to My Account (skip if already there after login redirect in mobile handoff flow)
     const currentUrlLower = this.page.url().toLowerCase();
-    if (currentUrlLower.includes('myaccount') || currentUrlLower.includes('/account')) {
-      console.log(`✅ [Post-Payment] Already on My Account page — skipping navigation`);
+    if (isMobileWeb && (currentUrlLower.includes('myaccount') || currentUrlLower.includes('/account'))) {
+      console.log(`✅ [Post-Payment] Already on My Account page (Mobile Handoff) — skipping navigation`);
       await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     } else {
       console.log(`🔗 [Post-Payment] Navigating to: ${myAccountUrl}`);
