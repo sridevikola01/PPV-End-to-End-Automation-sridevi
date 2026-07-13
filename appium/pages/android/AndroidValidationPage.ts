@@ -680,7 +680,7 @@ export class AndroidValidationPage extends AndroidBasePage {
 
         if (isUltimate && isLoginFirst) {
           if (surface === 'PPV Banner' && (fieldLower.includes('buy now cta') || fieldLower === 'buy now cta' || fieldLower.includes('buy now button') || fieldLower === 'buy now')) {
-            expectedValue = 'Set Reminder';
+            expectedValue = 'N/A';
           } else if (surface === 'PPV Tile' && (source === 'search' || source === 'schedule') && fieldLower === 'lock icon present') {
             expectedValue = 'No';
           } else if (surface === 'PPV Tile' && source === 'home-boxing-upcoming' && (fieldLower.includes('buy now') || fieldLower === 'buy now button')) {
