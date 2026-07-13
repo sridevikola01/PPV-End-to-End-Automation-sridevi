@@ -1015,8 +1015,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         }
         const page = existingPages[0] ?? await context.newPage();
 
-        console.log('Bringing Chrome browser UI to the foreground...');
-        await device.shell(`am start -n ${MOBILE_BROWSER_PACKAGE}/com.google.android.apps.chrome.Main`);
+        // Bringing Chrome browser UI to the foreground is handled automatically by device.launchBrowser
         await sleep(1500);
 
         page.on('console', (msg: any) => {

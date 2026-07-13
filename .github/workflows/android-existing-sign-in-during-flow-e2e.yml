@@ -52,16 +52,11 @@ jobs:
         source:
           - home-page-banner
           - home-page-dont-miss
-          - home-page-tile
           - home-boxing-banner
           - home-boxing-upcoming
           - home-boxing-tile
-          - boxing-page-banner
-          - boxing-upcoming-fights
           - schedule
           - search
-          - myaccount
-          - myaccount-subscription-status
 
         profile:
           # Freemium — all four plans

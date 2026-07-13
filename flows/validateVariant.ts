@@ -292,6 +292,27 @@ export const validateVariant = async (
       return null;
     }
 
+    // Skip mobile-only validations on web execution
+    const isMobileWeb = String(eventData.MOBILE_WEB_HANDOFF || '').toLowerCase() === 'true';
+    if (!isMobileWeb) {
+      const mobileFields = new Set([
+        'bell icon present',
+        'three dots icon present',
+        'day',
+        'month',
+        'date',
+        'time'
+      ]);
+      const isMobileOnlyField = mobileFields.has(fieldLowerNormalized);
+      const expectedRaw = String(rule.Expected ?? rule.Value ?? '');
+      const isMobilePlaceholder = expectedRaw.includes('{{MOBILE_') || expectedRaw.includes('{{mobile_');
+
+      if (isMobileOnlyField || isMobilePlaceholder) {
+        console.log(`  ⏭️  Skipping mobile-only field validation on web: "${field}"`);
+        return null;
+      }
+    }
+
     // ── Skip rate plan rows that don't match current rate plan ───
     const rowRatePlan = (rule['Rate Plan'] || '').trim().toLowerCase();
     if (
