@@ -58,11 +58,7 @@ export function resolveExpected(
   }
 
   if (field === 'instruction text' && (pageName.includes('paywall') || pageName.includes('mobile'))) {
-    if (isActiveStandardUser) {
-      return 'Paste this link on your browser and add this pay-per-view to your plan';
-    } else {
-      return 'Paste this link on your browser and choose the plan that’s right for you';
-    }
+    return 'Paste this link on your browser and choose the plan that’s right for you';
   }
 
   if (

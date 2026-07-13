@@ -378,7 +378,9 @@ export class AndroidValidationPage extends AndroidBasePage {
                       const txt = await el.getText().catch(() => '');
                       if (txt && txt.trim()) {
                         const tc = txt.trim().toLowerCase();
-                        if (tc === expLower || tc.includes(expLower) || expLower.includes(tc.substring(0, 20))) {
+                        const cleanActual = tc.replace(/[\u2018\u2019\u201a\u201b]/g, "'").trim();
+                        const cleanExpected = expLower.replace(/[\u2018\u2019\u201a\u201b]/g, "'").trim();
+                        if (cleanActual === cleanExpected || cleanActual.includes(cleanExpected) || cleanExpected.includes(cleanActual)) {
                           matched = txt.trim();
                           break;
                         }
