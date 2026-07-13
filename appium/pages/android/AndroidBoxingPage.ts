@@ -328,7 +328,7 @@ export class AndroidBoxingPage extends AndroidBasePage {
     await this.navigateViaSports();
     await this.driver.pause(1500);
 
-    const found = await this.findPPVBanner(this.ppvName);
+    const found = await this.findBannerOnCurrentPage(this.ppvName);
     if (!found && options.requireBanner) {
       const shot = hooks.saveScreenshot
         ? await hooks.saveScreenshot('./test-results/android_boxing_page_ppv_banner_not_found.png')
@@ -362,11 +362,7 @@ export class AndroidBoxingPage extends AndroidBasePage {
     await this.clickHomeBoxingFilter();
     await this.driver.saveScreenshot('./test-results/android_boxing_page.png');
 
-    let found = await this.findPPVBanner(this.ppvName);
-    for (let i = 0; i < 8 && !found; i++) {
-      await this.scrollDown();
-      found = await this.isVisible(this.ppvName, 1500);
-    }
+    const found = await this.findBannerOnCurrentPage(this.ppvName);
 
     if (!found) {
       const shot = hooks.saveScreenshot
