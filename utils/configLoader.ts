@@ -63,7 +63,7 @@ function findConfig(dir: string, filename: string): string | null {
 }
 
 export function loadEventConfig(eventConfigOrKey?: string, planKeyOverride?: string): Record<string, any> {
-  const configSource = process.env.PPV_CONFIG || process.env.PPV_EVENT || eventConfigOrKey || 'aj_joshua_prenga.json';
+  const configSource = process.env.PPV_CONFIG || process.env.PPV_EVENT || eventConfigOrKey || 'ppv_t_joshua_prenga.json';
   
   let filePath: string | null = null;
   
@@ -95,7 +95,9 @@ export function loadEventConfig(eventConfigOrKey?: string, planKeyOverride?: str
 
   // Load plan data if needed
   const planKey = planKeyOverride || process.env.PLAN || 'standard_monthly';
-  const configDir = path.resolve(process.cwd(), 'config');
+  const configDir = fs.existsSync(path.resolve(process.cwd(), 'config/DaznPlan.json'))
+    ? path.resolve(process.cwd(), 'config')
+    : path.resolve(__dirname, '..', 'config');
   const plansPath = path.join(configDir, 'DaznPlan.json');
   let planData: any = {};
 
@@ -105,6 +107,20 @@ export function loadEventConfig(eventConfigOrKey?: string, planKeyOverride?: str
       planData = plans[planKey] || {};
     } catch (err: any) {
       console.warn(`⚠️ Failed to parse DaznPlan.json:`, err.message);
+    }
+  }
+
+  // Validate that the selected plan supports the target region
+  const region = process.env.DAZN_REGION || 'GB';
+  if (planData.regions && Object.keys(planData.regions).length > 0) {
+    const planRegions = Object.keys(planData.regions);
+    if (!planRegions.includes(region)) {
+      const planDisplayName = `${planData.TIER || 'unknown'} ${planData.RATE_PLAN || planKey}`.trim();
+      throw new Error(
+        `❌ No "${planDisplayName}" plan available for region "${region}".\n` +
+        `   Available regions for this plan: ${planRegions.join(', ')}\n` +
+        `   Please choose a different plan or region.`
+      );
     }
   }
 
