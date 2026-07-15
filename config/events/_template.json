@@ -6,6 +6,8 @@
   "PPV_DISPLAY_NAME": "Fighter A vs. Fighter B",
   "SPORT": "Boxing",
   "PPV_TYPE": "normal",
+  "HAS_BUNDLE": false,
+  "HAS_DEFAULT_SIGNUP_PPV": false,
 
   "_PPV_TYPE_options": "normal = standard PPV | standalone = non-boxing standalone | upsell = cross-PPV purchase flow",
   "_note_plan_prices": "Do NOT add plan prices here (MONTHLY_PRICE, ANNUAL_PRICE, OFFER_TYPE, etc.) — they come from DaznPlan.json",

@@ -16,6 +16,16 @@ export class MyAccountPage {
     const myAccountUrl = `${baseUrl.replace(/\/$/, '')}/myaccount`;
     await this.page.goto(myAccountUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
+
+    if (!this.isOnMyAccountPage()) {
+      const actualUrl = this.page.url();
+      const message =
+        `❌ [My Account] Navigation verification failed: expected My Account after navigating to "${myAccountUrl}", ` +
+        `but landed on "${actualUrl}". PPV status cannot be verified.`;
+      console.error(message);
+      throw new Error(message);
+    }
+
     await handleCookies(this.page, 8000);
     await this.scrollToPPVSection();
 
@@ -796,8 +806,8 @@ export class MyAccountPage {
       if (region === 'UAE') region = 'AE';
       const domain =
         env === 'prod' ? 'www.dazn.com' :
-        env === 'beta' ? 'beta.dazn.com' :
-        'stag.dazn.com';
+          env === 'beta' ? 'beta.dazn.com' :
+            'stag.dazn.com';
       base = `https://${domain}/en-${region}`;
       console.log(`🔗 [Post-Payment] Using fallback base URL: ${base}`);
     }
@@ -805,16 +815,16 @@ export class MyAccountPage {
     const myAccountUrl = `${base}/myaccount`;
     const isMobileWeb = String(eventData?.MOBILE_WEB_HANDOFF || '').toLowerCase() === 'true';
 
-    // STEP 2: Navigate to My Account (skip if already there after login redirect in mobile handoff flow)
+    // STEP 2: Skip navigation only when a mobile handoff has already redirected to My Account.
     const currentUrlLower = this.page.url().toLowerCase();
     if (isMobileWeb && (currentUrlLower.includes('myaccount') || currentUrlLower.includes('/account'))) {
-      console.log(`✅ [Post-Payment] Already on My Account page (Mobile Handoff) — skipping navigation`);
-      await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+      console.log('✅ [Post-Payment] Already on My Account page (Mobile Handoff) — skipping navigation');
+      await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
     } else {
       console.log(`🔗 [Post-Payment] Navigating to: ${myAccountUrl}`);
       try {
         await this.page.goto(myAccountUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
       } catch (e: any) {
         console.log(`⚠️ [Post-Payment] Navigation to My Account failed: ${e.message}`);
         results.push({
@@ -905,14 +915,14 @@ export class MyAccountPage {
 
       if (isExploreVisible) {
         console.log('🖱️ [Post-Payment] Clicking "Explore more PPV events" link...');
-        await exploreBtn.scrollIntoViewIfNeeded().catch(() => {});
+        await exploreBtn.scrollIntoViewIfNeeded().catch(() => { });
         await exploreBtn.click({ force: true });
 
-        await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+        await this.page.waitForLoadState('domcontentloaded').catch(() => { });
         await this.page.waitForSelector(
           '#addons-list-card, article, [class*="card" i], button:has-text("Buy now"), text=/Purchased/i',
           { state: 'visible', timeout: 10000 }
-        ).catch(() => {});
+        ).catch(() => { });
 
         // Scroll and search on listing page
         let lastScrollY = -1;
@@ -921,7 +931,7 @@ export class MyAccountPage {
           ppvStatus = await this.isPPVPurchased(ppvName);
           if (ppvStatus !== 'N/A') break;
           lastScrollY = currentScrollY;
-          await this.page.evaluate(() => window.scrollBy(0, 600)).catch(() => {});
+          await this.page.evaluate(() => window.scrollBy(0, 600)).catch(() => { });
           await this.page.waitForTimeout(500);
           currentScrollY = await this.page.evaluate(() => window.scrollY).catch(() => 0);
         }
@@ -1390,15 +1400,79 @@ export class MyAccountPage {
     // Step 1: Dismiss consent
     await this.dismissConsentIfPresent();
 
-    // Step 2: Locate the appropriate CTA button
-    let ctaBtn: Locator;
-    if (userStateKey === 'frozen') {
-      ctaBtn = this.page.locator('button:has-text("Resubscribe")').first();
-    } else if (userStateKey === 'freemium') {
-      ctaBtn = this.page.locator('button:has-text("Upgrade now")').first();
-    } else {
-      // Fallback/generic
-      ctaBtn = this.page.locator('button:has-text("Upgrade now"), button:has-text("Resubscribe")').first();
+    // Step 2: Move away from the PPV list. The page can also render an
+    // Upgrade CTA in the sticky header, so the subscription panel needs to be
+    // brought back into view before choosing a candidate.
+    await this.page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' })).catch(() => { });
+    await this.page.waitForTimeout(300);
+
+    const buttonText = userStateKey === 'frozen' ? 'Resubscribe' : 'Upgrade now';
+    const buttonRegex = userStateKey === 'frozen' ? /^resubscribe$/i : /^upgrade now$/i;
+    const controls = this.page
+      .locator('button, a, [role="button"]')
+      .filter({ hasText: buttonRegex });
+
+    await controls.first().waitFor({ state: 'visible', timeout: 10000 }).catch(() => { });
+
+    const count = await controls.count().catch(() => 0);
+    const candidates: Array<{ locator: Locator; score: number; description: string }> = [];
+
+    for (let i = 0; i < count; i++) {
+      const candidate = controls.nth(i);
+      if (!await candidate.isVisible({ timeout: 500 }).catch(() => false)) continue;
+
+      const box = await candidate.boundingBox().catch(() => null);
+      if (!box || box.width === 0 || box.height === 0) continue;
+
+      const meta = await candidate.evaluate((el) => {
+        const element = el as HTMLElement;
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        const text = (element.innerText || element.textContent || '').trim();
+        const inHeader = !!element.closest('header, nav, [role="banner"]');
+        const fixedOrSticky = style.position === 'fixed' || style.position === 'sticky';
+
+        let ancestor: HTMLElement | null = element;
+        const textParts: string[] = [];
+        for (let depth = 0; ancestor && depth < 5; depth++) {
+          textParts.push((ancestor.innerText || '').trim());
+          ancestor = ancestor.parentElement;
+        }
+
+        return {
+          text,
+          top: rect.top,
+          left: rect.left,
+          inHeader,
+          fixedOrSticky,
+          context: textParts.join(' ').toLowerCase(),
+        };
+      });
+
+      let score = 0;
+      if (buttonRegex.test(meta.text)) score += 50;
+      if (meta.context.includes('current subscription')) score += 40;
+      if (meta.context.includes('subscription status')) score += 35;
+      if (meta.context.includes('my subscription')) score += 30;
+      if (meta.context.includes('dazn free')) score += 25;
+      if (meta.context.includes('dazn standard') || meta.context.includes('dazn ultimate')) score += 10;
+      if (meta.context.includes('pay-per-view') || meta.context.includes('buy now')) score -= 15;
+      if (meta.inHeader || meta.fixedOrSticky) score -= 100;
+      if (meta.top < 90 && !meta.context.includes('subscription')) score -= 40;
+
+      candidates.push({
+        locator: candidate,
+        score,
+        description: `text="${meta.text}" top=${Math.round(meta.top)} left=${Math.round(meta.left)} header=${meta.inHeader} fixed=${meta.fixedOrSticky} score=${score}`,
+      });
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+    console.log(`🔎 Subscription status CTA candidates: ${candidates.map(c => c.description).join(' | ') || 'none'}`);
+
+    const ctaBtn = candidates[0]?.locator;
+    if (!ctaBtn || candidates[0].score < 0) {
+      throw new Error(`❌ Subscription status CTA "${buttonText}" not found in My Account subscription panel for user state: ${userStateKey}`);
     }
 
     await ctaBtn.scrollIntoViewIfNeeded();
@@ -1408,7 +1482,6 @@ export class MyAccountPage {
     await this.dismissConsentIfPresent();
     await this.page.waitForTimeout(150);
 
-    // Step 4: Validate interactable
     const box = await ctaBtn.boundingBox();
     if (!box || box.width === 0 || box.height === 0) {
       throw new Error(`❌ Subscription status CTA not interactable for user state: ${userStateKey}`);
@@ -1416,13 +1489,31 @@ export class MyAccountPage {
 
     const cx = Math.round(box.x + box.width / 2);
     const cy = Math.round(box.y + box.height / 2);
+    const beforeUrl = this.page.url();
+    const beforeBody = await this.page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
     console.log(`🖱️ Click Subscription Status CTA at x=${cx} y=${cy}`);
 
-    // Step 5: Mouse click
-    await this.page.mouse.move(cx, cy);
-    await this.page.waitForTimeout(100);
-    await this.page.mouse.click(cx, cy);
+    await Promise.all([
+      this.page.waitForURL((url) => url.toString() !== beforeUrl, { timeout: 15000 }).catch(() => null),
+      ctaBtn.click({ timeout: 10000 }),
+    ]);
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
+    await this.page.waitForTimeout(1000);
 
-    console.log(`✅ Clicked subscription status CTA successfully`);
+    const afterUrl = this.page.url();
+    const afterBody = await this.page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+    const reachedSignup =
+      /\/signup|tierplans|plandetails|personaldetails|emaildetails|payment/i.test(afterUrl) ||
+      /choose a plan|choose your plan|email address|create an account|payment/i.test(afterBody);
+
+    if (afterUrl === beforeUrl && afterBody === beforeBody) {
+      throw new Error(`❌ Subscription status CTA click had no effect. Still on: ${afterUrl}`);
+    }
+
+    if (!reachedSignup && afterUrl.toLowerCase().includes('/myaccount')) {
+      throw new Error(`❌ Subscription status CTA did not navigate away from My Account. URL: ${afterUrl}`);
+    }
+
+    console.log(`✅ Clicked subscription status CTA successfully. Landed on: ${afterUrl}`);
   }
 }

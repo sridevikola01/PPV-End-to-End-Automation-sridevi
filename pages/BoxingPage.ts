@@ -757,7 +757,11 @@ export class BoxingPage extends LandingPage {
           text.includes('to watch your pay-per-view') ||
           text.includes('just the fight')
         );
-      return onPayment || ppvSelectionReady;
+      // Active Ultimate users can be routed to My Account after using a Boxing
+      // PPV CTA. Treat that as a settled route so the caller can verify the PPV
+      // entitlement there instead of waiting for a PPV purchase page.
+      const onMyAccount = href.includes('/myaccount');
+      return onPayment || ppvSelectionReady || onMyAccount;
     }, { timeout: 12000 }).catch(() => {
       console.log('⚠️ [Boxing CTA] Route did not fully settle before detection; continuing with current page state.');
     });

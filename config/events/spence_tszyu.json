@@ -4,8 +4,10 @@
   "PPV_DISPLAY_NAME": "Spence Jr. vs. Tszyu",
   "SPORT": "Boxing",
   "PPV_TYPE": "normal",
+  "HAS_BUNDLE": false,
+  "HAS_DEFAULT_SIGNUP_PPV": false,
   "global": {
-    "PPV_PROMOTER": "Matchroom Boxing",
+    "PPV_PROMOTER": "PBC / No Limit",
     "PPV_ENTITLEMENT_ID": "ppv_t_spencejr_tszyu",
     "PPV_DESCRIPTION": "Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.",
     "PPV_UTC_DATE": "2026-07-26T03:00:00Z",
@@ -34,6 +36,7 @@
       "TODAY_YOU_PAY_PRICE": "24.99",
       "UPSELL_PRICE_LENGTH": "/month for 12 months",
       "PPV1_UPSELL_TILE_DATE": "",
+      "HOME_BOXING_UPCOMING_TIME": "4:00AM",
       "offers": []
     },
     "US": {
@@ -44,6 +47,7 @@
       "UPSELL_CROSSED_PRICE": "",
       "UPSELL_PRICE_LENGTH": "/month for 12 months",
       "PPV1_UPSELL_TILE_DATE": "",
+      "HOME_BOXING_UPCOMING_TIME": "4:00AM",
       "offers": []
     },
     "AU": {
@@ -54,6 +58,7 @@
       "UPSELL_CROSSED_PRICE": "N/A",
       "UPSELL_PRICE_LENGTH": "/month for 12 months",
       "PPV1_UPSELL_TILE_DATE": "",
+      "HOME_BOXING_UPCOMING_TIME": "4:00AM",
       "offers": []
     },
     "AE": {
@@ -64,6 +69,7 @@
       "UPSELL_CROSSED_PRICE": "N/A",
       "UPSELL_PRICE_LENGTH": "/month for 12 months",
       "PPV1_UPSELL_TILE_DATE": "",
+      "HOME_BOXING_UPCOMING_TIME": "4:00AM",
       "offers": []
     }
   },

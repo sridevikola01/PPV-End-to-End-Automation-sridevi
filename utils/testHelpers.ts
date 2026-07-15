@@ -382,10 +382,56 @@ export async function pollForHomePagePopup(
 }
 
 // ─────────────────────────────────────────────────────────────────
+// WAIT FOR HOME POPUP AUTH COMPLETION
+// Used after signup Continue / password sign-in so the next step does not
+// replace the URL while DAZN is still completing authentication. For new
+// users DAZN can finish signup on TierPlans instead of /home.
+// ─────────────────────────────────────────────────────────────────
+export async function waitForHomePageAuthRedirect(
+  page: any,
+  label: string = 'Home Page Popup auth',
+  timeoutMs: number = 60000
+): Promise<'home' | 'tier-plans'> {
+  const beforeUrl = page.url();
+  console.log(`⏳ [${label}] Waiting for signup/login completion from: ${beforeUrl}`);
+
+  const completedOn = await page.waitForURL(
+    (url: URL) => {
+      const href = url.toString();
+      const lower = href.toLowerCase();
+      return /\/home(?:[/?#]|$)/i.test(href) ||
+        (lower.includes('/signup') &&
+          (lower.includes('page=tierplans') || lower.includes('page=plandetails')));
+    },
+    { timeout: timeoutMs }
+  ).then(() => {
+    const lower = page.url().toLowerCase();
+    return lower.includes('page=tierplans') || lower.includes('page=plandetails')
+      ? 'tier-plans'
+      : 'home';
+  }).catch(() => null);
+
+  if (!completedOn) {
+    const currentUrl = page.url();
+    const bodyText = await page.locator('body').innerText({ timeout: 2000 }).catch(() => '');
+    throw new Error(
+      `❌ [${label}] Auth action did not complete before timeout.\n` +
+      `Started at: ${beforeUrl}\n` +
+      `Current URL: ${currentUrl}\n` +
+      `Page text: ${bodyText.slice(0, 1200)}`
+    );
+  }
+
+  await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
+  console.log(`✅ [${label}] Signup/login completed on ${completedOn}: ${page.url()}`);
+  return completedOn;
+}
+
+// ─────────────────────────────────────────────────────────────────
 // LOGOUT HELPER FOR HOME PAGE POPUP RETRY
 // Logs out the current user from the DAZN home page.
-// Tries the user menu → Log out flow, falls back to direct
-// navigation to the sign-out URL.
+// Uses the profile menu → Sign Out → Log out confirmation flow.
 // ─────────────────────────────────────────────────────────────────
 export async function logoutForPopupRetry(
   page: any,
@@ -393,57 +439,91 @@ export async function logoutForPopupRetry(
 ): Promise<void> {
   console.log('🔓 [Home Page Popup] Logging out for retry...');
 
-  try {
-    // Try clicking user menu / avatar first
-    const userMenuSelectors = [
-      '[data-test-id*="user-menu" i]',
-      '[data-test-id*="profile" i]',
-      '[data-test-id*="avatar" i]',
-      '[aria-label*="account" i]',
-      '[aria-label*="profile" i]',
-      '[class*="user-menu" i]',
-      '[class*="avatar" i]',
-    ];
+  if (!/\/home/i.test(page.url())) {
+    await page.goto(`${baseUrl}/home`, { waitUntil: 'domcontentloaded' }).catch(() => { });
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
+  }
 
-    let menuOpened = false;
-    for (const sel of userMenuSelectors) {
-      const el = page.locator(sel).first();
-      if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await el.click({ force: true });
-        await page.waitForTimeout(1000);
+  const profileCandidates = [
+    page.getByRole('button').filter({ hasText: /^[A-Z]$/ }).first(),
+    page.locator('button').filter({ hasText: /^[A-Z]$/ }).first(),
+    page.locator('[aria-haspopup="menu"]').first(),
+    page.locator('[data-test-id*="user-menu" i], [data-test-id*="profile" i], [data-test-id*="avatar" i]').first(),
+    page.locator('[aria-label*="account" i], [aria-label*="profile" i]').first(),
+    page.locator('[class*="user-menu" i], [class*="avatar" i], [class*="profile" i]').first(),
+  ];
+
+  let menuOpened = false;
+  for (const candidate of profileCandidates) {
+    if (await candidate.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await candidate.click({ force: true });
+      await page.waitForTimeout(800);
+      const signOutVisible = await page.getByRole('menuitem', { name: /sign out|log out/i })
+        .first()
+        .isVisible({ timeout: 1500 })
+        .catch(() => false);
+      const fallbackVisible = await page.locator(
+        'button:has-text("Sign Out"), button:has-text("Sign out"), button:has-text("Log out"), ' +
+        'a:has-text("Sign Out"), a:has-text("Sign out"), a:has-text("Log out"), ' +
+        '[role="menuitem"]:has-text("Sign Out"), [role="menuitem"]:has-text("Sign out"), [role="menuitem"]:has-text("Log out")'
+      ).first().isVisible({ timeout: 500 }).catch(() => false);
+      if (signOutVisible || fallbackVisible) {
         menuOpened = true;
-        console.log(`✅ [Home Page Popup] Opened user menu via: ${sel}`);
+        console.log('✅ [Home Page Popup] Opened profile menu for logout');
         break;
       }
     }
+  }
 
-    if (menuOpened) {
-      // Click Log out inside the menu
-      const logoutBtn = page.locator(
-        'button:has-text("Log out"), a:has-text("Log out"), ' +
-        'button:has-text("Sign out"), a:has-text("Sign out"), ' +
-        '[data-test-id*="logout" i], [data-test-id*="sign-out" i]'
-      ).first();
+  if (!menuOpened) {
+    throw new Error(`❌ [Home Page Popup] Could not open profile menu for logout. URL: ${page.url()}`);
+  }
 
-      if (await logoutBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await logoutBtn.click({ force: true });
-        await page.waitForURL(/welcome|signin/i, { timeout: 10000 }).catch(() => { });
-        console.log(`✅ [Home Page Popup] Logged out — on: ${page.url()}`);
-        return;
-      }
+  const signOutCandidates = [
+    page.getByRole('menuitem', { name: /sign out/i }).first(),
+    page.getByRole('menuitem', { name: /log out/i }).first(),
+    page.locator(
+      '[role="menuitem"]:has-text("Sign Out"), [role="menuitem"]:has-text("Sign out"), [role="menuitem"]:has-text("Log out"), ' +
+      'button:has-text("Sign Out"), button:has-text("Sign out"), button:has-text("Log out"), ' +
+      'a:has-text("Sign Out"), a:has-text("Sign out"), a:has-text("Log out")'
+    ).first(),
+  ];
+
+  let signOutClicked = false;
+  for (const candidate of signOutCandidates) {
+    if (await candidate.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await candidate.click({ force: true });
+      signOutClicked = true;
+      console.log('✅ [Home Page Popup] Clicked Sign Out from profile menu');
+      break;
     }
-  } catch (e: any) {
-    console.warn(`⚠️ [Home Page Popup] Menu logout failed: ${e.message} — falling back to direct navigation`);
   }
 
-  // Fallback: navigate directly to sign-out URL
-  try {
-    await page.goto(`${baseUrl}/signout`, { waitUntil: 'domcontentloaded' });
-    await page.waitForURL(/welcome|signin/i, { timeout: 10000 }).catch(() => { });
-    console.log(`✅ [Home Page Popup] Logged out via /signout — on: ${page.url()}`);
-  } catch (e: any) {
-    console.warn(`⚠️ [Home Page Popup] /signout navigation failed: ${e.message}`);
-    // Last resort: navigate to welcome page
-    await page.goto(`${baseUrl}/welcome`, { waitUntil: 'domcontentloaded' }).catch(() => { });
+  if (!signOutClicked) {
+    throw new Error(`❌ [Home Page Popup] Sign Out menu item was not visible after opening profile menu. URL: ${page.url()}`);
   }
+
+  const confirmCandidates = [
+    page.getByRole('button', { name: /^Log out$/i }).first(),
+    page.getByRole('button', { name: /^Sign out$/i }).first(),
+    page.locator('button:has-text("Log out"), button:has-text("Sign out"), button:has-text("Sign Out")').first(),
+  ];
+
+  let confirmClicked = false;
+  for (const candidate of confirmCandidates) {
+    if (await candidate.isVisible({ timeout: 8000 }).catch(() => false)) {
+      await candidate.click({ force: true });
+      confirmClicked = true;
+      console.log('✅ [Home Page Popup] Confirmed logout');
+      break;
+    }
+  }
+
+  if (!confirmClicked) {
+    throw new Error(`❌ [Home Page Popup] Logout confirmation button was not visible. URL: ${page.url()}`);
+  }
+
+  await page.waitForURL(/welcome|signin|signup|account\/content\/.*signup/i, { timeout: 15000 }).catch(() => { });
+  await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
+  console.log(`✅ [Home Page Popup] Logged out via profile menu — on: ${page.url()}`);
 }

@@ -139,7 +139,7 @@ The repo has **21 GitHub Actions workflows**, all `workflow_dispatch` (manually 
 3. `existing-already-signed-in-e2e` — Pre-authenticated user → PPV purchase
 
 **Inputs per workflow:**
-- `PPV_CONFIG` — which fight config to use (e.g. `aj_joshua_prenga.json`)
+- `PPV_CONFIG` — which fight config to use (e.g. `ppv_t_joshua_prenga.json`)
 - `PAYMENT_METHOD` — `credit_card` | `gpay`
 - `SWITCH` — whether to switch to Ultimate plan during flow
 
@@ -298,7 +298,7 @@ npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
 
 # Run with specific env vars
 DAZN_REGION=GB DAZN_ENV=prod PLAN=standard_monthly SOURCE=landing-page-banner \
-  PPV_CONFIG=aj_joshua_prenga.json \
+  PPV_CONFIG=ppv_t_joshua_prenga.json \
   npx playwright test tests/new_user/newuser.ppv.spec.ts --project=chromium
 
 # Debug mode

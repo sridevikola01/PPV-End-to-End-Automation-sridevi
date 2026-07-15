@@ -469,6 +469,10 @@ export class BoxingHomePage extends HomePage {
 
     if (src.includes('upcoming')) {
       console.log('🔍 [Home Sport Upcoming] Starting Upcoming Fights flow...');
+      // Login-first Ultimate users own the PPV. Their upcoming card intentionally
+      // shows Fight card/Purchased instead of Buy now, so allow that card shape
+      // only when the caller has explicitly marked this entitlement validation.
+      const allowNoBuyNow = String(eventData.__ALLOW_NO_BUY_NOW || '').toLowerCase() === 'true';
 
       const env = this.detectEnvironment();
       if (env === 'stag') {
@@ -539,8 +543,10 @@ export class BoxingHomePage extends HomePage {
               const el = locator.nth(i);
               if (await el.isVisible().catch(() => false)) {
                 const text = (await el.textContent().catch(() => '')) || '';
-                const hasBuyNow = text.toLowerCase().includes('buy now') || text.toLowerCase().includes('buy');
-                if (matchesCard(text) && hasBuyNow) {
+                const lowerText = text.toLowerCase();
+                const hasBuyNow = lowerText.includes('buy now') || lowerText.includes('buy');
+                const hasFightCard = lowerText.includes('fight card');
+                if (matchesCard(text) && (hasBuyNow || (allowNoBuyNow && hasFightCard))) {
                   const box = await el.boundingBox().catch(() => null);
                   const scrollY = await this.page.evaluate(() => window.scrollY).catch(() => 0);
                   const absoluteTop = box ? box.y + scrollY : 0;

@@ -39,6 +39,34 @@ export interface ReportMeta {
   platform?: 'Android' | 'Web' | string;
 }
 
+function copyGeminiBannerEvidence(runDir: string): string | null {
+  const sourceDir = path.resolve(process.cwd(), 'test-results', 'gemini-banner');
+  if (!fs.existsSync(sourceDir)) return null;
+
+  const evidenceFiles = fs.readdirSync(sourceDir).filter(file => /\.(png|json)$/i.test(file));
+  if (!evidenceFiles.length) return null;
+
+  const targetDir = path.join(runDir, 'Gemini_Banner_Validation');
+  fs.mkdirSync(targetDir, { recursive: true });
+  for (const file of evidenceFiles) {
+    fs.copyFileSync(path.join(sourceDir, file), path.join(targetDir, file));
+  }
+
+  const image = evidenceFiles.find(file => file.toLowerCase().endsWith('.png'));
+  const json = evidenceFiles.find(file => file.toLowerCase().endsWith('.json'));
+  const assessment = json ? fs.readFileSync(path.join(targetDir, json), 'utf-8') : 'Assessment JSON was not produced.';
+  fs.writeFileSync(path.join(targetDir, 'index.html'), `<!doctype html>
+<html><head><meta charset="utf-8"><title>Gemini Banner Validation</title>
+<style>body{font-family:Arial,sans-serif;margin:32px;color:#172b4d}img{max-width:100%;border:1px solid #ccc;border-radius:6px}pre{background:#f4f5f7;padding:16px;border-radius:6px;white-space:pre-wrap}</style>
+</head><body><h1>Gemini PPV Banner Validation</h1>
+<p>This evidence contains the exact rendered banner sent to Gemini and its structured assessment.</p>
+${image ? `<h2>Banner screenshot</h2><img src="${image}" alt="PPV banner screenshot">` : ''}
+<h2>Gemini assessment</h2><pre>${esc(assessment)}</pre>
+</body></html>`, 'utf-8');
+
+  return targetDir;
+}
+
 function inlineImage(p?: string): string | null {
   try {
     if (!p || !fs.existsSync(p)) return null;
@@ -111,7 +139,7 @@ function buildFolderName(meta: ReportMeta): string {
   return `${meta.region}_${src}_${tierPlan}_${stamp}`;
 }
 
-function buildHtml(results: ReportResult[], meta: ReportMeta): string {
+function buildHtml(results: ReportResult[], meta: ReportMeta, hasGeminiEvidence = false): string {
   // Filter out rows where both expected and actual are N/A — these are non-applicable fields
   results = results.filter(r => {
     if (String(r.status).toUpperCase() === 'SKIP') return false;
@@ -354,6 +382,11 @@ function buildHtml(results: ReportResult[], meta: ReportMeta): string {
           <td>🎥 Video Recording</td>
           <td><a href="${videoName}" target="_blank">${videoName}</a></td>
         </tr>` : ''}
+        ${hasGeminiEvidence ? `
+        <tr>
+          <td>🤖 Gemini Banner Validation</td>
+          <td><a href="Gemini_Banner_Validation/index.html" target="_blank">Gemini_Banner_Validation</a></td>
+        </tr>` : ''}
       </tbody>
     </table>
 
@@ -398,8 +431,9 @@ export async function generateReports(
 
   const htmlPath = path.join(runDir, 'PPV_Report.html');
   const pdfPath = path.join(runDir, 'PPV_Report.pdf');
+  const geminiEvidencePath = copyGeminiBannerEvidence(runDir);
 
-  const html = buildHtml(results, meta);
+  const html = buildHtml(results, meta, Boolean(geminiEvidencePath));
   fs.writeFileSync(htmlPath, html, 'utf-8');
 
   // Render PDF via bundled Playwright Chromium (no system Chrome dependency)
@@ -443,6 +477,7 @@ export async function generateReports(
   console.log(`  PDF  : ${pdfOk ? pdfPath : 'not generated'}`);
   console.log(`  Excel: ${fs.existsSync(bundledExcelPath) ? bundledExcelPath : 'not generated'}`);
   console.log(`  Video: ${bundledVideoPath && fs.existsSync(bundledVideoPath) ? bundledVideoPath : 'not generated'}`);
+  console.log(`  Gemini: ${geminiEvidencePath || 'not generated'}`);
 
   return { htmlPath, pdfPath: pdfOk ? pdfPath : null, folderPath: runDir };
 }

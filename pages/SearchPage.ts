@@ -28,18 +28,32 @@ export class SearchPage extends BasePage {
   }
 
   private async clickVisibleEntitledTile(eventName: string): Promise<void> {
-    const cleanName = eventName.replace(/[:\-–]/g, ' ').replace(/\s+/g, ' ').trim();
-    const firstMeaningfulWord = cleanName.split(/\s+/).find(w => w.length > 2) || cleanName;
-    const regex = new RegExp(firstMeaningfulWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    const candidates = this.page
-      .locator('article, a[class*="tile" i], div[class*="tile" i], div[class*="card" i], li, [class*="result" i]')
-      .filter({ hasText: regex });
+    // Entitled Ultimate users navigate directly to the event page (there is no
+    // Buy now popup).  Do not use the first word of the event here: a search for
+    // "Joshua vs. Prenga" also returns athlete profiles and editorial features.
+    const normalise = (value: string) => value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const expectedTitle = normalise(eventName);
+    // DAZN search exposes one semantic tile per result.  Restrict this to
+    // those tiles and exclude Competitor IDs so a parent results container or
+    // an athlete profile cannot be selected before the PPV event.
+    const candidates = this.page.locator(
+      'article[data-target="tile"][data-target-title]:not([data-target-id^="Competitor:"])'
+    );
     const count = await candidates.count().catch(() => 0);
 
     for (let i = 0; i < count; i++) {
       const tile = candidates.nth(i);
       if (!await tile.isVisible().catch(() => false)) continue;
-      const text = ((await tile.textContent().catch(() => '')) || '').toLowerCase();
+      const targetTitle = await tile.getAttribute('data-target-title').catch(() => '');
+      if (normalise(targetTitle || '') !== expectedTitle) continue;
+      const rawText = (await tile.textContent().catch(() => '')) || '';
+      const text = rawText.toLowerCase();
+      const normalisedText = normalise(rawText);
+      if (!normalisedText.includes(expectedTitle)) continue;
       if (
         text.includes('press conference') ||
         text.includes('weigh-in') ||
@@ -51,11 +65,27 @@ export class SearchPage extends BasePage {
         continue;
       }
 
-      console.log(`🖱️ [Search] Clicking entitled PPV tile: "${text.replace(/\s+/g, ' ').trim().substring(0, 100)}"`);
+      console.log(`🖱️ [Search] Clicking entitled PPV event tile: "${text.replace(/\s+/g, ' ').trim().substring(0, 100)}"`);
       await tile.scrollIntoViewIfNeeded().catch(() => { });
-      await tile.click({ force: true, timeout: 5000 });
-      await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
-      return;
+      try {
+        // Click the event link itself rather than the article wrapper.  In the
+        // current DAZN markup it is a /fixture/ route, which avoids the
+        // competitor page route entirely.
+        const eventLink = tile.locator('a[href*="/fixture/"], a[href*="/event/"], a[href*="/stream/"], a[href*="/player/"]').first();
+        const clickTarget = await eventLink.count().catch(() => 0) ? eventLink : tile;
+        await clickTarget.click({ force: true, timeout: 5000 });
+        const reachedEventPage = await this.page
+          .waitForURL((url: URL) => this.isFixtureOrPreviewUrl(url.href), { timeout: 10000 })
+          .then(() => true)
+          .catch(() => false);
+        if (reachedEventPage) {
+          await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
+          return;
+        }
+        console.log('⚠️ [Search] Matching result did not navigate to an event page; trying the next matching tile.');
+      } catch (error: any) {
+        console.log(`⚠️ [Search] Could not click matching event tile: ${error.message}`);
+      }
     }
 
     throw new Error(`❌ [Search] Could not find visible entitled tile for "${eventName}"`);
@@ -66,7 +96,10 @@ export class SearchPage extends BasePage {
     results: any[],
     eventData: Record<string, string>
   ): Promise<void> {
-    await this.searchForEvent(eventName);
+    // Keep this query flow in step with the non-entitled path.  When the event
+    // is far in the schedule, the bare event name returns an editorial feature
+    // before the event tile; appending "Upcoming" exposes the correct tile.
+    await this.searchForPPVTileWithUpcomingFallback(eventName);
     await this.clickVisibleEntitledTile(eventName);
     await this.page.waitForURL((url: URL) => this.isFixtureOrPreviewUrl(url.href), { timeout: 15000 }).catch(() => { });
     await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
@@ -463,7 +496,7 @@ export class SearchPage extends BasePage {
   // DEV MODE: Enable dev mode to bypass phone number page
   // Flow: Landing → Explore → Home → Search → dev_mode_on → Copy ID → Back 2x → Back to Landing
   // ═══════════════════════════════════════════════════════════════
-  async enableDevMode(): Promise<void> {
+  async enableDevMode(options: { preservePpvPromo?: boolean } = {}): Promise<void> {
     console.log('\n═══════════════════════════════════════════════════');
     console.log('  🎭 ENABLING DEV MODE to bypass phone number page');
     console.log('═══════════════════════════════════════════════════\n');
@@ -514,13 +547,13 @@ export class SearchPage extends BasePage {
       await searchInput.waitFor({ state: 'visible', timeout: 30000 });
 
       // Dismiss any marketing/promotion popup that is already visible
-      await dismissMarketingPopup(this.page).catch(() => {});
+      await dismissMarketingPopup(this.page, 5000, { preservePpvPromo: !!options.preservePpvPromo }).catch(() => {});
 
       try {
         await searchInput.click({ timeout: 5000 });
       } catch (clickError) {
         console.log('⚠️ Search input click was intercepted or failed. Attempting to dismiss popup and retry...');
-        await dismissMarketingPopup(this.page, 4000).catch(() => {});
+        await dismissMarketingPopup(this.page, 4000, { preservePpvPromo: !!options.preservePpvPromo }).catch(() => {});
         await searchInput.click({ timeout: 10000 });
       }
 

@@ -12,7 +12,7 @@
 #                   home-boxing-tile | boxing-page-banner | boxing-page-bundle |
 #                   search | schedule                              (default: landing-page-banner)
 #   PPV_EVENT     : event key from config/ppv.json
-#                   e.g. beauty_and_beast | aj_joshua_prenga | standalone_collision
+#                   e.g. beauty_and_beast | ppv_t_joshua_prenga | standalone_collision
 #   PPV_CONFIG    : legacy — JSON filename or event key (overrides PPV_EVENT)
 # ─────────────────────────────────────────────────────────────────────────────
 cd /Users/Hari.Prasad/jobbot/dazn-tests

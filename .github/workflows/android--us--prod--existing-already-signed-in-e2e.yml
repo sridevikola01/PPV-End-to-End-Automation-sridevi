@@ -1,0 +1,279 @@
+name: "Android · US · Prod · Existing user — already signed in"
+
+on:
+  workflow_dispatch:
+    inputs:
+      PPV_CONFIG:
+        description: 'PPV config filename/key'
+        required: true
+        default: 'ppv_t_joshua_prenga.json'
+
+      PAYMENT_METHOD:
+        description: 'Payment method'
+        required: true
+        default: 'credit_card'
+        type: choice
+        options:
+          - credit_card
+          - gpay
+
+      SWITCH:
+        description: 'Switch to Ultimate'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: read
+
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: 'true'
+
+jobs:
+  prepare-matrix:
+    name: Prepare source matrix
+
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build applicable source matrix
+        id: matrix
+        env:
+          PPV_CONFIG: ${{ inputs.PPV_CONFIG }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const configInput = process.env.PPV_CONFIG;
+          const filename = path.basename(configInput).endsWith('.json')
+            ? path.basename(configInput)
+            : `${path.basename(configInput)}.json`;
+
+          const findConfig = (dir) => {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+              const fullPath = path.join(dir, entry.name);
+              if (entry.isFile() && entry.name === filename) return fullPath;
+              if (entry.isDirectory()) {
+                const found = findConfig(fullPath);
+                if (found) return found;
+              }
+            }
+            return null;
+          };
+
+          const directPath = path.resolve(configInput);
+          const eventPath = fs.existsSync(directPath)
+            ? directPath
+            : findConfig(path.resolve('config'));
+          if (!eventPath) throw new Error(`PPV config not found: ${configInput}`);
+
+          const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
+          const sourceConfig = JSON.parse(fs.readFileSync('config/surfacingpoint.json', 'utf8'));
+          const sport = String(event.SPORT || '').trim().toLowerCase();
+          const hasBundle = event.HAS_BUNDLE === true;
+          const hasDefaultSignupPpv = event.HAS_DEFAULT_SIGNUP_PPV === true;
+
+          const sources = [
+            'home-page-banner',
+            'home-page-dont-miss',
+            'home-page-tile',
+            'home-boxing-banner',
+            'home-boxing-upcoming',
+            'home-boxing-tile',
+            'boxing-page-banner',
+            'boxing-upcoming-fights',
+            'schedule',
+            'search',
+            'myaccount',
+          ].filter((source) => {
+            if (source === 'home-kickboxing-tile' && sport !== 'kickboxing') return false;
+            if (source === 'boxing-page-bundle' && !hasBundle) return false;
+            if (sourceConfig[source]?.defaultSignup && !hasDefaultSignupPpv) return false;
+            return true;
+          });
+
+          const plans = ['standard_monthly', 'standard_apm', 'ultimate_apm', 'ultimate_upfront'];
+          const matrix = [];
+          for (const source of sources) {
+            for (const plan of plans) {
+              matrix.push({ source, plan });
+            }
+          }
+
+          console.log(`Event: ${event.eventKey || event.PPV_NAME || configInput}`);
+          console.log(`SPORT=${event.SPORT || 'not set'}, HAS_BUNDLE=${hasBundle}, HAS_DEFAULT_SIGNUP_PPV=${hasDefaultSignupPpv}`);
+          console.log(`Scheduled sources (${sources.length}): ${sources.join(', ')}`);
+          console.log(`Total matrix jobs: ${matrix.length}`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\n`);
+          NODE
+
+  prod:
+    name: ${{ matrix.source }} | ${{ matrix.plan }}
+
+    needs: prepare-matrix
+
+    runs-on:
+      - self-hosted
+      - macOS
+      - ARM64
+
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+
+    env:
+      CI: 'true'
+      DAZN_REGION: US
+      DAZN_ENV: prod
+      LOGIN_FIRST: 'false'
+      SOURCE: ${{ matrix.source }}
+      PLAN: ${{ matrix.plan }}
+      PPV_CONFIG: ${{ inputs.PPV_CONFIG }}
+      PAYMENT_METHOD: ${{ inputs.PAYMENT_METHOD }}
+      SWITCH: ${{ inputs.SWITCH }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Runner
+        run: |
+          echo "Runner: $RUNNER_NAME"
+          echo "OS: $RUNNER_OS"
+          hostname
+          echo "Commit: $(git rev-parse HEAD)"
+
+      - name: Verify runner VPN and DAZN signin reachability
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=============================="
+          echo "Runner network preflight"
+          echo "Runner : $RUNNER_NAME"
+          echo "Host   : $(hostname)"
+          echo "Region : $DAZN_REGION"
+          echo "=============================="
+
+          if command -v scutil >/dev/null 2>&1; then
+            echo "DNS:"
+            scutil --dns | grep -E 'nameserver\[[0-9]+\]' | head -5 || true
+          fi
+
+          echo "Default route:"
+          route -n get default 2>/dev/null | grep -E 'gateway|interface' || true
+
+          echo "Public IP check:"
+          IPINFO="$(curl -fsSL --max-time 15 https://ipinfo.io/json || true)"
+          echo "$IPINFO"
+
+          COUNTRY="$(printf '%s' "$IPINFO" | sed -n 's/.*"country"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+          if [ "$COUNTRY" != "$DAZN_REGION" ]; then
+            echo "❌ Runner public IP country is '$COUNTRY', expected '$DAZN_REGION'. Check the VPN on this runner before running DAZN PROD."
+            exit 1
+          fi
+
+          echo "DAZN signin HTTP check:"
+          curl -fsSIL --max-time 30 "https://www.dazn.com/en-GB/signin" | sed -n '1,12p'
+
+      - name: Verify Node
+        run: |
+          node -v
+          npm -v
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium browser
+        run: npx playwright install chromium
+
+      - name: Install Appium dependencies
+        run: cd appium && npm ci
+
+      - name: Log matrix context
+        run: |
+          echo "=============================="
+          echo "SOURCE      = $SOURCE"
+          echo "PLAN        = $PLAN"
+          echo "LOGIN_FIRST = $LOGIN_FIRST"
+          echo "SWITCH      = $SWITCH"
+          echo "=============================="
+
+      - name: Run Android Existing User Already-Signed-In PPV Flow
+        shell: bash
+        run: |
+          set +e
+
+          cd appium
+          npx wdio run config/wdio.android.conf.ts --spec tests/android/existingusermobile.ppv.spec.ts
+
+          EXIT_CODE=$?
+
+          echo ""
+          echo "=================================="
+          echo "WDIO EXIT CODE = $EXIT_CODE"
+          echo "=================================="
+
+          exit $EXIT_CODE
+
+      - name: Archive reports on runner disk
+        if: always()
+        shell: bash
+        run: |
+          REPORT_ROOT="$HOME/DAZN-CI-Reports"
+          WORKFLOW_NAME="${{ github.workflow }}"
+          RUN_ID="${{ github.run_id }}"
+          RUN_NUMBER="${{ github.run_number }}"
+          JOB_NAME="${{ matrix.source }}-${{ matrix.plan }}"
+          TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
+
+          SAFE_WORKFLOW="$(echo "$WORKFLOW_NAME" | tr ' /:|' '_' | tr -cd '[:alnum:]_.-')"
+          SAFE_JOB="$(echo "$JOB_NAME" | tr ' /:|' '_' | tr -cd '[:alnum:]_.-')"
+
+          DEST="$REPORT_ROOT/$SAFE_WORKFLOW/run-${RUN_NUMBER}-${RUN_ID}/$SAFE_JOB/$TIMESTAMP"
+
+          mkdir -p "$DEST"
+
+          if [ -d reports ]; then
+            mkdir -p "$DEST/reports"
+            cp -R reports/. "$DEST/reports/"
+          fi
+
+          if [ -d test-results ]; then
+            mkdir -p "$DEST/test-results"
+            cp -R test-results/. "$DEST/test-results/"
+          fi
+
+          echo "=================================================="
+          echo "LOCAL REPORT ARCHIVE SAVED"
+          echo "Runner machine : $(hostname)"
+          echo "Folder         : $DEST"
+          echo "=================================================="
+
+      - name: Upload Results
+        if: ${{ false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.source }}-${{ matrix.plan }}-${{ github.run_id }}
+          path: |
+            test-results/
+            reports/
+          if-no-files-found: ignore

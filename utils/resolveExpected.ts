@@ -187,8 +187,9 @@ export function resolveExpected(
 
     switch ((pageName || "").toLowerCase()) {
       case 'boxing':
-        if (eventData.BOXING_BANNER_DATE) return String(eventData.BOXING_BANNER_DATE);
-        break;
+        // The upcoming-fight card uses the date format specified by its Excel
+        // row ({{LANDING_PAGE_PPV_DATE}}), not the hero banner's date tag.
+        return replacePlaceholders(String(raw ?? ''), eventData);
 
       case 'landing':
       case 'landing page':

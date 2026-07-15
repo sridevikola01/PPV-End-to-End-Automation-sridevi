@@ -48,7 +48,7 @@ import {
 } from '../../utils/testHelpers';
 
 const REGION = process.env.DAZN_REGION || 'GB';
-const EVENT_CONFIG = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
+const EVENT_CONFIG = process.env.PPV_CONFIG || 'ppv_t_joshua_prenga.json';
 const PLAN = process.env.PLAN || 'standard_monthly';
 const SOURCE = process.env.SOURCE || 'landing-page-banner';
 const PPV_TYPE = (process.env.PPV_TYPE || 'normal').toLowerCase();

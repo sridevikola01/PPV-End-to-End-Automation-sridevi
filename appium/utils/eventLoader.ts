@@ -144,10 +144,10 @@ export function loadEventConfig(): EventConfig {
   const fileName = process.env.PPV_CONFIG;
 
   if (!fileName) {
-    // Backward compatibility: default to aj_joshua_prenga.json
+    // Backward compatibility: default to ppv_t_joshua_prenga.json
     // so existing invocations without PPV_CONFIG (e.g. with just PPV_NAME="Joshua")
     // continue to work without changes.
-    const defaultConfig = 'aj_joshua_prenga.json';
+    const defaultConfig = 'ppv_t_joshua_prenga.json';
     console.log(`ℹ️  PPV_CONFIG not set — defaulting to ${defaultConfig}`);
     process.env.PPV_CONFIG = defaultConfig;
     return loadEventConfig();

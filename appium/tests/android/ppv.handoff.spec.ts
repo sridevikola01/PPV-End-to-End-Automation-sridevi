@@ -170,7 +170,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
     const { buildEventData } = require('../../../utils/buildEventData');
 
     const REGION = process.env.DAZN_REGION || 'GB';
-    const EVENT_CONFIG = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
+    const EVENT_CONFIG = process.env.PPV_CONFIG || 'ppv_t_joshua_prenga.json';
     const PLAN = process.env.PLAN || 'standard_monthly';
     const PPV_TYPE = (process.env.PPV_TYPE || 'normal').toLowerCase();
     const SWITCH_TO_ULTIMATE = (process.env.SWITCH || '').toLowerCase() === 'true';
@@ -326,7 +326,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
       try {
         const fs = require('fs');
         const path = require('path');
-        const configFileName = process.env.PPV_CONFIG || 'aj_joshua_prenga.json';
+        const configFileName = process.env.PPV_CONFIG || 'ppv_t_joshua_prenga.json';
         const configPath = path.resolve(__dirname, '../../..', 'config/events', configFileName);
         if (fs.existsSync(configPath)) {
           const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));

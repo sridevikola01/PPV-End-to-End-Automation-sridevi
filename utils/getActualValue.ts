@@ -23,6 +23,7 @@ async function getScopedLandingPPVContainer(
   const isTileSource = source.includes('dont-miss') || source.includes('tile') || source.includes('upcoming') || source.includes('rail') || source === 'home-biggest-fights';
 
   if (source.includes('upcoming')) {
+    const allowNoBuyNow = String(eventData?.__ALLOW_NO_BUY_NOW || '').toLowerCase() === 'true';
     const cleanStr = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
     const nameParts = (eventData?.PPV_NAME || '')
       .split(/[:\-–]/)
@@ -55,7 +56,7 @@ async function getScopedLandingPPVContainer(
         if (!await el.isVisible().catch(() => false)) continue;
         const text = (await el.textContent().catch(() => '')) || '';
         const lower = text.toLowerCase();
-        if (!matchesCard(text) || !lower.includes('buy now')) continue;
+        if (!matchesCard(text) || (!lower.includes('buy now') && !(allowNoBuyNow && lower.includes('fight card')))) continue;
 
         const box = await el.boundingBox().catch(() => null);
         if (!box || box.width <= 50 || box.height <= 50 || box.width >= 1800 || box.height >= 700) continue;
@@ -1577,12 +1578,19 @@ export async function getActualValue(
         .replace(/[^a-z0-9]+/g, ' ')
         .split(/\s+/)
         .filter(w => w.length > 2 && !['the', 'and', 'for', 'with', 'from'].includes(w));
-      const found = snapFind(n => {
+      // Find the shortest matching modal node to avoid picking a parent container
+      // that includes promoter + title + date concatenated together
+      const allMatches = snapFindAll(n => {
         if (!n.isInModal) return false;
         const text = n.text.toLowerCase().replace(/\bv(?:s)?\.?\b/g, ' vs ');
         return words.every(w => text.includes(w)) && n.text.length < 120;
       }, true);
-      return found !== 'N/A' ? found : 'Not found';
+      if (allMatches.length > 0) {
+        // Pick the shortest match — the most specific element (e.g. just the title, not the whole modal)
+        allMatches.sort((a, b) => a.length - b.length);
+        return allMatches[0];
+      }
+      return 'Not found';
     }
     case 'fight card modal - event date': {
       let found = snapFind(n => n.isInModal && isDateText(n.text) && n.text.length < 80, true);
@@ -2412,6 +2420,20 @@ export async function getActualValue(
       if (isLandingOrHomeContext()) {
         const container = await getScopedLandingPPVContainer(page, eventData);
         if (container) {
+          // Purchased Ultimate cards still contain a bell/bookmark and a time
+          // badge. Neither is a PPV lock. Use only explicit lock identifiers
+          // for this entitlement-specific absence validation.
+          if (String(eventData?.__ALLOW_NO_BUY_NOW || '').toLowerCase() === 'true') {
+            const explicitLock = container.locator([
+              '[class*="lock" i]',
+              '[aria-label*="lock" i]',
+              '[data-testid*="lock" i]',
+              'svg[class*="lock" i]',
+              'use[href*="lock" i]'
+            ].join(', ')).first();
+            return await explicitLock.isVisible({ timeout: 2000 }).catch(() => false) ? 'Yes' : 'No';
+          }
+
           const scopedLock = container.locator([
             '[class*="lock" i]',
             '[class*="premium" i]',
@@ -2441,7 +2463,8 @@ export async function getActualValue(
       );
     }
 
-    case 'ppv time on tile': {
+    case 'ppv time on tile':
+    case 'ppv image time': {
       // ── Use pre-captured value from the located event card (set in spec after scrollIntoViewIfNeeded) ──
       if (eventData?.__SCHEDULE_TILE_TIME) return eventData.__SCHEDULE_TILE_TIME;
 
