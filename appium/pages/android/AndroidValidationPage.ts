@@ -521,6 +521,30 @@ export class AndroidValidationPage extends AndroidBasePage {
       options.landingCopyOverlay === true;
     eventData.CURRENT_PAGE = isLandingCopyOverlay ? 'Landing Banner Copy' : 'mobile';
 
+    if (isLandingCopyOverlay) {
+      console.log('  ⏳ Waiting for landing banner copy overlay elements to render...');
+      let foundOverlay = false;
+      const startedAt = Date.now();
+      const timeoutMs = 8000;
+      while (Date.now() - startedAt < timeoutMs) {
+        const sourceXml = await this.driver.getPageSource().catch(() => '');
+        if (
+          sourceXml.includes('text="Copy"') ||
+          sourceXml.includes('content-desc="Copy"') ||
+          sourceXml.includes('Copy the link') ||
+          sourceXml.includes('dazn-direct-subscription')
+        ) {
+          console.log(`  ✅ Landing banner copy overlay detected after ${Date.now() - startedAt}ms`);
+          foundOverlay = true;
+          break;
+        }
+        await this.driver.pause(1000);
+      }
+      if (!foundOverlay) {
+        console.warn('  ⚠️ Copy overlay elements not detected in XML source; proceeding with current screen state.');
+      }
+    }
+
     const titleExpected = eventData.MOBILE_BANNER_TITLE || eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME;
     const { texts, pageSource, targetXml } = await this.gatherTextsFromSurface(surface, titleExpected);
 
@@ -775,6 +799,7 @@ export class AndroidValidationPage extends AndroidBasePage {
               targetXml.includes('resource-id="com.dazn:id/search_image"') ||
               targetXml.includes('content-desc="Search result image"') ||
               targetXml.includes('resource-id="com.dazn:id/image"') ||
+              targetXml.includes('resource-id="CarouselBox"') ||
               /class="android\.view\.View"[^>]*text=""[^>]*content-desc=""[^>]*bounds="\[\d+,\d+\]\[\d+,\d+\]"/.test(targetXml) ||
               /android\.widget\.ImageView[^>]*text=""[^>]*content-desc=""(?!.*resource-id)/.test(targetXml)
             ) { hasImg = 'Yes'; }

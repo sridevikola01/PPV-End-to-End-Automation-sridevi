@@ -86,7 +86,8 @@ export class AndroidLandingPage extends AndroidBasePage {
     while (Date.now() - startedAt < timeoutMs) {
       const source = await this.driver.getPageSource().catch(() => '');
       if (this.hasBannerImage(source)) {
-        console.log(`  ✅ Landing banner image detected after ${Date.now() - startedAt}ms`);
+        console.log(`  ✅ Landing banner image detected after ${Date.now() - startedAt}ms. Waiting 3s for image rendering...`);
+        await this.driver.pause(3000);
         return;
       }
       await this.driver.pause(1000);
@@ -96,14 +97,17 @@ export class AndroidLandingPage extends AndroidBasePage {
   }
 
   private hasBannerImage(pageSource: string): boolean {
+    // Exclude logoImage from the pageSource copy when performing banner image detection
+    const cleanSource = pageSource.replace(/resource-id="DaznLogo"|content-desc="logoImage"|DaznLogo|logoImage/gi, '');
     return (
-      pageSource.includes('resource-id="com.dazn:id/search_image"') ||
-      pageSource.includes('content-desc="Search result image"') ||
-      pageSource.includes('resource-id="com.dazn:id/image"') ||
-      /resource-id="[^"]*(image|poster|thumbnail|hero|banner)[^"]*"/i.test(pageSource) ||
-      /content-desc="[^"]*(image|poster|thumbnail|hero|banner)[^"]*"/i.test(pageSource) ||
-      /android\.widget\.ImageView[^>]*text=""[^>]*content-desc=""/.test(pageSource) ||
-      /class="android\.view\.View"[^>]*text=""[^>]*content-desc=""[^>]*bounds="\[\d+,\d+\]\[\d+,\d+\]"/.test(pageSource)
+      cleanSource.includes('resource-id="com.dazn:id/search_image"') ||
+      cleanSource.includes('content-desc="Search result image"') ||
+      cleanSource.includes('resource-id="com.dazn:id/image"') ||
+      cleanSource.includes('resource-id="CarouselBox"') ||
+      /resource-id="[^"]*(image|poster|thumbnail|hero|banner)[^"]*"/i.test(cleanSource) ||
+      /content-desc="[^"]*(image|poster|thumbnail|hero|banner)[^"]*"/i.test(cleanSource) ||
+      /android\.widget\.ImageView[^>]*text=""[^>]*content-desc=""/.test(cleanSource) ||
+      /class="android\.view\.View"[^>]*text=""[^>]*content-desc=""[^>]*bounds="\[\d+,\d+\]\[\d+,\d+\]"/.test(cleanSource)
     );
   }
 
