@@ -124,6 +124,7 @@ export const config = {
       'appium:chromedriverAutodownload': true,
       'appium:newCommandTimeout':        300,
       'appium:uiautomator2ServerInstallTimeout': 60000,
+      'appium:ignoreHiddenApiPolicyError': true,
     } as any,
   ],
 
