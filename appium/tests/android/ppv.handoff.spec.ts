@@ -369,6 +369,9 @@ describe('DAZN Android PPV → Web Handoff', () => {
       }
       const copyResult = await copyImmediateCheckoutUrl(driver, 'landing-page-banner', {
         screenshotPrefix: 'landing',
+        retrySwipeBackToPPV: true,
+        ppvName: PPV_NAME,
+        isLandingPageBanner: true,
       });
       bannerCheckoutUrl = copyResult.url;
       bannerUrlCaptured = copyResult.captured;
