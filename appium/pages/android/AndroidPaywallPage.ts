@@ -21,17 +21,40 @@ export class AndroidPaywallPage extends AndroidBasePage {
     const isLandingPageBanner = options.isLandingPageBanner ?? (label === 'landing-page-banner');
     const surfaceLabel = isLandingPageBanner ? 'Landing banner' : 'Paywall overlay';
 
+    // Clear clipboard before clicking to ensure we capture a fresh URL
+    console.log('  🧹 Clearing clipboard before copying...');
+    try {
+      await this.driver.setClipboard(Buffer.from('').toString('base64'), 'plaintext');
+    } catch {
+      try {
+        adb('shell am clipht set ""');
+      } catch {}
+    }
+
     console.log(`  🚀 ${surfaceLabel} - FAST copying URL (${label})...`);
     await this.driver.saveScreenshot(`./test-results/android_${screenshotPrefix}_${isLandingPageBanner ? 'banner' : 'paywall'}.png`);
 
+    let copyClicked = false;
     if (isLandingPageBanner && options.ppvName) {
-      const copied = await this.clickCopyOnLandingBanner(label, options.ppvName);
-      if (!copied) {
+      copyClicked = await this.clickCopyOnLandingBanner(label, options.ppvName);
+      if (!copyClicked) {
         console.log('  ⚠️ Landing banner Copy button was not clicked. Clipboard validation will decide next step.');
       }
     } else {
-      await this.clickCopyButton(label);
+      copyClicked = await this.clickCopyButton(label);
     }
+
+    if (copyClicked) {
+      // Verify that the "Copied" or "copied to clipboard" text appeared on screen
+      console.log('  ⏳ Verifying copy success indicator on screen ("Copied")...');
+      const indicatorVisible = await this.isVisible('Copied', 3000) || await this.isVisible('copied', 1000);
+      if (indicatorVisible) {
+        console.log('  ✅ Verified copy success indicator text is displayed on the screen.');
+      } else {
+        console.log('  ⚠️ Copy success indicator text was not detected on screen, but checking clipboard content.');
+      }
+    }
+
     await this.driver.pause(500);
     await this.driver.saveScreenshot(`./test-results/android_${screenshotPrefix}_after_copy.png`);
 
