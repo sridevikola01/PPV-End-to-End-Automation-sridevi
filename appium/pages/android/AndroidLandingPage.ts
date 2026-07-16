@@ -40,7 +40,18 @@ export class AndroidLandingPage extends AndroidBasePage {
     }
 
     console.log('  Clicking "Buy now" on the PPV banner...');
-    const buyTapped = await this.tapBuyCtaWithFallback();
+    let buyTapped = await this.tapBuyCtaWithFallback();
+    if (!buyTapped) {
+      console.log('  ⚠️ Buy CTA not found on first attempt. Swiping carousel to make banner active...');
+      for (let i = 0; i < 6; i++) {
+        await this.swipeLeft();
+        buyTapped = await this.tapBuyCtaWithFallback();
+        if (buyTapped) {
+          console.log('  ✅ Buy CTA successfully tapped after carousel swipe!');
+          break;
+        }
+      }
+    }
     if (!buyTapped) {
       await this.driver.saveScreenshot(options.buyMissingScreenshot);
       throw new Error(`Could not tap Buy CTA on PPV banner. See ${options.buyMissingScreenshot}`);
