@@ -116,6 +116,18 @@ export class AndroidBasePage {
       return false;
     }
   }
+  async isElementActiveOnScreen(text: string, timeoutMs = 3000): Promise<boolean> {
+    try {
+      const el = await this.driver.$(`android=new UiSelector().textContains("${text}")`);
+      if (!(await el.isDisplayed().catch(() => false))) return false;
+      const rect = await el.getRect();
+      const screen = getScreenSize();
+      const centerX = rect.x + rect.width / 2;
+      return centerX > 0 && centerX < screen.width;
+    } catch {
+      return false;
+    }
+  }
 
   async scrollToText(text: string): Promise<boolean> {
     try {
@@ -152,15 +164,15 @@ export class AndroidBasePage {
   }
 
   async findPPVBanner(ppvName = this.ppvName): Promise<boolean> {
-    if (await this.isVisible(ppvName, 4000)) return true;
+    if (await this.isElementActiveOnScreen(ppvName, 4000)) return true;
     for (let i = 0; i < 5; i++) {
       await this.swipeLeft();
-      if (await this.isVisible(ppvName, 1500)) return true;
+      if (await this.isElementActiveOnScreen(ppvName, 1500)) return true;
     }
     if (await this.scrollToText(ppvName)) return true;
     for (let i = 0; i < 8; i++) {
       await this.scrollDown();
-      if (await this.isVisible(ppvName, 1500)) return true;
+      if (await this.isElementActiveOnScreen(ppvName, 1500)) return true;
     }
     return false;
   }
@@ -172,18 +184,18 @@ export class AndroidBasePage {
     const horizontalSwipes = options.horizontalSwipes ?? 8;
     const verticalScrolls = options.verticalScrolls ?? 5;
 
-    if (await this.isVisible(ppvName, 3000)) return true;
+    if (await this.isElementActiveOnScreen(ppvName, 3000)) return true;
 
-    console.log(`  PPV banner not immediately visible. Swiping left to find "${ppvName}"...`);
+    console.log(`  PPV banner not active on screen. Swiping left to find "${ppvName}"...`);
     for (let i = 0; i < horizontalSwipes; i++) {
       await this.swipeLeft();
-      if (await this.isVisible(ppvName, 1500)) return true;
+      if (await this.isElementActiveOnScreen(ppvName, 1500)) return true;
     }
 
     console.log('  Swiping left exhausted. Trying vertical scroll down...');
     for (let i = 0; i < verticalScrolls; i++) {
       await this.scrollDown();
-      if (await this.isVisible(ppvName, 1500)) return true;
+      if (await this.isElementActiveOnScreen(ppvName, 1500)) return true;
     }
 
     return false;
