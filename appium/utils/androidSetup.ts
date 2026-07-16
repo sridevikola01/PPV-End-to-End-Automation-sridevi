@@ -222,11 +222,11 @@ export async function waitForHomePage(driver: WdBrowser, timeoutMs = 120000): Pr
         return false;
       }
 
-      // Fallback: if app has been running for more than 5 seconds and has visible UI,
+      // Fallback: if app has been running for more than 30 seconds and has visible UI,
       // consider it ready even if we can't identify the specific page
       const elapsed = Date.now() - startTime;
-      if (elapsed > 5000 && await hasAnyVisibleElement(driver)) {
-        console.log('  ✓ App UI detected (fallback after 5s)');
+      if (elapsed > 30000 && await hasAnyVisibleElement(driver)) {
+        console.log('  ✓ App UI detected (fallback after 30s)');
         return true;
       }
 
