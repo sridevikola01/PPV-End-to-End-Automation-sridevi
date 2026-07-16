@@ -8,7 +8,7 @@ import { AndroidLandingPage } from './AndroidLandingPage';
 
 export class AndroidHomePage extends AndroidLandingPage {
   async ensureOnHome(): Promise<void> {
-    const homeTab = await this.driver.$('android=new UiSelector().text("Home")');
+    const homeTab = await this.driver.$('android=new UiSelector().textMatches("(?i)^Home$")');
     if (await homeTab.isDisplayed().catch(() => false)) {
       console.log('  Already on Home page');
       return;

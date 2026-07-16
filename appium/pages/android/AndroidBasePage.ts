@@ -88,7 +88,10 @@ export class AndroidBasePage {
   }
 
   async tapByText(text: string, timeoutMs = 10000): Promise<boolean> {
-    const el = await this.findEl(`android=new UiSelector().textContains("${text}")`, timeoutMs);
+    let el = await this.findEl(`android=new UiSelector().textContains("${text}")`, timeoutMs);
+    if (!el && text !== text.toUpperCase()) {
+      el = await this.findEl(`android=new UiSelector().textContains("${text.toUpperCase()}")`, 2000);
+    }
     if (!el) return false;
     await el.click();
     return true;
