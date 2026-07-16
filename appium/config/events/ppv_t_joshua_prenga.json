@@ -1,0 +1,19 @@
+{
+  "regions": {
+    "GB": {
+      "MOBILE_PPV_DATE": "25 JUL 6:00 PM",
+      "MOBILE_BANNER_TITLE": "Joshua vs. Prenga",
+      "MOBILE_BANNER_DATE_TIME": "Sun 26th July at 12:30am",
+      "MOBILE_BANNER_DAY": "Sun",
+      "MOBILE_BANNER_DATE": "26th",
+      "MOBILE_BANNER_MONTH": "July",
+      "MOBILE_BANNER_TIME": "12:30am",
+      "MOBILE_SEARCH_PPV_DATE": "Sat 25th July at 6:00 PM",
+      "MOBILE_SCHEDULE_DAY": "SAT",
+      "MOBILE_SCHEDULE_MONTH": "JUL",
+      "MOBILE_SCHEDULE_DATE": "25",
+      "MOBILE_SCHEDULE_TIME": "6:00PM",
+      "MOBILE_BANNER_DESCRIPTION": "Danger before destiny. AJ returns to the ring against Prenga, an unknown entity with nothing to lose.|AJ returns to the ring against Prenga, an unbeaten unknown with nothing to lose. One upset could change everything."
+    }
+  }
+}

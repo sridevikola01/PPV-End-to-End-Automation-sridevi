@@ -107,10 +107,10 @@ async function isHomeReady(driver: WdBrowser): Promise<boolean> {
     'android=new UiSelector().text("Sports")',
     'android=new UiSelector().text("Schedule")',
     'android=new UiSelector().text("Search")',
-    'android=new UiSelector().descriptionContains("Home")',
-    'android=new UiSelector().descriptionContains("Sports")',
-    'android=new UiSelector().descriptionContains("Schedule")',
-    'android=new UiSelector().descriptionContains("Search")',
+    'android=new UiSelector().description("Home")',
+    'android=new UiSelector().description("Sports")',
+    'android=new UiSelector().description("Schedule")',
+    'android=new UiSelector().description("Search")',
   ];
 
   for (const selector of homeSelectors) {
