@@ -143,10 +143,11 @@ export class AndroidBasePage {
 
   async swipeLeft(): Promise<void> {
     const { width, height } = await this.driver.getWindowSize();
+    const y = Math.round(height * 0.45);
     await this.driver.action('pointer')
-      .move({ x: Math.round(width * 0.8), y: Math.round(height * 0.35) })
+      .move({ x: Math.round(width * 0.8), y })
       .down()
-      .move({ x: Math.round(width * 0.2), y: Math.round(height * 0.35) })
+      .move({ x: Math.round(width * 0.2), y })
       .up()
       .perform();
     await this.driver.pause(800);
