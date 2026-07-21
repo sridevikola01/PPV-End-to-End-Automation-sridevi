@@ -913,6 +913,7 @@ export class AndroidValidationPage extends AndroidBasePage {
           let foundCta = '';
           for (const t of texts) {
             const tLower = t.toLowerCase();
+            if (tLower.includes('watch live')) continue;
             for (const kw of ctaKeywords) {
               if (tLower.includes(kw)) {
                 foundCta = t;
