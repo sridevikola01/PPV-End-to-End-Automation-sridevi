@@ -909,7 +909,16 @@ export class AndroidValidationPage extends AndroidBasePage {
           // For active_standard users, the banner may show different CTAs
           // (e.g. "Get PPV", "Buy PPV") instead of "Buy Now" / "Fight Card".
           // Check for any CTA-like text in the banner area.
-          const ctaKeywords = ['buy now', 'buy', 'get ppv', 'get', 'watch', 'fight card', 'ppv', 'subscribe'];
+          const fieldLower = fieldName.toLowerCase();
+          let ctaKeywords: string[] = [];
+          if (fieldLower.includes('fight card')) {
+            ctaKeywords = ['fight card', 'fightcard', 'card'];
+          } else if (fieldLower.includes('buy now') || fieldLower.includes('buy')) {
+            ctaKeywords = ['buy now', 'buy', 'get ppv', 'get', 'ppv', 'subscribe'];
+          } else {
+            ctaKeywords = ['buy now', 'buy', 'get ppv', 'get', 'watch', 'fight card', 'ppv', 'subscribe'];
+          }
+
           let foundCta = '';
           for (const t of texts) {
             const tLower = t.toLowerCase();
