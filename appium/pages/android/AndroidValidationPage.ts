@@ -753,10 +753,16 @@ export class AndroidValidationPage extends AndroidBasePage {
     if (sheetName) {
       try {
         rows = readSheet(sheetName);
+        rows = rows.filter((r: any) => {
+          if (r.Flow === undefined || r.Flow === '') return true;
+          const rowFlow = String(r.Flow).trim().toLowerCase();
+          const currentSource = String(source || '').trim().toLowerCase();
+          return rowFlow === currentSource;
+        });
         if (sheetName === 'Schedule page') {
           rows = rows.filter((r: any) => !r.Field?.toString().trim().startsWith('Popup'));
         }
-        console.log(`📊 Loaded ${rows.length} rows from dedicated sheet: "${sheetName}"`);
+        console.log(`📊 Loaded ${rows.length} rows from dedicated sheet: "${sheetName}" (filtered by flow "${source}")`);
       } catch (e: any) {
         if (sheetName === 'Landing-page-banner') {
           try {
