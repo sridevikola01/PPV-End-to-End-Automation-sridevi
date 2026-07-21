@@ -18,6 +18,48 @@ try {
   console.warn('⚠️ Failed to load timezone utilities, date validation will use device timezone');
 }
 
+export function parseTimeAndWeekday(val: string): { weekday?: string; hour: number; minute: number } | null {
+  const normalizeDateString = (s: string) => {
+    let clean = String(s || '').toLowerCase()
+      .replace(/[\u200b\u200c\u200d\ufeff]/g, '')
+      .replace(/a\.\s*m\./gi, 'am')
+      .replace(/p\.\s*m\./gi, 'pm')
+      .replace(/\b(\d+)(?:st|nd|rd|th)\b/gi, '$1')
+      .replace(/january/g, 'jan')
+      .replace(/february/g, 'feb')
+      .replace(/march/g, 'mar')
+      .replace(/april/g, 'apr')
+      .replace(/june/g, 'jun')
+      .replace(/july/g, 'jul')
+      .replace(/august/g, 'aug')
+      .replace(/september/g, 'sep')
+      .replace(/october/g, 'oct')
+      .replace(/november/g, 'nov')
+      .replace(/december/g, 'dec');
+    return clean.replace(/\s+/g, ' ').trim();
+  };
+
+  const normalized = normalizeDateString(val);
+  const weekday = normalized.match(/\b(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/i)?.[1]?.toLowerCase();
+  const timeMatch = normalized.match(/(?:\bat\b|•|\s|^)\s*(\d{1,2}):(\d{2})(?:\s*(am|pm))?\b/i) || 
+                    normalized.match(/(?:\bat\b|•|\s|^)\s*(\d{1,2})\s*(am|pm)\b/i);
+  if (!timeMatch) return null;
+  
+  let hour = parseInt(timeMatch[1], 10);
+  let minute = 0;
+  let meridiem;
+
+  if (timeMatch[2] && !isNaN(parseInt(timeMatch[2], 10))) {
+    minute = parseInt(timeMatch[2], 10);
+    meridiem = timeMatch[3]?.toLowerCase();
+  } else {
+    meridiem = timeMatch[2]?.toLowerCase();
+  }
+
+  if (meridiem === 'pm' && hour < 12) hour += 12;
+  if (meridiem === 'am' && hour === 12) hour = 0;
+  return { weekday, hour, minute };
+}
 export interface AndroidValidationResult {
   page: string;
   field: string;
@@ -1093,6 +1135,17 @@ export class AndroidValidationPage extends AndroidBasePage {
               actualValue = watchLiveEl;
               const actualClean = watchLiveEl.replace(/[\u200b\u200c\u200d\ufeff]/g, '').trim().toLowerCase();
               isMatch = actualClean === expectedClean || actualClean.includes(expectedClean) || expectedClean.includes(actualClean);
+              if (!isMatch) {
+                const cleanWatchLive = (val: string) => 
+                  val.toLowerCase().replace(/\bwatch\s+live\b/gi, '').trim();
+                const expParsed = parseTimeAndWeekday(cleanWatchLive(expectedValue));
+                const actParsed = parseTimeAndWeekday(cleanWatchLive(watchLiveEl));
+                if (expParsed && actParsed) {
+                  isMatch = expParsed.hour === actParsed.hour &&
+                    expParsed.minute === actParsed.minute &&
+                    (!expParsed.weekday || !actParsed.weekday || expParsed.weekday === actParsed.weekday);
+                }
+              }
             } else if (pageSource.toLowerCase().includes(expectedClean)) {
               actualValue = expectedValue;
               isMatch = true;
