@@ -4,6 +4,7 @@ const APP_PACKAGE = process.env.APP_PACKAGE || 'com.dazn';
 const ANDROID_SDK = process.env.ANDROID_HOME || `${process.env.HOME}/Library/Android/sdk`;
 const ADB = `${ANDROID_SDK}/platform-tools/adb`;
 const COOKIE_BUTTON_XPATH = '//android.widget.Button[@resource-id="com.dazn:id/btn_accept_cookies"]';
+const DEVICE_SERIAL = process.env.DEVICE_SERIAL || '';
 
 type WdBrowser = any;
 type WdElement = any;
@@ -16,7 +17,8 @@ type PrepareAndroidAppOptions = {
 
 function adb(cmd: string): string {
   try {
-    return execSync(`${ADB} ${cmd}`, {
+    const serialArg = DEVICE_SERIAL ? `-s ${DEVICE_SERIAL} ` : '';
+    return execSync(`${ADB} ${serialArg}${cmd}`, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 15000,
