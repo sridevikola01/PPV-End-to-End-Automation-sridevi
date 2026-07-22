@@ -279,6 +279,8 @@ export class AndroidSchedulePage extends AndroidBasePage {
     const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
 
     if (isUltimateUser && isLoginFirst) {
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Schedule tile clicked. Checking for PIN Protection screen...');
+      await this.handlePinProtectionIfPresent();
       console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Tile clicked, navigated to fixture page. Ending flow.');
       return true;
     }

@@ -64,7 +64,9 @@ export class AndroidLandingPage extends AndroidBasePage {
     const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
 
     if (isUltimateUser && isLoginFirst) {
-      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV banner verified. Skipping Buy click and returning true.');
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV banner verified. Checking for PIN Protection screen...');
+      await this.handlePinProtectionIfPresent();
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Navigated to fixture page. Ending flow.');
       return true;
     }
 

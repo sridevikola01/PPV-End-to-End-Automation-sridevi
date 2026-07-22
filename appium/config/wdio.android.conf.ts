@@ -39,25 +39,6 @@ const ADB         = `${ANDROID_SDK}/platform-tools/adb`;
 const APPIUM_PORT = Number(process.env.APPIUM_PORT || '4723');
 const SYSTEM_PORT = Number(process.env.APPIUM_SYSTEM_PORT || '8200');
 const CHROMEDRIVER_PORT = Number(process.env.CHROMEDRIVER_PORT || '9515');
-const TV_TARGET = (process.env.TV_TARGET || '').trim().toLowerCase();
-const argvJoined = process.argv.join(' ');
-const IS_TV_SPEC_RUN = argvJoined.includes('tv.ppv.spec.ts');
-const EFFECTIVE_TV_TARGET = IS_TV_SPEC_RUN ? TV_TARGET : '';
-
-// AndroidTV profile defaults (can be overridden with env vars).
-const ANDROIDTV_PROFILE_DEFAULTS = {
-  platformVersion: '11',
-  deviceName: 'Android TV at 172.26.89.94',
-  udid: '172.26.89.94:5555',
-  automationName: 'UiAutomator2',
-};
-
-const FIRETV_PROFILE_DEFAULTS = {
-  platformVersion: '11',
-  deviceName: 'Fire TV at 172.26.81.184',
-  udid: '172.26.81.184:5555',
-  automationName: 'UiAutomator2',
-};
 
 // Export ANDROID_HOME at module level so Appium server inherits it
 process.env.ANDROID_HOME     = ANDROID_SDK;
@@ -91,16 +72,9 @@ function getConnectedDevices(): string[] {
   }
 }
 
-// Pick device: explicit DEVICE_SERIAL first, then TV-target-specific serial,
-// else the first connected Android device.
+// Pick device: prefer DEVICE_SERIAL env var, else first connected device
 const devices    = getConnectedDevices();
-const targetSerial =
-  EFFECTIVE_TV_TARGET === 'firetv'
-    ? (process.env.FIRETV_SERIAL || FIRETV_PROFILE_DEFAULTS.udid)
-    : EFFECTIVE_TV_TARGET === 'androidtv'
-      ? (process.env.ANDROIDTV_SERIAL || ANDROIDTV_PROFILE_DEFAULTS.udid)
-      : '';
-const serial     = process.env.DEVICE_SERIAL || targetSerial || devices[0] || '';
+const serial     = process.env.DEVICE_SERIAL || devices[0] || '';
 
 if (!serial) {
   console.warn('⚠️  No Android device detected via ADB. Ensure USB debugging is enabled and run: adb devices');
@@ -108,37 +82,14 @@ if (!serial) {
 
 // Read device model name (e.g. "SM_G990E" → "SM G990E")
 const rawModel   = serial ? adbShell(serial, 'shell getprop ro.product.model') : '';
-const targetDeviceName =
-  EFFECTIVE_TV_TARGET === 'firetv'
-    ? (process.env.FIRETV_DEVICE_NAME || FIRETV_PROFILE_DEFAULTS.deviceName)
-    : EFFECTIVE_TV_TARGET === 'androidtv'
-      ? (process.env.ANDROIDTV_DEVICE_NAME || ANDROIDTV_PROFILE_DEFAULTS.deviceName)
-      : '';
-const deviceName = process.env.DEVICE_NAME || targetDeviceName || rawModel || 'Android Device';
+const deviceName = process.env.DEVICE_NAME || rawModel || 'Android Device';
 
 // Read Android OS version (e.g. "15", "14", "13")
 const rawVersion       = serial ? adbShell(serial, 'shell getprop ro.build.version.release') : '';
-const targetPlatformVersion =
-  EFFECTIVE_TV_TARGET === 'firetv'
-    ? (process.env.FIRETV_PLATFORM_VERSION || FIRETV_PROFILE_DEFAULTS.platformVersion)
-    :
-  EFFECTIVE_TV_TARGET === 'androidtv'
-    ? (process.env.ANDROIDTV_PLATFORM_VERSION || ANDROIDTV_PROFILE_DEFAULTS.platformVersion)
-    : '';
-const platformVersion  = process.env.PLATFORM_VERSION || targetPlatformVersion || rawVersion || '';
-const automationName =
-  EFFECTIVE_TV_TARGET === 'firetv'
-    ? (process.env.FIRETV_AUTOMATION_NAME || FIRETV_PROFILE_DEFAULTS.automationName)
-    :
-  EFFECTIVE_TV_TARGET === 'androidtv'
-    ? (process.env.ANDROIDTV_AUTOMATION_NAME || ANDROIDTV_PROFILE_DEFAULTS.automationName)
-    : (process.env.AUTOMATION_NAME || 'UiAutomator2');
+const platformVersion  = process.env.PLATFORM_VERSION || rawVersion || '';
 
 console.log(`📱 Device   : ${deviceName} (${serial || 'no device'})`);
 console.log(`🤖 Android  : ${platformVersion || 'unknown'}`);
-if (EFFECTIVE_TV_TARGET) {
-  console.log(`📺 TV target : ${EFFECTIVE_TV_TARGET}`);
-}
 
 // The native DAZN app formats event times from the Android device timezone.
 // Web timezone emulation only applies after the checkout handoff, so configure
@@ -207,8 +158,8 @@ export const config = {
       shell: true,
       env: { ...process.env, NODE_OPTIONS: '' }
     });
-    // Wait 3 seconds for Appium to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait 15 seconds for Appium to start
+    await new Promise(resolve => setTimeout(resolve, 15000));
     console.log('✅ Appium server started.');
   },
 
@@ -226,19 +177,12 @@ export const config = {
   capabilities: [
     {
       platformName:                      'Android',
-      // Inject TV metadata only for the dedicated TV spec.
-      ...(IS_TV_SPEC_RUN
-        ? {
-            'dazn:tvTarget': EFFECTIVE_TV_TARGET || 'androidtv',
-            'dazn:deviceFamily': EFFECTIVE_TV_TARGET === 'firetv' ? 'FireTV' : 'AndroidTV',
-          }
-        : {}),
       'appium:deviceName':               deviceName,
       // platformVersion is optional for UiAutomator2 — omit if empty so
       // Appium matches any connected device automatically
       ...(platformVersion ? { 'appium:platformVersion': platformVersion } : {}),
       'appium:udid':                     serial || undefined,
-      'appium:automationName':           automationName,
+      'appium:automationName':           'UiAutomator2',
       'appium:appPackage':               process.env.APP_PACKAGE   || 'com.dazn',
       'appium:appActivity':              process.env.APP_ACTIVITY  || 'com.dazn.splash.view.SplashScreenActivity',
       'appium:noReset':                  true,

@@ -48,9 +48,10 @@ import {
   openBoxingPageBannerPaywall,
   openHomeBoxingBannerPaywall,
   openHomeBoxingUpcomingPaywall,
+  openHomeBoxingDontMissTilePaywall,
 } from '../../pages/android/AndroidBoxingPage';
 import { AndroidMyAccountPage, openMyAccountPPVPaywall, preLoginFlow as sharedPreLoginFlow } from '../../pages/android/AndroidMyAccountPage';
-import { openHomeBannerPaywall, openGenericPPVPaywall } from '../../pages/android/AndroidHomePage';
+import { openHomeBannerPaywall, openGenericPPVPaywall, openHomePageDontMissPaywall } from '../../pages/android/AndroidHomePage';
 import { openLandingBannerPaywall } from '../../pages/android/AndroidLandingPage';
 import { copyImmediateCheckoutUrl } from '../../pages/android/AndroidPaywallPage';
 import {
@@ -75,6 +76,7 @@ import { getAndroidSurfacingPoint, getAndroidValidationSheet } from '../../pages
 import {
   validateMobilePaywallPage,
   validateMobileBannerOrTilePage,
+  validateAndroidFixturePage,
   AndroidValidationResult,
 } from '../../pages/android/AndroidValidationPage';
 
@@ -276,11 +278,11 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         bitRate: '2000000',
       }).catch(e => console.error('⚠️ Failed to start screen recording:', e));
 
-      // When LOGIN_FIRST=true, preserve the landing page so the "Sign In"
-      // button is visible for sharedPreLoginFlow() to tap.
-      // After login completes, waitForHomePage() is called explicitly.
+      const envClear = process.env.CLEAR_APP_DATA || process.env.CLEAR_DATA || process.env.FRESH_APP;
+      const clearData = envClear !== undefined ? String(envClear).toLowerCase() === 'true' : true;
+
       await prepareAndroidApp(browser, {
-        clearAppData: true,
+        clearAppData: clearData,
         acceptCookiesOnly: LOGIN_FIRST || undefined,
         waitForHome: !LOGIN_FIRST,
       });
@@ -549,6 +551,11 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         buyTapped = await openHomeBoxingBannerPaywall(driver, PPV_NAME, androidFlowHooks);
       }
 
+      // ── home-boxing-tile ──────────────────────────────────────────────────
+      else if (SOURCE === 'home-boxing-tile') {
+        buyTapped = await openHomeBoxingDontMissTilePaywall(driver, PPV_NAME, androidFlowHooks);
+      }
+
       // ── home-page-banner ──────────────────────────────────────────────────
       else if (SOURCE === 'home-page-banner') {
         buyTapped = await openHomeBannerPaywall(driver, PPV_NAME, androidFlowHooks);
@@ -563,6 +570,11 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         buyTapped = true;
       }
 
+      // ── home-page-dont-miss ───────────────────────────────────────────────
+      else if (SOURCE === 'home-page-dont-miss') {
+        buyTapped = await openHomePageDontMissPaywall(driver, PPV_NAME, androidFlowHooks);
+      }
+
       // ── fallback ──────────────────────────────────────────────────────────
       else {
         console.log(`⚠️  Unknown SOURCE "${SOURCE}" — generic Home screen fallback`);
@@ -572,6 +584,90 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       if (!buyTapped) {
         await driver.saveScreenshot('./test-results/android_buy_not_found.png');
         throw new Error(`❌ Could not tap Buy CTA. SOURCE="${SOURCE}". See test-results/android_buy_not_found.png`);
+      }
+
+      const isUltimateUserSpec = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+      if (isUltimateUserSpec && LOGIN_FIRST) {
+        console.log(`\n╔══════════════════════════════════════════════════════════════════════════════════╗`);
+        console.log(`║ 💎 [Active Ultimate User - Existing PPV Entitlement]                              ║`);
+        console.log(`║    User "${USER_STATE}" is logged in and already has active access / entitlement.║`);
+        console.log(`║    Tile "${SOURCE}" clicked -> PIN Protection ("WATCH NOW") -> Navigated to Fixture. ║`);
+        console.log(`╚══════════════════════════════════════════════════════════════════════════════════╝\n`);
+
+        await validateAndroidFixturePage(driver, PPV_NAME, appiumResults, eventData);
+
+        const formattedUserState = USER_STATE
+          .split('_')
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
+        const srcLabel = SOURCE.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const flowName = `Android ${formattedUserState}: ${srcLabel}`;
+
+        const finalResultsRows = [
+          ...androidAvailabilityResults.map(r => ({
+            ...r,
+            flowName,
+            source: SOURCE,
+            tier: 'ultimate',
+            ratePlan: 'upfront',
+            userStatus: USER_STATE,
+          })),
+          ...appiumResults.map(r => ({
+            ...r,
+            flowName,
+            source: SOURCE,
+            tier: 'ultimate',
+            ratePlan: 'upfront',
+            userStatus: USER_STATE,
+          })),
+        ];
+
+        const origCwd = process.cwd();
+        try {
+          const path = require('path');
+          process.chdir(path.resolve(__dirname, '../../..'));
+          const { writeResults } = require('../../../utils/excelWriter');
+          const { generateReports } = require('../../../utils/reportGenerator');
+          const { displayResultsTable } = require('../../../utils/resultsDisplay');
+
+          const written = await writeResults(finalResultsRows);
+          displayResultsTable(finalResultsRows, 'ppv', {
+            event: PPV_NAME,
+            region: REGION,
+            excelPath: written.excelPath,
+            videoPath: written.videoPath,
+          });
+
+          await generateReports(finalResultsRows, {
+            event: PPV_NAME,
+            region: REGION,
+            source: SOURCE,
+            ratePlan: 'upfront',
+            tier: 'ultimate',
+            env: (process.env.DAZN_ENV || 'stag').toLowerCase(),
+            flowName,
+            startTime: new Date(),
+            endTime: new Date(),
+            excelPath: written.excelPath,
+            videoPath: written.videoPath,
+            userType: 'existing-user',
+            userStatus: USER_STATE,
+            platform: 'Android',
+          });
+
+          const passed = finalResultsRows.filter((r: any) => r.status === 'PASS').length;
+          const failed = finalResultsRows.filter((r: any) => r.status === 'FAIL').length;
+          const total = passed + failed;
+          console.log(`\n✅ Flow "${flowName}" report generated: ${passed}/${total} passed (${total > 0 ? ((passed / total) * 100).toFixed(1) : 0}%)`);
+        } catch (reportErr: any) {
+          console.error(`⚠️ Failed to generate Ultimate active user report: ${reportErr.message}`);
+        } finally {
+          process.chdir(origCwd);
+        }
+
+        console.log('📱 Closing DAZN app...');
+        adb("shell am force-stop " + APP_PACKAGE);
+        return;
       }
 
       console.log('\n⏳ Waiting for Chrome Custom Tab to open...');
@@ -870,7 +966,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
           if (isNoOffer) {
             eventData.PLAN_CTA_BUTTON = eventData.PLAN_CTA_BUTTON_STANDARD || 'Continue with DAZN Standard';
           } else {
-            eventData.PLAN_CTA_BUTTON = eventData.PLAN_CTA_BUTTON_STANDARD || `Continue with ${eventData.FREE_TRIAL_DAYS || '7'}-day Free Trial`;
+            eventData.PLAN_CTA_BUTTON = eventData.PLAN_CTA_BUTTON_STANDARD || 'Continue with 7-day Free Trial';
           }
           eventData.DAZN_TIER = 'DAZN Standard';
         }
@@ -881,10 +977,10 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
           eventData.PAYMENT_PLAN_NAME = eventData.PAYMENT_PLAN_LABEL || 'Flex – Pay Monthly - First Month Only';
           eventData.PAYMENT_FREE_TEXT = 'N/A';
           eventData.CANCELLATION_TEXT = eventData.CANCELLATION_TEXT_TRIAL || '';
-        } else if (/^\d+_day_trial$/.test(offerType) && planTier === 'standard' && ratePlan === 'monthly') {
+        } else if (offerType === '7_day_trial' && planTier === 'standard' && ratePlan === 'monthly') {
           eventData.PAYMENT_PAGE_TITLE = eventData.PAYMENT_PAGE_TITLE_TRIAL || 'Choose how to pay after your free trial';
-          eventData.PAYMENT_PLAN_NAME = eventData.PAYMENT_FREE_TEXT_TRIAL || `${eventData.FREE_TRIAL_DAYS || '7'}-days free`;
-          eventData.PAYMENT_FREE_TEXT = eventData.PAYMENT_FREE_TEXT_TRIAL || `${eventData.FREE_TRIAL_DAYS || '7'}-days free`;
+          eventData.PAYMENT_PLAN_NAME = eventData.PAYMENT_FREE_TEXT_TRIAL || '7-days free';
+          eventData.PAYMENT_FREE_TEXT = eventData.PAYMENT_FREE_TEXT_TRIAL || '7-days free';
           eventData.CANCELLATION_TEXT = eventData.CANCELLATION_TEXT_TRIAL || '';
         } else if (ratePlan === 'annual pay monthly' || ratePlan === 'annual pay upfront' || ratePlan.includes('annual')) {
           eventData.PAYMENT_PAGE_TITLE = eventData.PAYMENT_PAGE_TITLE_STANDARD || 'Choose how to pay';
@@ -2035,7 +2131,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
                       'button:has-text("Continue with Ultimate")',
                       'button:has-text("Continue with DAZN Standard")',
                       'button:has-text("Continue with Standard")',
-                      'button:has-text("Continue with")',
+                      'button:has-text("Continue with 7-day Free Trial")',
                       'button:has-text("Continue with 1st Month Free")',
                       'button:has-text("Continue with pay-per-view")',
                     ];
@@ -2079,7 +2175,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
             if (!planValidated && !page.url().includes('page=TierPlans')) {
               // Wait for the full CTA button text to render before taking snapshot
               await page.waitForSelector(
-                'button:has-text("Continue with DAZN Ultimate"), button:has-text("Continue with DAZN Standard"), button:has-text("Continue with")',
+                'button:has-text("Continue with DAZN Ultimate"), button:has-text("Continue with DAZN Standard"), button:has-text("Continue with 7-day")',
                 { state: 'visible', timeout: 6000 }
               ).catch(() => {});
               await page.waitForTimeout(500);
@@ -2191,7 +2287,7 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
                 'button:has-text("Continue with pay-per-view"), ' +
                 'button:has-text("Continue with PPV"), ' +
                 'button:has-text("Buy"), ' +
-                'button:has-text("Continue with"), ' +
+                'button:has-text("Continue with 7-day Free Trial"), ' +
                 'button:has-text("Continue with 1st Month Free"), ' +
                 'button:has-text("Continue")'
               ).first();

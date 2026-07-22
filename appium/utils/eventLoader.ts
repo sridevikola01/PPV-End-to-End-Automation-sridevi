@@ -141,7 +141,7 @@ export function parsePPVDate(ppvDate: string): ParsedPPVDate {
  * Reads PPV_CONFIG env var to determine which file.
  */
 export function loadEventConfig(): EventConfig {
-  const fileName = process.env.PPV_CONFIG;
+  let fileName = process.env.PPV_CONFIG;
 
   if (!fileName) {
     // Backward compatibility: default to ppv_t_joshua_prenga.json
@@ -153,10 +153,37 @@ export function loadEventConfig(): EventConfig {
     return loadEventConfig();
   }
 
-  const filePath = path.resolve(__dirname, "../../config/events", fileName);
+  const cleanName = fileName.replace(/\.json$/, '');
+  let filePath = path.resolve(__dirname, "../../config/events", fileName);
 
   if (!fs.existsSync(filePath)) {
-    throw new Error(`Event config not found: ${fileName} (looked at ${filePath})`);
+    // Search config/events/ directory for a file with eventKey === cleanName
+    const rootEventsDir = path.resolve(__dirname, "../../config/events");
+    if (fs.existsSync(rootEventsDir)) {
+      const files = fs.readdirSync(rootEventsDir);
+      let found = false;
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          try {
+            const content = JSON.parse(fs.readFileSync(path.join(rootEventsDir, file), 'utf8'));
+            if (content.eventKey === cleanName) {
+              fileName = file;
+              process.env.PPV_CONFIG = file;
+              filePath = path.join(rootEventsDir, file);
+              found = true;
+              break;
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+      if (!found) {
+        throw new Error(`Event config not found: ${fileName} (looked at ${filePath})`);
+      }
+    } else {
+      throw new Error(`Event config not found: ${fileName} (looked at ${filePath})`);
+    }
   }
 
   const raw = fs.readFileSync(filePath, "utf-8");

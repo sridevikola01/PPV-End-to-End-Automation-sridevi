@@ -88,6 +88,7 @@ const realDeviceCaps: Record<string, unknown> = {
   'appium:updatedWDABundleId': REAL_WDA_BUNDLE_ID,
   // Speed up element commands: default idle wait adds ~10s per lookup on real devices
   'appium:waitForIdleTimeout': 1,
+  // Keep system dialogs accessible for explicit test handling (ATT, Continue/Open flows)
   'appium:autoDismissAlerts': false,
   // Allow switching into SFSafariViewController / WKWebView contexts
   'appium:includeSafariInWebviews': true,
@@ -101,7 +102,6 @@ const realDeviceCaps: Record<string, unknown> = {
 export const config = {
   runner: 'local',
   tsConfigPath: './tsconfig.json',
-  hostname: '127.0.0.1',
   port: 4723,
 
   specs: ['./tests/ios/*.spec.ts'],
