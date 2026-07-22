@@ -1327,12 +1327,46 @@ describe('DAZN Android PPV → Web Handoff', () => {
 
     // ── home-boxing-tile ──────────────────────────────────────────────────
     else if (SOURCE === 'home-boxing-tile') {
-      await scrollToText(driver, PPV_NAME);
-      await tapByText(driver, PPV_NAME, 8000);
-      await driver.pause(2000);
-      for (const cta of ['Buy now', 'Buy Now', 'Buy']) {
-        if (await tapByText(driver, cta, 6000)) { buyTapped = true; break; }
+      console.log('🥊 Home Page → Click Boxing Filter → Home of Boxing page → Find PPV tile...');
+      const { AndroidBoxingPage } = require('../../pages/android/AndroidBoxingPage');
+      const boxingPage = new AndroidBoxingPage(driver, PPV_NAME);
+      await boxingPage.clickHomeBoxingFilter();
+      await driver.pause(2500);
+      await driver.saveScreenshot('./test-results/android_boxing_page.png');
+
+      // Step 3: Find PPV tile on Boxing page
+      let ppvTileFound = await isVisible(driver, PPV_NAME, 3000);
+      if (!ppvTileFound) {
+        console.log('  PPV tile not immediately visible on Boxing page. Scrolling down...');
+        for (let i = 0; i < 8; i++) {
+          await scrollDown(driver);
+          if (await isVisible(driver, PPV_NAME, 1500)) {
+            ppvTileFound = true;
+            break;
+          }
+        }
       }
+
+      if (!ppvTileFound) {
+        await driver.saveScreenshot('./test-results/android_boxing_tile_not_found.png');
+        throw new Error(`❌ PPV tile "${PPV_NAME}" not found on Home of Boxing page. See test-results/android_boxing_tile_not_found.png`);
+      }
+
+      console.log(`  ✅ Verified PPV tile: "${PPV_NAME}" on Boxing page`);
+      await driver.saveScreenshot('./test-results/android_boxing_tile_found.png');
+
+      // Click the PPV tile on Boxing page
+      let ctaClicked = false;
+      for (const cta of ['Buy now', 'Buy Now', 'Buy', 'Get PPV']) {
+        if (await tapByText(driver, cta, 3000)) {
+          ctaClicked = true;
+          break;
+        }
+      }
+      if (!ctaClicked) {
+        await tapByText(driver, PPV_NAME, 5000);
+      }
+      buyTapped = true;
     }
 
     // ── home-page-dont-miss ───────────────────────────────────────────────
