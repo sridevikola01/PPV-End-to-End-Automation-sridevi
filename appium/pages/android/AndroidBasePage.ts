@@ -115,6 +115,70 @@ export class AndroidBasePage {
     }
   }
 
+  /**
+   * For Ultimate users logged in app: after tapping a PPV tile, a PIN Protection modal may appear.
+   * Clicks the "WATCH NOW" button to proceed to the fixture page.
+   */
+  async handlePinProtectionIfPresent(timeoutMs = 6000): Promise<boolean> {
+    console.log('🔒 Checking for PIN Protection screen / "WATCH NOW" button...');
+    await this.driver.pause(2500);
+
+    const watchNowSelectors = [
+      'android=new UiSelector().text("WATCH NOW")',
+      'android=new UiSelector().textContains("WATCH NOW")',
+      'android=new UiSelector().text("Watch Now")',
+      'android=new UiSelector().textContains("Watch Now")',
+      'android=new UiSelector().textMatches("(?i)WATCH NOW")',
+      '//*[contains(@text, "WATCH NOW") or contains(@text, "Watch Now") or contains(@text, "Watch now")]',
+      '//*[@content-desc="WATCH NOW" or @content-desc="Watch Now"]',
+      '//*[contains(translate(@text, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "watch now")]',
+    ];
+
+    let watchNowBtn: WdElement = null;
+
+    for (const selector of watchNowSelectors) {
+      try {
+        const el = await this.driver.$(selector);
+        if (await el.isDisplayed().catch(() => false)) {
+          watchNowBtn = el;
+          console.log(`  Found "WATCH NOW" button with selector: ${selector}`);
+          break;
+        }
+      } catch {
+        // continue trying other selectors
+      }
+    }
+
+    if (!watchNowBtn) {
+      try {
+        const pinHeader = await this.driver.$('android=new UiSelector().textContains("PIN PROTECTION")');
+        if (await pinHeader.isDisplayed().catch(() => false)) {
+          console.log('  Found PIN PROTECTION header, searching for WATCH NOW button...');
+          watchNowBtn = await this.findEl('android=new UiSelector().textContains("WATCH")', 3000);
+        }
+      } catch {
+        // no pin header found
+      }
+    }
+
+    if (watchNowBtn) {
+      console.log('✨ [PIN Protection] Modal detected! Tapping "WATCH NOW" button...');
+      try {
+        await watchNowBtn.click();
+      } catch {
+        console.log('  Direct click on WATCH NOW failed, trying tapByText fallback...');
+        await this.tapByText('WATCH NOW', 3000);
+      }
+      await this.driver.pause(4000);
+      await this.driver.saveScreenshot('./test-results/android_pin_protection_watch_now_clicked.png').catch(() => {});
+      console.log('  ✓ Tapped "WATCH NOW" button and navigated to fixture page.');
+      return true;
+    } else {
+      console.log('  ℹ️ PIN Protection screen not displayed or already bypassed.');
+      return false;
+    }
+  }
+
   async scrollToText(text: string): Promise<boolean> {
     try {
       const el = await this.driver.$(

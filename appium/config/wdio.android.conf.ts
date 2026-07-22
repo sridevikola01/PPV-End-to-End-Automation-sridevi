@@ -158,8 +158,8 @@ export const config = {
       shell: true,
       env: { ...process.env, NODE_OPTIONS: '' }
     });
-    // Wait 3 seconds for Appium to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    // Wait 15 seconds for Appium to start
+    await new Promise(resolve => setTimeout(resolve, 15000));
     console.log('✅ Appium server started.');
   },
 

@@ -10,18 +10,14 @@ import https from 'https';
 
 export class AndroidHomePage extends AndroidLandingPage {
   async ensureOnHome(): Promise<void> {
-    const homeTab = await this.driver.$('android=new UiSelector().text("Home")');
-    if (await homeTab.isDisplayed().catch(() => false)) {
-      console.log('  Already on Home page');
-      return;
-    }
-
-    const homeClicked = await this.tapByText('Home', 3000);
+    console.log('  Navigating to Home tab...');
+    const screen = getScreenSize();
+    const homeClicked = await this.tapByText('Home', 2000);
     if (!homeClicked) {
-      const screen = getScreenSize();
       adbTap(Math.round(screen.width * 0.15), Math.round(screen.height * 0.92));
     }
-    await this.driver.pause(3000);
+    console.log('  ✓ Tapped Home tab. Waiting 3.5s for Home page feed to initialize...');
+    await this.driver.pause(3500);
   }
 
   async openHomeBannerPaywall(hooks: AndroidFlowHooks = {}, options: { immediatePaywall?: boolean } = {}): Promise<boolean> {
@@ -61,23 +57,49 @@ export class AndroidHomePage extends AndroidLandingPage {
     const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
 
     if (isUltimateUser && isLoginFirst) {
-      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Tile clicked (generic). Skipping Buy click and returning true.');
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Tile clicked (generic). Checking for PIN Protection screen...');
+      await this.handlePinProtectionIfPresent();
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Navigated to fixture page. Ending flow.');
       return true;
     }
 
     return this.tapBuyCtaWithFallback(['Buy now', 'Buy Now', 'Buy'], { scrollBeforeFallback: false });
   }
 
-  async openHomePageDontMissPaywall(hooks: AndroidFlowHooks = {}): Promise<boolean> {
+  async openHomePageDontMissPaywall(hooks: AndroidFlowHooks = {}, options: { skipEnsureHome?: boolean } = {}): Promise<boolean> {
     console.log('Home Page -> Find "Don\'t Miss" rail -> Scroll to middle -> Horizontally swipe to PPV tile -> Validate tile -> Click PPV tile');
-    await this.ensureOnHome();
+    if (!options.skipEnsureHome) {
+      await this.ensureOnHome();
+    }
 
-    console.log('  Waiting for scrollable content container to load...');
-    const scrollableEl = await this.driver.$('android=new UiSelector().scrollable(true)');
-    await scrollableEl.waitForDisplayed({ timeout: 15000 }).catch(() => {
-      console.warn('  ⚠️ Scrollable container did not appear within 15s. Proceeding...');
-    });
-    await this.driver.pause(3000);
+    // Wait until at least one content rail title is visible in the main viewport (below top filter bar) before scrolling
+    console.log('  Waiting for Home page content rails to render on screen...');
+    const { width, height } = await this.driver.getWindowSize();
+    const minContentY = Math.round(height * 0.25);
+    const maxContentY = Math.round(height * 0.82);
+    const ignoredNav = ['home', 'sports', 'sport', 'schedule', 'search', 'my account', 'dazn', 'privacy', 'settings', 'account', 'help', 'betting', 'scores', 'all', 'boxing', 'football', 'nfl', 'mma', 'game pass', 'gamepass'];
+
+    let railVisible = false;
+    for (let wait = 0; wait < 15; wait++) {
+      const textEls = await this.driver.$$('//android.widget.TextView');
+      for (const el of textEls) {
+        try {
+          if (!(await el.isDisplayed().catch(() => false))) continue;
+          const text = (await el.getText().catch(() => '')).trim();
+          if (text && text.length > 2 && text.length < 60 && !ignoredNav.includes(text.toLowerCase())) {
+            const loc = await el.getLocation();
+            if (loc.y >= minContentY && loc.y <= maxContentY) {
+              console.log(`  ✓ Content rail title visible on screen at y=${loc.y}: "${text}"`);
+              railVisible = true;
+              break;
+            }
+          }
+        } catch {}
+      }
+      if (railVisible) break;
+      console.log(`  Waiting for Home page content rails to load... (${wait + 1}/15)`);
+      await this.driver.pause(2500);
+    }
 
     // 1. Locate "Don't Miss" rail header
     console.log('  Locating "Don\'t Miss" rail header...');
@@ -121,14 +143,26 @@ export class AndroidHomePage extends AndroidLandingPage {
 
     // Function to get fresh coordinates of the rail header
     const getRailHeaderRect = async () => {
-      const el = await this.driver.$('android=new UiSelector().text("Don\'t Miss")');
-      const loc = await el.getLocation();
-      const size = await el.getSize();
+      for (const sel of [
+        'android=new UiSelector().text("Don\'t Miss")',
+        'android=new UiSelector().textContains("Don\'t Miss")',
+        '//android.widget.TextView[contains(@text, "Don\'t Miss")]',
+      ]) {
+        try {
+          const el = await this.driver.$(sel);
+          if (await el.isDisplayed().catch(() => false)) {
+            const loc = await el.getLocation();
+            const size = await el.getSize();
+            return { x: loc.x, y: loc.y, width: size.width, height: size.height };
+          }
+        } catch {}
+      }
+      const loc = await dontMissEl.getLocation();
+      const size = await dontMissEl.getSize();
       return { x: loc.x, y: loc.y, width: size.width, height: size.height };
     };
 
     // Position it approximately in the middle of the screen
-    const { width, height } = await this.driver.getWindowSize();
     let rect = await getRailHeaderRect();
     console.log(`  "Don't Miss" rail header found at y=${rect.y}, height=${rect.height}. Centering...`);
 
@@ -145,13 +179,11 @@ export class AndroidHomePage extends AndroidLandingPage {
         .up()
         .perform();
       await this.driver.pause(1500);
-      // Refresh rect coordinates
       rect = await getRailHeaderRect();
       console.log(`  Adjusted Y position of "Don't Miss" rail header: y=${rect.y}`);
     }
 
     // 2. Perform horizontal swipe through the rail one tile at a time
-    // Swipe Y coordinate: below the rail header, e.g. rect.y + rect.height + height * 0.12
     const swipeY = rect.y + rect.height + Math.round(height * 0.12);
     console.log(`  Horizontal swipe will use Y coordinate: ${swipeY}`);
 
@@ -188,10 +220,10 @@ export class AndroidHomePage extends AndroidLandingPage {
           }
 
           const railTop = rect.y;
-          const railBottom = rect.y + Math.round(height * 0.35);
+          const railBottom = rect.y + Math.round(height * 0.40);
 
           for (const el of elements) {
-            if (el.clickable && el.top >= railTop - 50 && el.bottom <= railBottom + 100 && el.right > width * 0.25) {
+            if (el.clickable && el.top >= railTop - 100 && el.bottom <= railBottom + 150 && el.right > width * 0.15) {
               if (el.textMatch) {
                 tileX = Math.round((el.left + el.right) / 2);
                 tileY = Math.round((el.top + el.bottom) / 2);
@@ -199,6 +231,15 @@ export class AndroidHomePage extends AndroidLandingPage {
                 return true;
               }
             }
+          }
+
+          // Fallback: any text element matching keyword inside the rail
+          const matchingTextEl = elements.find(el => el.textMatch && el.top >= railTop - 100 && el.bottom <= railBottom + 150);
+          if (matchingTextEl) {
+            tileX = Math.round((matchingTextEl.left + matchingTextEl.right) / 2);
+            tileY = Math.round((matchingTextEl.top + matchingTextEl.bottom) / 2);
+            console.log(`🎯 [Text Match] Found text matching "${this.ppvName}" at x=${tileX}, y=${tileY}`);
+            return true;
           }
         }
 
@@ -229,23 +270,23 @@ export class AndroidHomePage extends AndroidLandingPage {
         }
 
         const railTop = rect.y;
-        const railBottom = rect.y + Math.round(height * 0.35);
+        const railBottom = rect.y + Math.round(height * 0.40);
 
         for (const el of elements) {
-          if (el.clickable && el.top >= railTop - 50 && el.bottom <= railBottom + 100 && el.right > width * 0.25) {
+          if (el.clickable && el.top >= railTop - 100 && el.bottom <= railBottom + 150 && el.right > width * 0.15) {
             let hasLock = false;
             let hasBell = false;
 
             for (const child of elements) {
               if (child === el) continue;
-              if (child.left >= el.left && child.right <= el.right && child.top >= el.top && child.bottom <= el.bottom) {
+              if (child.left >= el.left - 30 && child.right <= el.right + 30 && child.top >= el.top - 30 && child.bottom <= el.bottom + 30) {
                 const cWidth = child.right - child.left;
                 const cHeight = child.bottom - child.top;
 
-                if (child.left > el.left && (child.left - el.left) < 120 && cWidth >= 20 && cWidth <= 90 && cHeight >= 20 && cHeight <= 90) {
+                if (cWidth >= 20 && cWidth <= 90 && cHeight >= 20 && cHeight <= 90) {
                   hasLock = true;
                 }
-                if (child.right < el.right && (el.right - child.right) < 120 && cWidth >= 60 && cWidth <= 200 && cHeight >= 60 && cHeight <= 200) {
+                if (cWidth >= 60 && cWidth <= 200 && cHeight >= 60 && cHeight <= 200) {
                   hasBell = true;
                 }
               }
@@ -272,7 +313,6 @@ export class AndroidHomePage extends AndroidLandingPage {
 
     for (let swipeIdx = 0; swipeIdx < maxHorizontalSwipes && !tileFound; swipeIdx++) {
       console.log(`  PPV tile not visible. Swiping left in rail (swipe ${swipeIdx + 1}/${maxHorizontalSwipes})...`);
-      // Swipe from right to left in the rail area
       const startX = Math.round(width * 0.85);
       const endX = Math.round(width * 0.15);
       await this.driver.action('pointer')
@@ -301,11 +341,18 @@ export class AndroidHomePage extends AndroidLandingPage {
     hooks.recordAvailability?.(true);
     await this.runSurfaceValidation(hooks, 'PPV Tile');
 
-    // 4. Click the PPV Tile
+    // 4. Click the PPV Tile using fresh coordinates to avoid stale scroll offsets
     console.log(`  Clicking the PPV tile for "${this.ppvName}"...`);
-    if (tileX && tileY) {
-      adbTap(tileX, tileY);
-    } else {
+    try {
+      rect = await getRailHeaderRect();
+      const freshTileY = rect.y + rect.height + Math.round(height * 0.12);
+      // Ensure Y coordinate is safely within the rail and never reaches bottom navigation bar (y > 78% height)
+      const safeTileY = Math.min(Math.max(freshTileY, Math.round(height * 0.30)), Math.round(height * 0.78));
+      const safeTileX = (tileX && tileX > width * 0.10 && tileX < width * 0.90) ? tileX : Math.round(width * 0.50);
+
+      console.log(`  Tapping PPV tile at safe coordinates: x=${safeTileX}, y=${safeTileY}`);
+      adbTap(safeTileX, safeTileY);
+    } catch {
       const xpath = `//*[contains(@text, "${this.ppvName}") or contains(@content-desc, "${this.ppvName}")]`;
       const ppvTileEl = await this.driver.$(xpath);
       await ppvTileEl.click();
@@ -316,7 +363,9 @@ export class AndroidHomePage extends AndroidLandingPage {
     const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
 
     if (isUltimateUser && isLoginFirst) {
-      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Tile clicked. Skipping Buy click and returning true.');
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Don\'t Miss tile clicked. Checking for PIN Protection screen...');
+      await this.handlePinProtectionIfPresent();
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Tile clicked, navigated to fixture page. Ending flow.');
       return true;
     }
 

@@ -281,7 +281,10 @@ export async function waitForHomePage(driver: WdBrowser, timeoutMs = 120000): Pr
 }
 
 export async function prepareAndroidApp(driver: WdBrowser, options: PrepareAndroidAppOptions = {}) {
-  const clearAppData = options.clearAppData !== false;
+  const envClear = process.env.CLEAR_APP_DATA || process.env.CLEAR_DATA || process.env.FRESH_APP;
+  const clearAppData = options.clearAppData !== undefined
+    ? options.clearAppData
+    : (envClear !== undefined ? String(envClear).toLowerCase() === 'true' : true);
 
   console.log('═══════════════════════════════════════');
   console.log('📱 Preparing Android app');

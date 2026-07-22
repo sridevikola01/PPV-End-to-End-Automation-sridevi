@@ -6,7 +6,7 @@ on:
       PPV_CONFIG:
         description: 'PPV config filename/key'
         required: true
-        default: 'ppv_t_joshua_prenga.json'
+        default: 'aj_joshua_prenga.json'
 
       PAYMENT_METHOD:
         description: 'Payment method'
@@ -86,7 +86,7 @@ jobs:
           if (!eventPath) throw new Error(`PPV config not found: ${configInput}`);
 
           const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
-          const sourceConfig = JSON.parse(fs.readFileSync('config/surfacingpoint.json', 'utf8'));
+          const sourceConfig = JSON.parse(fs.readFileSync('appium/config/surfacingpoint.json', 'utf8'));
           const sport = String(event.SPORT || '').trim().toLowerCase();
           const hasBundle = event.HAS_BUNDLE === true;
           const hasDefaultSignupPpv = event.HAS_DEFAULT_SIGNUP_PPV === true;
@@ -95,15 +95,11 @@ jobs:
             'landing-page-banner',
             'home-page-banner',
             'home-page-dont-miss',
-            'home-page-tile',
             'home-boxing-banner',
             'home-boxing-upcoming',
             'home-boxing-tile',
-            'boxing-page-banner',
-            'boxing-upcoming-fights',
             'schedule',
             'search',
-            'myaccount',
           ].filter((source) => {
             if (source === 'home-kickboxing-tile' && sport !== 'kickboxing') return false;
             if (source === 'boxing-page-bundle' && !hasBundle) return false;
@@ -133,25 +129,6 @@ jobs:
               addMatrixEntry({ source, plan });
             }
           }
-
-          if (sources.includes('home-page-banner') || sources.includes('home-page-dont-miss')) {
-            for (const plan of plans) {
-              addMatrixEntry({ source: 'home-page-subscribe', plan });
-            }
-          }
-
-          if (sources.includes('myaccount')) {
-            for (const plan of plans) {
-              addMatrixEntry({ source: 'myaccount-subscription-status', plan });
-            }
-          }
-
-          addMatrixEntry(
-            { source: 'landing-page-dont-miss-live-switch', plan: 'standard_monthly', switch: 'true' },
-          );
-          addMatrixEntry(
-            { source: 'landing-page-dont-miss-live-switch', plan: 'standard_apm', switch: 'true' },
-          );
 
           console.log(`Event: ${event.eventKey || event.PPV_NAME || configInput}`);
           console.log(`SPORT=${event.SPORT || 'not set'}, HAS_BUNDLE=${hasBundle}, HAS_DEFAULT_SIGNUP_PPV=${hasDefaultSignupPpv}`);

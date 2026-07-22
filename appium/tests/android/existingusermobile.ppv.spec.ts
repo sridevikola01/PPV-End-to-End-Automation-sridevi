@@ -76,6 +76,7 @@ import { getAndroidSurfacingPoint, getAndroidValidationSheet } from '../../pages
 import {
   validateMobilePaywallPage,
   validateMobileBannerOrTilePage,
+  validateAndroidFixturePage,
   AndroidValidationResult,
 } from '../../pages/android/AndroidValidationPage';
 
@@ -277,11 +278,11 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         bitRate: '2000000',
       }).catch(e => console.error('⚠️ Failed to start screen recording:', e));
 
-      // When LOGIN_FIRST=true, preserve the landing page so the "Sign In"
-      // button is visible for sharedPreLoginFlow() to tap.
-      // After login completes, waitForHomePage() is called explicitly.
+      const envClear = process.env.CLEAR_APP_DATA || process.env.CLEAR_DATA || process.env.FRESH_APP;
+      const clearData = envClear !== undefined ? String(envClear).toLowerCase() === 'true' : true;
+
       await prepareAndroidApp(browser, {
-        clearAppData: true,
+        clearAppData: clearData,
         acceptCookiesOnly: LOGIN_FIRST || undefined,
         waitForHome: !LOGIN_FIRST,
       });
@@ -583,6 +584,90 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       if (!buyTapped) {
         await driver.saveScreenshot('./test-results/android_buy_not_found.png');
         throw new Error(`❌ Could not tap Buy CTA. SOURCE="${SOURCE}". See test-results/android_buy_not_found.png`);
+      }
+
+      const isUltimateUserSpec = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+      if (isUltimateUserSpec && LOGIN_FIRST) {
+        console.log(`\n╔══════════════════════════════════════════════════════════════════════════════════╗`);
+        console.log(`║ 💎 [Active Ultimate User - Existing PPV Entitlement]                              ║`);
+        console.log(`║    User "${USER_STATE}" is logged in and already has active access / entitlement.║`);
+        console.log(`║    Tile "${SOURCE}" clicked -> PIN Protection ("WATCH NOW") -> Navigated to Fixture. ║`);
+        console.log(`╚══════════════════════════════════════════════════════════════════════════════════╝\n`);
+
+        await validateAndroidFixturePage(driver, PPV_NAME, appiumResults, eventData);
+
+        const formattedUserState = USER_STATE
+          .split('_')
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
+        const srcLabel = SOURCE.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        const flowName = `Android ${formattedUserState}: ${srcLabel}`;
+
+        const finalResultsRows = [
+          ...androidAvailabilityResults.map(r => ({
+            ...r,
+            flowName,
+            source: SOURCE,
+            tier: 'ultimate',
+            ratePlan: 'upfront',
+            userStatus: USER_STATE,
+          })),
+          ...appiumResults.map(r => ({
+            ...r,
+            flowName,
+            source: SOURCE,
+            tier: 'ultimate',
+            ratePlan: 'upfront',
+            userStatus: USER_STATE,
+          })),
+        ];
+
+        const origCwd = process.cwd();
+        try {
+          const path = require('path');
+          process.chdir(path.resolve(__dirname, '../../..'));
+          const { writeResults } = require('../../../utils/excelWriter');
+          const { generateReports } = require('../../../utils/reportGenerator');
+          const { displayResultsTable } = require('../../../utils/resultsDisplay');
+
+          const written = await writeResults(finalResultsRows);
+          displayResultsTable(finalResultsRows, 'ppv', {
+            event: PPV_NAME,
+            region: REGION,
+            excelPath: written.excelPath,
+            videoPath: written.videoPath,
+          });
+
+          await generateReports(finalResultsRows, {
+            event: PPV_NAME,
+            region: REGION,
+            source: SOURCE,
+            ratePlan: 'upfront',
+            tier: 'ultimate',
+            env: (process.env.DAZN_ENV || 'stag').toLowerCase(),
+            flowName,
+            startTime: new Date(),
+            endTime: new Date(),
+            excelPath: written.excelPath,
+            videoPath: written.videoPath,
+            userType: 'existing-user',
+            userStatus: USER_STATE,
+            platform: 'Android',
+          });
+
+          const passed = finalResultsRows.filter((r: any) => r.status === 'PASS').length;
+          const failed = finalResultsRows.filter((r: any) => r.status === 'FAIL').length;
+          const total = passed + failed;
+          console.log(`\n✅ Flow "${flowName}" report generated: ${passed}/${total} passed (${total > 0 ? ((passed / total) * 100).toFixed(1) : 0}%)`);
+        } catch (reportErr: any) {
+          console.error(`⚠️ Failed to generate Ultimate active user report: ${reportErr.message}`);
+        } finally {
+          process.chdir(origCwd);
+        }
+
+        console.log('📱 Closing DAZN app...');
+        adb("shell am force-stop " + APP_PACKAGE);
+        return;
       }
 
       console.log('\n⏳ Waiting for Chrome Custom Tab to open...');

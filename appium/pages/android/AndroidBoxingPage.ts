@@ -211,6 +211,8 @@ export class AndroidBoxingPage extends AndroidBasePage {
         if (await el.isDisplayed().catch(() => false)) {
           await el.click();
           console.log(`  Tapped PPV tile text: "${this.ppvName}"`);
+          await this.handlePinProtectionIfPresent();
+          console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Navigated to fixture page. Ending flow.');
           return true;
         }
       }
@@ -378,7 +380,9 @@ export class AndroidBoxingPage extends AndroidBasePage {
     const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
 
     if (isUltimateUser && isLoginFirst) {
-      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV banner verified (boxing). Skipping Buy click and returning true.');
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] PPV banner verified (boxing). Checking for PIN Protection screen...');
+      await this.handlePinProtectionIfPresent();
+      console.log('✨ [Ultimate Active User with LOGIN_FIRST=true] Navigated to fixture page. Ending flow.');
       return true;
     }
 
@@ -431,10 +435,11 @@ export class AndroidBoxingPage extends AndroidBasePage {
     // 1. Navigate to Boxing page via the filter chip on Home
     await this.clickHomeBoxingFilter();
     console.log('  ✓ On Boxing page');
+    await this.driver.pause(2500);
 
-    // 2. Reuse the working Don't Miss rail flow from AndroidHomePage
+    // 2. Reuse the exact working Don't Miss rail flow from AndroidHomePage (skipping ensureOnHome)
     const { AndroidHomePage } = require('./AndroidHomePage');
-    return new AndroidHomePage(this.driver, this.ppvName).openHomePageDontMissPaywall(hooks);
+    return new AndroidHomePage(this.driver, this.ppvName).openHomePageDontMissPaywall(hooks, { skipEnsureHome: true });
   }
 }
 
@@ -486,4 +491,100 @@ export async function openHomeBoxingDontMissTilePaywall(
   hooks: AndroidFlowHooks = {},
 ): Promise<boolean> {
   return new AndroidBoxingPage(driver, ppvName).openHomeBoxingDontMissTilePaywall(hooks);
+}
+
+
+async function locatePPVTileWithGemini(driver: WdBrowser, ppvName: string): Promise<{ visible: boolean; x: number | null; y: number | null }> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+    console.warn('⚠️ [Gemini] GEMINI_API_KEY not configured. Cannot perform visual tile detection.');
+    return { visible: false, x: null, y: null };
+  }
+
+  try {
+    const screenshotBase64 = await driver.takeScreenshot();
+
+    const prompt = `
+      Analyze the attached screenshot of the mobile app Boxing page.
+      Locate the "Don't Miss" rail. Under "Don't Miss" header, there is a horizontal list of tiles.
+      Identify if the PPV tile for "${ppvName}" (e.g. featuring fighter "Joshua" or "Prenga" on it, typically with text "JOSHUA" or "PRENGA" or "July 25") is currently visible on the screen.
+      
+      If it is visible, provide the center coordinates (x, y) in pixels.
+      Note: The screenshot is 1080x2340 pixels (width x height) or similar. Make sure to return coordinates in the same scale as the screenshot.
+      
+      Return ONLY valid JSON matching this schema:
+      {
+        "visible": boolean,
+        "x": number | null,
+        "y": number | null
+      }
+    `;
+
+    const schema = {
+      type: 'object',
+      properties: {
+        visible: { type: 'boolean' },
+        x: { type: 'number', nullable: true },
+        y: { type: 'number', nullable: true }
+      },
+      required: ['visible', 'x', 'y']
+    };
+
+    const payload = Buffer.from(JSON.stringify({
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: 'image/png', data: screenshotBase64 } },
+          { text: prompt }
+        ]
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        responseSchema: schema,
+        temperature: 0
+      }
+    }));
+
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+      const req = https.request(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'x-goog-api-key': apiKey,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'Content-Length': String(payload.length)
+          }
+        },
+        res => {
+          const chunks: Buffer[] = [];
+          res.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+          res.on('end', () => resolve({
+            statusCode: res.statusCode || 0,
+            body: Buffer.concat(chunks).toString('utf8')
+          }));
+        }
+      );
+      req.setTimeout(30000, () => req.destroy(new Error('Gemini request timed out')));
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`Gemini returned HTTP ${response.statusCode}: ${response.body}`);
+    }
+
+    const resObj = JSON.parse(response.body);
+    const textResult = resObj.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text;
+    if (!textResult) throw new Error('No text in Gemini response');
+
+    const result = JSON.parse(textResult);
+    console.log(`🤖 [Gemini] Tile detection result for "${ppvName}":`, result);
+    return result;
+  } catch (err: any) {
+    console.error(`⚠️ [Gemini] Failed to detect tile: ${err.message}`);
+    return { visible: false, x: null, y: null };
+  }
 }

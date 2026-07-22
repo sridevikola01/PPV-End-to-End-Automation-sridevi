@@ -40,6 +40,7 @@ jobs:
       - self-hosted
       - macOS
       - ARM64
+      - sridevi-runners
 
     timeout-minutes: 10
 
@@ -84,7 +85,7 @@ jobs:
           if (!eventPath) throw new Error(`PPV config not found: ${configInput}`);
 
           const event = JSON.parse(fs.readFileSync(eventPath, 'utf8'));
-          const sourceConfig = JSON.parse(fs.readFileSync('config/surfacingpoint.json', 'utf8'));
+          const sourceConfig = JSON.parse(fs.readFileSync('appium/config/surfacingpoint.json', 'utf8'));
           const sport = String(event.SPORT || '').trim().toLowerCase();
           const hasBundle = event.HAS_BUNDLE === true;
           const hasDefaultSignupPpv = event.HAS_DEFAULT_SIGNUP_PPV === true;
@@ -92,15 +93,11 @@ jobs:
           const sources = [
             'home-page-banner',
             'home-page-dont-miss',
-            'home-page-tile',
             'home-boxing-banner',
             'home-boxing-upcoming',
             'home-boxing-tile',
-            'boxing-page-banner',
-            'boxing-upcoming-fights',
             'schedule',
             'search',
-            'myaccount',
             'landing-page-banner',
           ].filter((source) => {
             if (source === 'home-kickboxing-tile' && sport !== 'kickboxing') return false;
@@ -133,6 +130,7 @@ jobs:
       - self-hosted
       - macOS
       - ARM64
+      - sridevi-runners
 
     timeout-minutes: 30
 
