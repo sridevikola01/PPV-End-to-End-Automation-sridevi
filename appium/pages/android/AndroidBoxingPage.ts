@@ -434,12 +434,15 @@ export class AndroidBoxingPage extends AndroidBasePage {
 
     // 1. Navigate to Boxing page via the filter chip on Home
     await this.clickHomeBoxingFilter();
-    console.log('  ✓ On Boxing page');
+    console.log('  ✓ On Boxing page. Waiting for Boxing page content rails to render...');
     await this.driver.pause(2500);
 
-    // 2. Reuse the exact working Don't Miss rail flow from AndroidHomePage (skipping ensureOnHome)
     const { AndroidHomePage } = require('./AndroidHomePage');
-    return new AndroidHomePage(this.driver, this.ppvName).openHomePageDontMissPaywall(hooks, { skipEnsureHome: true });
+    const homePageObj = new AndroidHomePage(this.driver, this.ppvName);
+    await homePageObj.waitForContentRailsToLoad();
+
+    // 2. Reuse the exact working Don't Miss rail flow from AndroidHomePage (skipping ensureOnHome)
+    return homePageObj.openHomePageDontMissPaywall(hooks, { skipEnsureHome: true });
   }
 }
 

@@ -9,6 +9,30 @@ import { AndroidLandingPage } from './AndroidLandingPage';
 import https from 'https';
 
 export class AndroidHomePage extends AndroidLandingPage {
+  async waitForContentRailsToLoad(timeoutMs = 15000): Promise<boolean> {
+    console.log('⏳ Checking that Home / Boxing content rails are fully loaded and visible...');
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const src = (await this.driver.getPageSource().catch(() => '')).toLowerCase();
+        const railKeywords = [
+          "don't miss", "dont miss", "boxing", "upcoming fights",
+          "featured", "trending", "highlights", "schedule", "must watch",
+          "live & upcoming", "catch up", "popular", "nfl", "spence"
+        ];
+        const loaded = railKeywords.some(k => src.includes(k));
+        if (loaded) {
+          console.log('  ✅ Content rails verified as loaded and visible on screen!');
+          await this.driver.pause(2000);
+          return true;
+        }
+      } catch {}
+      console.log('  Waiting for content rails network feed to render...');
+      await this.driver.pause(2000);
+    }
+    return false;
+  }
+
   async ensureOnHome(): Promise<void> {
     console.log('  Navigating to Home tab...');
     const screen = getScreenSize();
@@ -18,6 +42,7 @@ export class AndroidHomePage extends AndroidLandingPage {
     }
     console.log('  ✓ Tapped Home tab. Waiting 3.5s for Home page feed to initialize...');
     await this.driver.pause(3500);
+    await this.waitForContentRailsToLoad();
   }
 
   async openHomeBannerPaywall(hooks: AndroidFlowHooks = {}, options: { immediatePaywall?: boolean } = {}): Promise<boolean> {
@@ -70,15 +95,14 @@ export class AndroidHomePage extends AndroidLandingPage {
     console.log('Home Page -> Find "Don\'t Miss" rail -> Scroll to middle -> Horizontally swipe to PPV tile -> Validate tile -> Click PPV tile');
     if (!options.skipEnsureHome) {
       await this.ensureOnHome();
+    } else {
+      await this.waitForContentRailsToLoad();
     }
 
-    // Wait until at least one content rail title is visible in the main viewport (below top filter bar) before scrolling
-    console.log('  Waiting for Home page content rails to render on screen...');
     const { width, height } = await this.driver.getWindowSize();
     const minContentY = Math.round(height * 0.25);
     const maxContentY = Math.round(height * 0.82);
     const ignoredNav = ['home', 'sports', 'sport', 'schedule', 'search', 'my account', 'dazn', 'privacy', 'settings', 'account', 'help', 'betting', 'scores', 'all', 'boxing', 'football', 'nfl', 'mma', 'game pass', 'gamepass'];
-
     let railVisible = false;
     for (let wait = 0; wait < 15; wait++) {
       const textEls = await this.driver.$$('//android.widget.TextView');
