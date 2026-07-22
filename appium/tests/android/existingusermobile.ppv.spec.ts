@@ -48,9 +48,10 @@ import {
   openBoxingPageBannerPaywall,
   openHomeBoxingBannerPaywall,
   openHomeBoxingUpcomingPaywall,
+  openHomeBoxingDontMissTilePaywall,
 } from '../../pages/android/AndroidBoxingPage';
 import { AndroidMyAccountPage, openMyAccountPPVPaywall, preLoginFlow as sharedPreLoginFlow } from '../../pages/android/AndroidMyAccountPage';
-import { openHomeBannerPaywall, openGenericPPVPaywall } from '../../pages/android/AndroidHomePage';
+import { openHomeBannerPaywall, openGenericPPVPaywall, openHomePageDontMissPaywall } from '../../pages/android/AndroidHomePage';
 import { openLandingBannerPaywall } from '../../pages/android/AndroidLandingPage';
 import { copyImmediateCheckoutUrl } from '../../pages/android/AndroidPaywallPage';
 import {
@@ -549,6 +550,11 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         buyTapped = await openHomeBoxingBannerPaywall(driver, PPV_NAME, androidFlowHooks);
       }
 
+      // ── home-boxing-tile ──────────────────────────────────────────────────
+      else if (SOURCE === 'home-boxing-tile') {
+        buyTapped = await openHomeBoxingDontMissTilePaywall(driver, PPV_NAME, androidFlowHooks);
+      }
+
       // ── home-page-banner ──────────────────────────────────────────────────
       else if (SOURCE === 'home-page-banner') {
         buyTapped = await openHomeBannerPaywall(driver, PPV_NAME, androidFlowHooks);
@@ -561,6 +567,11 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         bannerCheckoutUrl = copyResult.url;
         bannerUrlCaptured = copyResult.captured;
         buyTapped = true;
+      }
+
+      // ── home-page-dont-miss ───────────────────────────────────────────────
+      else if (SOURCE === 'home-page-dont-miss') {
+        buyTapped = await openHomePageDontMissPaywall(driver, PPV_NAME, androidFlowHooks);
       }
 
       // ── fallback ──────────────────────────────────────────────────────────

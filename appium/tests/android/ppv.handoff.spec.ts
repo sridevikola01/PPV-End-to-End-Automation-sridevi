@@ -64,8 +64,9 @@ import {
   navigateToBoxingPage as sharedNavigateToBoxingPage,
   openHomeBoxingBannerPaywall,
   openHomeBoxingUpcomingPaywall,
+  openHomeBoxingDontMissTilePaywall,
 } from '../../pages/android/AndroidBoxingPage';
-import { openHomeBannerPaywall, openGenericPPVPaywall } from '../../pages/android/AndroidHomePage';
+import { openHomeBannerPaywall, openGenericPPVPaywall, openHomePageDontMissPaywall } from '../../pages/android/AndroidHomePage';
 import { openLandingBannerPaywall } from '../../pages/android/AndroidLandingPage';
 import { copyImmediateCheckoutUrl } from '../../pages/android/AndroidPaywallPage';
 import { getAndroidSurfacingPoint, getAndroidValidationSheet } from '../../pages/android/AndroidSurfacingPoint';
@@ -362,6 +363,11 @@ describe('DAZN Android PPV → Web Handoff', () => {
       buyTapped = await openHomeBoxingBannerPaywall(driver, PPV_NAME, androidFlowHooks);
     }
 
+    // ── home-boxing-tile ──────────────────────────────────────────────────
+    else if (SOURCE === 'home-boxing-tile') {
+      buyTapped = await openHomeBoxingDontMissTilePaywall(driver, PPV_NAME, androidFlowHooks);
+    }
+
     // ── landing-page-banner ───────────────────────────────────────────────
     else if (SOURCE === 'landing-page-banner') {
       console.log('  Landing page banner flow: find PPV banner, validate banner, buy, validate copy controls, copy URL.');
@@ -426,6 +432,11 @@ describe('DAZN Android PPV → Web Handoff', () => {
       bannerCheckoutUrl = copyResult.url;
       bannerUrlCaptured = copyResult.captured;
       buyTapped = true;
+    }
+
+    // ── home-page-dont-miss ───────────────────────────────────────────────
+    else if (SOURCE === 'home-page-dont-miss') {
+      buyTapped = await openHomePageDontMissPaywall(driver, PPV_NAME, androidFlowHooks);
     }
 
     // ── fallback ──────────────────────────────────────────────────────────

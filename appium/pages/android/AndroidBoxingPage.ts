@@ -1,4 +1,5 @@
 import { AndroidBasePage, AndroidFlowHooks, WdBrowser, adbSwipe, adbTap, getScreenSize } from './AndroidBasePage';
+import https from 'https';
 
 export interface AndroidPPVDateParts {
   month: string;
@@ -423,6 +424,18 @@ export class AndroidBoxingPage extends AndroidBasePage {
     }
     return buyTapped;
   }
+
+  async openHomeBoxingDontMissTilePaywall(hooks: AndroidFlowHooks = {}): Promise<boolean> {
+    console.log('Home -> Boxing filter -> Boxing Page -> Find "Don\'t Miss" rail -> Swipe to PPV tile -> Validate tile -> Click PPV tile');
+
+    // 1. Navigate to Boxing page via the filter chip on Home
+    await this.clickHomeBoxingFilter();
+    console.log('  ✓ On Boxing page');
+
+    // 2. Reuse the working Don't Miss rail flow from AndroidHomePage
+    const { AndroidHomePage } = require('./AndroidHomePage');
+    return new AndroidHomePage(this.driver, this.ppvName).openHomePageDontMissPaywall(hooks);
+  }
 }
 
 export async function navigateToBoxingPage(driver: WdBrowser): Promise<void> {
@@ -465,4 +478,12 @@ export async function openHomeBoxingUpcomingPaywall(
   hooks: AndroidFlowHooks = {},
 ): Promise<boolean> {
   return new AndroidBoxingPage(driver, ppvName).openHomeBoxingUpcomingPaywall(eventConfig, hooks);
+}
+
+export async function openHomeBoxingDontMissTilePaywall(
+  driver: WdBrowser,
+  ppvName: string,
+  hooks: AndroidFlowHooks = {},
+): Promise<boolean> {
+  return new AndroidBoxingPage(driver, ppvName).openHomeBoxingDontMissTilePaywall(hooks);
 }

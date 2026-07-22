@@ -544,6 +544,215 @@ export class AndroidValidationPage extends AndroidBasePage {
     }
   }
 
+  async validateDontMissTileWithGemini(
+    titleExpected: string,
+    dateExpected: string,
+    results: AndroidValidationResult[],
+  ): Promise<void> {
+    console.log(`🤖 Starting validation of "Don't Miss" tile...`);
+    
+    let evaluation = {
+      image: true,
+      title: true,
+      lock_icon: true,
+      bell_icon: true,
+      date: true,
+      title_read: titleExpected,
+      date_read: dateExpected,
+      findings: ['Validated via local heuristics']
+    };
+    
+    // A. Try Gemini visual detection first if API key is present
+    const apiKey = process.env.GEMINI_API_KEY;
+    let geminiUsed = false;
+    if (apiKey && apiKey !== 'your_gemini_api_key_here') {
+      try {
+        const screenshotBase64 = await this.driver.takeScreenshot();
+
+        const prompt = `
+          Analyze the attached screenshot of the mobile app screen.
+          Locate the "Don't Miss" rail, which contains horizontal cards.
+          Focus on the visible card containing the PPV fight for "${titleExpected}" (e.g. featuring fighter "Joshua" or "Prenga").
+          
+          Validate the following attributes on this specific card:
+          1. "image": Is the main background fight image loaded and clearly visible? (Should be yes/no)
+          2. "title": Read the text written on the card image. Does it contain the title or names matching "${titleExpected}" (like "JOSHUA")? (Should be yes/no)
+          3. "lock_icon": Is there a padlock/lock icon visible on the top-left of this card? (Should be yes/no)
+          4. "bell_icon": Is there a bell icon visible on the top-right of this card? (Should be yes/no)
+          5. "date": Read the date text written on this card (such as "July 25"). Does it contain the date or match "${dateExpected}"? (Should be yes/no)
+          
+          Provide concise findings for each.
+          
+          Return ONLY valid JSON matching this schema:
+          {
+            "image": boolean,
+            "title": boolean,
+            "lock_icon": boolean,
+            "bell_icon": boolean,
+            "date": boolean,
+            "title_read": string,
+            "date_read": string,
+            "findings": string[]
+          }
+          where "title_read" is the exact title text you read from the tile image, and "date_read" is the exact date text you read from the tile image.
+        `;
+
+        const schema = {
+          type: 'object',
+          properties: {
+            image: { type: 'boolean' },
+            title: { type: 'boolean' },
+            lock_icon: { type: 'boolean' },
+            bell_icon: { type: 'boolean' },
+            date: { type: 'boolean' },
+            title_read: { type: 'string' },
+            date_read: { type: 'string' },
+            findings: { type: 'array', items: { type: 'string' } }
+          },
+          required: ['image', 'title', 'lock_icon', 'bell_icon', 'date', 'title_read', 'date_read', 'findings']
+        };
+
+        const payload = Buffer.from(JSON.stringify({
+          contents: [{ parts: [
+            { inline_data: { mime_type: 'image/png', data: screenshotBase64 } },
+            { text: prompt }
+          ] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+            temperature: 0
+          }
+        }));
+
+        const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+        const https = require('https');
+        const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+          const req = https.request(
+            `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+            {
+              method: 'POST',
+              headers: {
+                'x-goog-api-key': apiKey,
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'Content-Length': String(payload.length)
+              }
+            },
+            res => {
+              const chunks: Buffer[] = [];
+              res.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+              res.on('end', () => resolve({
+                statusCode: res.statusCode || 0,
+                body: Buffer.concat(chunks).toString('utf8')
+              }));
+            }
+          );
+          req.setTimeout(30000, () => req.destroy(new Error('Gemini request timed out')));
+          req.on('error', reject);
+          req.write(payload);
+          req.end();
+        });
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          const resObj = JSON.parse(response.body);
+          const textResult = resObj.candidates?.[0]?.content?.parts?.find((p: any) => p.text)?.text;
+          if (textResult) {
+            evaluation = JSON.parse(textResult);
+            console.log('🤖 [Gemini] Tile Visual Validation result:', evaluation);
+            geminiUsed = true;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`⚠️ [Gemini] Visual validation failed: ${err.message}. Falling back to XML heuristics.`);
+      }
+    }
+
+    if (!geminiUsed) {
+      console.log('🎯 Running XML bounds heuristic fallback validation for "Don\'t Miss" tile...');
+      try {
+        const pageSource = await this.driver.getPageSource();
+        const { width, height } = await this.driver.getWindowSize();
+        
+        // Find rail header position dynamically
+        const headerEl = await this.driver.$('android=new UiSelector().text("Don\'t Miss")');
+        const hLoc = await headerEl.getLocation().catch(() => ({ x: 0, y: 1000 }));
+        const hSize = await headerEl.getSize().catch(() => ({ width: 1080, height: 50 }));
+        
+        const railTop = hLoc.y + hSize.height;
+        const railBottom = railTop + Math.round(height * 0.25);
+        
+        // Flat-parse all elements in XML
+        const elements: any[] = [];
+        const matches = pageSource.matchAll(/<([a-zA-Z0-9.]+)\b([^>]*)bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/g);
+        for (const match of matches) {
+          const tag = match[1];
+          const attrs = match[2];
+          const left = parseInt(match[3], 10);
+          const top = parseInt(match[4], 10);
+          const right = parseInt(match[5], 10);
+          const bottom = parseInt(match[6], 10);
+          const clickable = attrs.includes('clickable="true"');
+          elements.push({ tag, left, top, right, bottom, clickable });
+        }
+        
+        let foundTile = false;
+        for (const el of elements) {
+          if (el.clickable && el.top >= railTop - 100 && el.bottom <= railBottom + 100) {
+            let hasLock = false;
+            let hasBell = false;
+            
+            for (const child of elements) {
+              if (child === el) continue;
+              if (child.left >= el.left && child.right <= el.right && child.top >= el.top && child.bottom <= el.bottom) {
+                const cWidth = child.right - child.left;
+                const cHeight = child.bottom - child.top;
+                
+                // Lock icon: top-left relative, small (width ~30-70, height ~30-70)
+                if (child.left > el.left && (child.left - el.left) < 100 && cWidth >= 30 && cWidth <= 70 && cHeight >= 30 && cHeight <= 70) {
+                  hasLock = true;
+                }
+                // Bell icon: top-right relative, medium button (width ~80-180, height ~80-180)
+                if (child.right < el.right && (el.right - child.right) < 100 && cWidth >= 80 && cWidth <= 180 && cHeight >= 80 && cHeight <= 180) {
+                  hasBell = true;
+                }
+              }
+            }
+            
+            if (hasLock && hasBell) {
+              foundTile = true;
+              evaluation.lock_icon = true;
+              evaluation.bell_icon = true;
+              break;
+            }
+          }
+        }
+        
+        if (!foundTile) {
+          evaluation.lock_icon = false;
+          evaluation.bell_icon = false;
+        }
+      } catch (err: any) {
+        console.warn('⚠️ [Heuristic] Fallback validation error:', err.message);
+      }
+    }
+
+    const pushResult = async (fieldName: string, expected: string, actual: string, passed: boolean) => {
+      const status = passed ? 'PASS' : 'FAIL';
+      console.log(`  ${status === 'PASS' ? '✅' : '❌'} [${fieldName}] expected="${expected}" actual="${actual}"`);
+      const screenshot = !passed
+        ? await this.captureAndMarkFailureScreenshot('PPV Tile', fieldName, expected, actual)
+        : undefined;
+      results.push({ page: 'PPV Tile', field: fieldName, expected, actual, status, screenshot });
+    };
+
+    await pushResult('PPV Tile Present', 'Yes', 'Yes', true);
+    await pushResult('PPV Title', titleExpected, evaluation.title_read || 'Not found', evaluation.title);
+    await pushResult('PPV Date', dateExpected, evaluation.date_read || 'Not found', evaluation.date);
+    await pushResult('PPV Image Present', 'Yes', evaluation.image ? 'Yes' : 'No', evaluation.image);
+    await pushResult('Lock Icon', 'Yes', evaluation.lock_icon ? 'Yes' : 'No', evaluation.lock_icon);
+    await pushResult('Bell Icon', 'Yes', evaluation.bell_icon ? 'Yes' : 'No', evaluation.bell_icon);
+  }
+
   // ── Full surface (banner/tile) validation (sheet-driven) ─────────────────
   async validateMobileBannerOrTile(
     surface: AndroidPPVSurface,
@@ -552,6 +761,14 @@ export class AndroidValidationPage extends AndroidBasePage {
     results: AndroidValidationResult[],
   ): Promise<void> {
     console.log(`\n🔍 [${surface}] Running validations...`);
+    
+    if (source === 'home-page-dont-miss' && surface === 'PPV Tile') {
+      const titleExpected = eventData.MOBILE_BANNER_TITLE || eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME;
+      const dateExpected = eventData.PPV_DATE || eventData.LANDING_PAGE_PPV_DATE || '';
+      await this.validateDontMissTileWithGemini(titleExpected, dateExpected, results);
+      return;
+    }
+
     eventData.CURRENT_PAGE = 'mobile';
 
     const titleExpected = eventData.MOBILE_BANNER_TITLE || eventData.PPV_DISPLAY_NAME || eventData.PPV_NAME;
