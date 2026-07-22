@@ -1,0 +1,21 @@
+{
+  "regions": {
+    "GB": {
+      "MOBILE_PPV_DATE": "25 JUL 2:00 PM",
+      "MOBILE_BANNER_TITLE": "Joshua vs. Prenga",
+      "MOBILE_BANNER_DATE_TIME": "Sat 25th Jul at 20:00",
+      "MOBILE_BANNER_DAY": "Sat",
+      "MOBILE_BANNER_DATE": "25th",
+      "MOBILE_BANNER_MONTH": "July",
+      "MOBILE_BANNER_TIME": "8:00pm",
+      "MOBILE_BANNER_DESCRIPTION": "Danger before destiny. AJ returns to the ring against Prenga, an unknown entity with nothing to lose.",
+      "MOBILE_SEARCH_PPV_DATE": "Sat 25th July at 2:00 PM",
+      "MOBILE_SCHEDULE_DAY": "SAT",
+      "MOBILE_SCHEDULE_MONTH": "JUL",
+      "MOBILE_SCHEDULE_DATE": "25",
+      "MOBILE_SCHEDULE_TIME": "2:00PM",
+      "PPV_NAME": "Joshua vs. Prenga",
+      "PPV_PROMOTER": "Matchroom Boxing"
+    }
+  }
+}

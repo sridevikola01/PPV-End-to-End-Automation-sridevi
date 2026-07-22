@@ -664,6 +664,7 @@ export async function navigateScheduleToPPVTile(
 export async function navigateToPPVTile(
   driver: WdBrowser,
   event?: { PPV_NAME?: string; global?: { PPV_DATE?: string } },
+  hooks?: any,
 ): Promise<void> {
   const ppvName = event?.PPV_NAME || process.env.PPV_NAME || 'Joshua';
   const ppvDate = event?.global?.PPV_DATE;

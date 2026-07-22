@@ -23,7 +23,11 @@
 //   APP_ACTIVITY     : Launch activity   (default: com.dazn.splash.view.SplashScreenActivity)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { execSync } from 'child_process';
+import { execSync, spawn, ChildProcess } from 'child_process';
+
+const APPIUM_PORT = process.env.APPIUM_PORT ? parseInt(process.env.APPIUM_PORT, 10) : 4723;
+const appiumCommand = process.env.APPIUM_PATH || 'npx appium';
+let appiumProcess: ChildProcess | null = null;
 
 const ANDROID_SDK = process.env.ANDROID_HOME || `${process.env.HOME}/Library/Android/sdk`;
 const ADB         = `${ANDROID_SDK}/platform-tools/adb`;
@@ -85,19 +89,34 @@ export const config = {
   port:   4723,
   path:   '/',
 
-  services: [
-    [
-      '@wdio/appium-service',
-      {
-        command: 'appium',
-        args: {
-          address:         '127.0.0.1',
-          port:            4723,
-          relaxedSecurity: true,
-        },
-      },
-    ],
-  ],
+  services: [],
+
+  onPrepare: async function () {
+    console.log('🧹 Clearing stale ADB port forwards...');
+    try {
+      execSync(`${ADB} forward --remove-all`, { stdio: 'ignore' });
+    } catch {}
+    console.log(`🚀 Starting Appium server manually on port ${APPIUM_PORT}...`);
+    appiumProcess = spawn(appiumCommand, [
+      '--port', String(APPIUM_PORT),
+      '--address', '127.0.0.1',
+      '--relaxed-security'
+    ], {
+      stdio: 'inherit',
+      shell: true,
+      env: { ...process.env, NODE_OPTIONS: '' }
+    });
+    // Wait 15 seconds for Appium to start
+    await new Promise(resolve => setTimeout(resolve, 15000));
+    console.log('✅ Appium server started.');
+  },
+
+  onComplete: async function () {
+    if (appiumProcess) {
+      console.log('🧹 Stopping Appium server...');
+      appiumProcess.kill();
+    }
+  },
 
   specs:        ['../tests/android/*.spec.ts'],
   exclude:      [],

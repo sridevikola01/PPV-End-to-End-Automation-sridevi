@@ -33,10 +33,12 @@ type WdElement = any;
 import { execSync } from 'child_process';
 import { writeHandoffUrl, clearHandoffUrl } from '../../utils/handoff';
 import { prepareAndroidApp, waitForHomePage } from '../../utils/androidSetup';
+import { getAndroidSurfacingPoint } from '../../pages/android/AndroidSurfacingPoint';
 
 // ── Config ───────────────────────────────────────────────────────────────────
-const PPV_NAME    = process.env.PPV_NAME    || 'Joshua';
-const SOURCE      = (process.env.SOURCE || 'home-boxing-upcoming').trim().toLowerCase();
+const PPV_NAME = process.env.PPV_NAME || 'Joshua';
+const SOURCE = (process.env.SOURCE || 'home-boxing-upcoming').trim().toLowerCase();
+const SURFACING_POINT = getAndroidSurfacingPoint(SOURCE);
 const APP_PACKAGE = process.env.APP_PACKAGE || 'com.dazn';
 const MOBILE_BROWSER_PACKAGE = process.env.MOBILE_BROWSER_PACKAGE || 'com.android.chrome';
 const ANDROID_SDK = process.env.ANDROID_HOME || `${process.env.HOME}/Library/Android/sdk`;
@@ -462,8 +464,16 @@ describe('DAZN Android PPV → Web Handoff', () => {
     clearHandoffUrl();
     require('fs').mkdirSync('./test-results', { recursive: true });
 
-    const shouldWaitHome = SOURCE !== 'landing-page-banner';
-    await prepareAndroidApp(browser, { waitForHome: shouldWaitHome });
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+    const envClear = process.env.CLEAR_APP_DATA || process.env.CLEAR_DATA || process.env.FRESH_APP;
+    const clearData = envClear !== undefined ? String(envClear).toLowerCase() === 'true' : true;
+    const shouldWaitHome = !isLoginFirst && SOURCE !== 'landing-page-banner';
+
+    await prepareAndroidApp(browser, {
+      clearAppData: clearData,
+      acceptCookiesOnly: isLoginFirst || undefined,
+      waitForHome: shouldWaitHome,
+    });
     console.log(`\n╔════════════════════════════════════════════════════╗`);
     console.log(`║  DAZN Android PPV Handoff                          ║`);
     console.log(`║  Event  : ${PPV_NAME.padEnd(40)}║`);
@@ -1789,6 +1799,16 @@ describe('DAZN Android PPV → Web Handoff', () => {
       throw new Error(`❌ Could not tap Buy CTA. SOURCE="${SOURCE}". See test-results/android_buy_not_found.png`);
     }
 
+    const isUltimateUserHandoff = ['active_ultimate_apm', 'active_ultimate_upfront'].includes(String(process.env.USER_STATE || '').toLowerCase().trim());
+    const isLoginFirst = String(process.env.LOGIN_FIRST || '').toLowerCase() === 'true';
+    if (isUltimateUserHandoff && isLoginFirst) {
+      console.log(`\n✨ [Ultimate Active User with LOGIN_FIRST=true] Navigated to fixture page after PIN Protection validation for SOURCE="${SOURCE}".`);
+      console.log('   Ending flow and closing the app as expected for Ultimate active user.');
+      console.log('📱 Closing DAZN app...');
+      adb("shell am force-stop " + APP_PACKAGE);
+      return;
+    }
+
     // For banner sources, URL is captured immediately inline above (no Chrome wait needed)
     // For other sources, wait for Chrome Custom Tab to open
     if (!bannerUrlCaptured) {
@@ -1824,69 +1844,69 @@ describe('DAZN Android PPV → Web Handoff', () => {
 
     // Use pre-captured URL for banner flows, otherwise capture now
     let checkoutUrl = bannerUrlCaptured ? bannerCheckoutUrl : "";
-    
+
     // For banner flows the URL was already captured inline — skip the copy/clipboard steps
     if (!bannerUrlCaptured) {
 
-    // Dump page source to help debug why "Copy" button is not found/clickable
-    console.log("\n── Page Source (for debugging Copy button) ──────────────────");
-    const pageSource = await driver.getPageSource();
-    console.log(pageSource.substring(0, 5000)); // Log first 5000 chars to avoid overwhelming output
-    console.log("────────────────────────────────────────────────────────────\n");
-    
-    // Method 1: Click Copy button and get URL from clipboard
-    console.log("  Method 1: Clicking Copy button and reading clipboard...");
-    
-    // First, scroll up slightly to ensure Copy button is fully visible
-    console.log("  Scrolling up to ensure Copy button is visible...");
-    const screenSize = getScreenSize();
-    adbSwipe(Math.round(screenSize.width / 2), 
-             Math.round(screenSize.height * 0.85), 
-             Math.round(screenSize.width / 2), 
-             Math.round(screenSize.height * 0.75));
-    await driver.pause(1000);
-    
-    // Try clicking the parent element of the Copy button
-    try {
-      // The clickable element is a View, which contains the TextView "Copy"
-      const parentCopyBtn = await driver.$(`//android.view.View[./android.widget.TextView[@text="Copy"]]`);
-      console.log("  Found parent of Copy button, waiting for display...");
-      await parentCopyBtn.waitForDisplayed({ timeout: 5000 });
-      console.log("  Parent displayed, attempting click...");
-      await parentCopyBtn.click();
-      console.log("  ✅ Clicked parent of Copy button");
-      await driver.pause(2000);
-      
-      // Take screenshot after click
-      await driver.saveScreenshot("./test-results/android_after_copy_click.png");
-      console.log("  Screenshot saved: android_after_copy_click.png");
-    } catch (e) {
-      console.log(`  ❌ Failed to click parent: ${e.message}`);
-      console.log("  Trying coordinate tap as fallback...");
-      
-      // Fallback: Try coordinate tap if element click failed
-      const copyBtnX = Math.round(screenSize.width * 0.19);  // 19% from left
-      const copyBtnY = Math.round(screenSize.height * 0.89); // 89% from top
-      
-      console.log(`  Tapping Copy button at coordinates (${copyBtnX}, ${copyBtnY})`);
-      adbTap(copyBtnX, copyBtnY);
-      await driver.pause(2000);
-      
-      // Take screenshot after coordinate tap
-      await driver.saveScreenshot("./test-results/android_after_copy_tap.png");
-      console.log("  Screenshot saved: android_after_copy_tap.png");
-    }
-    
-    // Read URL from clipboard using Appium driver or fallback to ADB
-    try {
-      const base64Content = await driver.getClipboard();
-      checkoutUrl = Buffer.from(base64Content, 'base64').toString('utf8');
-      console.log(`  Appium clipboard content: ${checkoutUrl.substring(0, 100)}...`);
-    } catch (e: any) {
-      console.log(`  Failed to get clipboard via Appium: ${e.message}`);
-      checkoutUrl = adb("shell am clipht get");
-      console.log(`  ADB Clipboard content: ${checkoutUrl.substring(0, 100)}...`);
-    }
+      // Dump page source to help debug why "Copy" button is not found/clickable
+      console.log("\n── Page Source (for debugging Copy button) ──────────────────");
+      const pageSource = await driver.getPageSource();
+      console.log(pageSource.substring(0, 5000)); // Log first 5000 chars to avoid overwhelming output
+      console.log("────────────────────────────────────────────────────────────\n");
+
+      // Method 1: Click Copy button and get URL from clipboard
+      console.log("  Method 1: Clicking Copy button and reading clipboard...");
+
+      // First, scroll up slightly to ensure Copy button is fully visible
+      console.log("  Scrolling up to ensure Copy button is visible...");
+      const screenSize = getScreenSize();
+      adbSwipe(Math.round(screenSize.width / 2),
+        Math.round(screenSize.height * 0.85),
+        Math.round(screenSize.width / 2),
+        Math.round(screenSize.height * 0.75));
+      await driver.pause(1000);
+
+      // Try clicking the parent element of the Copy button
+      try {
+        // The clickable element is a View, which contains the TextView "Copy"
+        const parentCopyBtn = await driver.$(`//android.view.View[./android.widget.TextView[@text="Copy"]]`);
+        console.log("  Found parent of Copy button, waiting for display...");
+        await parentCopyBtn.waitForDisplayed({ timeout: 5000 });
+        console.log("  Parent displayed, attempting click...");
+        await parentCopyBtn.click();
+        console.log("  ✅ Clicked parent of Copy button");
+        await driver.pause(2000);
+
+        // Take screenshot after click
+        await driver.saveScreenshot("./test-results/android_after_copy_click.png");
+        console.log("  Screenshot saved: android_after_copy_click.png");
+      } catch (e) {
+        console.log(`  ❌ Failed to click parent: ${e.message}`);
+        console.log("  Trying coordinate tap as fallback...");
+
+        // Fallback: Try coordinate tap if element click failed
+        const copyBtnX = Math.round(screenSize.width * 0.19);  // 19% from left
+        const copyBtnY = Math.round(screenSize.height * 0.89); // 89% from top
+
+        console.log(`  Tapping Copy button at coordinates (${copyBtnX}, ${copyBtnY})`);
+        adbTap(copyBtnX, copyBtnY);
+        await driver.pause(2000);
+
+        // Take screenshot after coordinate tap
+        await driver.saveScreenshot("./test-results/android_after_copy_tap.png");
+        console.log("  Screenshot saved: android_after_copy_tap.png");
+      }
+
+      // Read URL from clipboard using Appium driver or fallback to ADB
+      try {
+        const base64Content = await driver.getClipboard();
+        checkoutUrl = Buffer.from(base64Content, 'base64').toString('utf8');
+        console.log(`  Appium clipboard content: ${checkoutUrl.substring(0, 100)}...`);
+      } catch (e: any) {
+        console.log(`  Failed to get clipboard via Appium: ${e.message}`);
+        checkoutUrl = adb("shell am clipht get");
+        console.log(`  ADB Clipboard content: ${checkoutUrl.substring(0, 100)}...`);
+      }
 
     } // end !bannerUrlCaptured block
 
@@ -2171,18 +2191,14 @@ describe('DAZN Android PPV → Web Handoff', () => {
         } catch { }
       });
 
-      // Force opening a brand-new page/tab to prevent showing any pre-existing/restored pages
-      console.log('Opening a new browser tab for the checkout page...');
-      const page = await context.newPage();
-
-      // Clean up all other background/restored tabs (including Amazon) immediately
-      console.log('Cleaning up any other open tabs in Chrome...');
-      const openPages = context.pages();
-      for (const p of openPages) {
-        if (p !== page) {
-          await p.close().catch(() => {});
-        }
+      // Use the existing page from the fresh launchBrowser() call (avoids opening a new tab)
+      console.log('Using fresh Chrome browser page (no new tab)...');
+      const existingPages = context.pages();
+      // Close any extra pages that may have been restored, keep only the first one
+      for (let i = 1; i < existingPages.length; i++) {
+        await existingPages[i].close().catch(() => { });
       }
+      const page = existingPages[0] ?? await context.newPage();
 
       console.log('Bringing Chrome browser UI to the foreground...');
       await device.shell(`am start -n ${MOBILE_BROWSER_PACKAGE}/com.google.android.apps.chrome.Main`);
@@ -2201,7 +2217,7 @@ describe('DAZN Android PPV → Web Handoff', () => {
         console.log(`\n🎭 Ultimate plan detected — enabling dev mode before opening checkout URL...`);
         console.log(`🧭 Opening DAZN base URL for dev mode: ${daznBaseUrl}`);
         await page.goto(daznBaseUrl, { waitUntil: 'domcontentloaded' });
-        await handleCookies(page, 8000).catch(() => {});
+        await handleCookies(page, 8000).catch(() => { });
         const searchPage = new SearchPage(page);
         await searchPage.enableDevMode();
         console.log('✅ Dev mode enabled — now opening Android checkout URL');
@@ -2234,8 +2250,8 @@ describe('DAZN Android PPV → Web Handoff', () => {
         console.log('🍪 Cookie accept button is visible. Clicking it...');
         await acceptBtn.click({ force: true });
         console.log('🍪 Accepted cookies.');
-        
-        await page.locator('#onetrust-banner-sdk').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => {});
+
+        await page.locator('#onetrust-banner-sdk').waitFor({ state: 'hidden', timeout: 8000 }).catch(() => { });
         console.log('🍪 Cookie banner is hidden.');
       } catch (e) {
         console.log('⚠️ Primary cookie banner not visible or interactable within timeout. Trying helper fallbacks...');
@@ -3300,10 +3316,10 @@ describe('DAZN Android PPV → Web Handoff', () => {
     } finally {
       // 2. Clean up context and browser
       if (context) {
-        await context.close().catch(() => {});
+        await context.close().catch(() => { });
       }
       if (playwrightBrowser) {
-        await playwrightBrowser.close().catch(() => {});
+        await playwrightBrowser.close().catch(() => { });
       }
       closeMobileBrowser();
       // 3. Restore original working directory
@@ -3314,8 +3330,8 @@ describe('DAZN Android PPV → Web Handoff', () => {
 
   after(async () => {
     try {
-      await browser.stopRecordingScreen().catch(() => {});
-    } catch {}
+      await browser.stopRecordingScreen().catch(() => { });
+    } catch { }
     closeMobileBrowser();
   });
 });
