@@ -1,8 +1,8 @@
 {
   "eventKey": "ufc_330",
-  "PPV_NAME": "UFC 330: Makhachev v Machado Garry|UFC 330: Makhachev vs Machado Garry",
-  "PPV_DISPLAY_NAME": "UFC 330: Makhachev v Machado Garry|UFC 330: Makhachev vs Machado Garry",
-  "SPORT": "UFC",
+  "PPV_NAME": "UFC 330: Makhachev vs Machado Garry",
+  "PPV_DISPLAY_NAME": "UFC 330: Makhachev vs Machado Garry",
+  "SPORT": "MMA",
   "PPV_TYPE": "normal",
   "HAS_BUNDLE": false,
   "PPV_DEV_MODE": false,

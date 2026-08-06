@@ -2735,7 +2735,7 @@ export async function getActualValue(
         if (t.includes('vs') || t.includes('watch live') || t.includes('buy now') || t.includes('fight card') || t.includes('dazn')) return false;
         if (/^\d{1,2}$|^\w{3}$/.test(t.trim())) return false; // skip date badge
         if (/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(t)) return false;
-        return (t.includes('promotions') || t.includes('boxing') || t.includes('matchroom') || t.includes('queensberry') || t.includes('project') || t.includes('series'));
+        return (t.includes('promotions') || t.includes('boxing') || t.includes('matchroom') || t.includes('queensberry') || t.includes('project'));
       });
       if (fromSnapGeneric !== 'N/A') return fromSnapGeneric;
 
