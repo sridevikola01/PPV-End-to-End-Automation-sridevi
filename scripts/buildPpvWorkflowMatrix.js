@@ -12,6 +12,9 @@ const event = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 if (country === 'SA' && event.regions && !event.regions.SA) {
   event.regions.SA = JSON.parse(JSON.stringify(event.regions.AE || event.regions.GB || {}));
 }
+if (country === 'CA' && event.regions && !event.regions.CA) {
+  event.regions.CA = JSON.parse(JSON.stringify(event.regions.US || event.regions.GB || {}));
+}
 
 if (process.env.PPV_DEV_MODE === 'true') {
   event.PPV_DEV_MODE = true;

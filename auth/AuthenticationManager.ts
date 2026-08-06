@@ -246,10 +246,10 @@ export class EmailLoginStrategy extends BaseLoginStrategy {
     if (!email) throw new Error('❌ [EmailLoginStrategy] No email provided');
     if (!password) throw new Error('❌ [EmailLoginStrategy] No password provided');
 
+    const signinUrl = `${this.baseUrl}/signin`;
     const currentUrl = page.url().toLowerCase();
     const isOnAuthPage = currentUrl.includes('/signin') || currentUrl.includes('/signup') || currentUrl.includes('emaildetails') || currentUrl.includes('checkout');
     if (!isOnAuthPage) {
-      const signinUrl = `${this.baseUrl}/signin`;
       console.log(`\n🔐 [Email Auth] Navigating to: ${signinUrl}`);
       await page.goto(signinUrl, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });

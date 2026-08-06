@@ -1,8 +1,24 @@
 import { resolveExpected }          from '../utils/resolveExpected';
 import { getActualValue }           from '../utils/getActualValue';
-import { compare }                  from '../utils/compare';
+import { compare, getStrictPpvDateMatch } from '../utils/compare';
 import { getPageSnapshot, DOMNode, stabilisePage } from '../utils/helpers';
 import { captureFailures }          from '../utils/failureCapture';
+
+function isStrictPpvDateField(field: string, pageName: string, eventData: Record<string, string>): boolean {
+  const region = String(eventData.REGION || process.env.DAZN_REGION || '').toUpperCase();
+  if (region !== 'CA') return false;
+
+  const normalizedField = String(field || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedPage = String(pageName || '').toLowerCase();
+
+  return normalizedField.includes('ppv') &&
+    normalizedField.includes('date') &&
+    !normalizedField.includes('price') &&
+    (normalizedPage.includes('my account') || normalizedPage.includes('pay per view') || normalizedPage.includes('tier'));
+}
 
 async function getVisibleTextList(locator: any): Promise<string[]> {
   try {
@@ -483,8 +499,13 @@ export const validateVariant = async (
       }
     }
 
-    const status = compare(actual, expected, rule.Type) ? 'PASS' : 'FAIL';
-    return { field, expected, actual, status };
+    const useStrictDate = isStrictPpvDateField(field, pageName, eventData);
+    const strictDateMatch = useStrictDate ? getStrictPpvDateMatch(actual, expected) : '';
+    const status = useStrictDate
+      ? (strictDateMatch ? 'PASS' : 'FAIL')
+      : (compare(actual, expected, rule.Type) ? 'PASS' : 'FAIL');
+    const displayExpected = strictDateMatch || (useStrictDate && expected.includes('|') ? expected.split('|')[0].trim() : expected);
+    return { field, expected: displayExpected, actual, status };
   };
 
   // The My Account PPV fields all query the same card. Running them in

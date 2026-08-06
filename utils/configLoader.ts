@@ -37,6 +37,112 @@ function normalizeRegionKey(region: string): string {
   return (region || 'GB').toUpperCase();
 }
 
+export interface CanadaUFTConfig {
+  tier: 'Standard' | 'Ultimate';
+  subscriptionInput: string;
+  subscriptionCard: 'DAZN' | 'DAZN+' | 'DAZN Ultimate' | 'DAZN+ Ultimate';
+  plan: 'Annual - Pay over time' | 'Annual - Pay now' | 'Monthly';
+  rawPlanInput: string;
+  tierPlanDisplay: string;
+  flowDisplay: string;
+}
+
+/**
+ * Parses the Canada tier/card/plan command in the format
+ * `<tier>-<subscription>-<plan>`, for example:
+ * `ultimate-dazn+-Annual-pay now`.
+ */
+export function parseCanadaCommand(commandStr?: string): CanadaUFTConfig {
+  const rawInput = (commandStr || process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN || '').trim();
+  if (!rawInput) {
+    const userState = (process.env.USER_STATE || '').toLowerCase();
+    if (userState.startsWith('active_')) {
+      console.log(`[Canada Command Parser] No CANADA_PLAN supplied for active user ("${userState}"). Direct PPV addon purchase flow will be executed.`);
+      return {
+        tier: 'Standard',
+        subscriptionInput: 'dazn',
+        subscriptionCard: 'DAZN',
+        plan: 'Monthly',
+        rawPlanInput: 'monthly',
+        tierPlanDisplay: 'Active User (No Plan Required)',
+        flowDisplay: `${process.env.SOURCE || 'myaccount'} -> ${userState} -> PPV Addon Purchase`,
+      };
+    }
+
+    throw new Error(
+      '[Canada Command Parser] CANADA_PLAN is required for Canada subscription flow. ' +
+      'Use format "<tier>-<subscription>-<plan>", for example "standard-dazn+-annual-pay now".'
+    );
+  }
+
+  const input = rawInput.toLowerCase();
+  console.log(`[Canada Command Parser] Parsing command input: "${rawInput}"`);
+
+  let tier: 'Standard' | 'Ultimate';
+
+  const rawParts = rawInput.split('-').map(part => part.trim());
+  if (rawParts.length < 3) {
+    throw new Error(
+      `[Canada Command Parser] Invalid CANADA_PLAN "${rawInput}". ` +
+      'Use format "<tier>-<subscription>-<plan>", for example "ultimate-dazn+-annual-pay now".'
+    );
+  }
+  const subscriptionInput = rawParts[1];
+  const rawPlanInput = rawParts.slice(2).join('-');
+
+  if (input.startsWith('ultimate')) {
+    tier = 'Ultimate';
+  } else if (input.startsWith('standard')) {
+    tier = 'Standard';
+  } else {
+    throw new Error(
+      `[Canada Command Parser] Invalid Canada tier in CANADA_PLAN "${rawInput}". Expected "standard" or "ultimate".`
+    );
+  }
+
+  const subLower = subscriptionInput.toLowerCase();
+  let subscriptionCard: CanadaUFTConfig['subscriptionCard'];
+  if (tier === 'Standard') {
+    subscriptionCard = subLower.includes('dazn+') || subLower.includes('plus') ? 'DAZN+' : 'DAZN';
+  } else {
+    subscriptionCard = subLower.includes('dazn+') || subLower.includes('plus') ? 'DAZN+ Ultimate' : 'DAZN Ultimate';
+  }
+
+  const planLower = rawPlanInput.toLowerCase();
+  let plan: CanadaUFTConfig['plan'];
+  if (planLower.includes('over time') || planLower.includes('pay over time')) {
+    plan = 'Annual - Pay over time';
+  } else if (planLower.includes('pay now') || planLower.includes('upfront')) {
+    plan = 'Annual - Pay now';
+  } else if (planLower.includes('monthly') || planLower.includes('month')) {
+    plan = 'Monthly';
+  } else {
+    throw new Error(
+      `[Canada Command Parser] Invalid Canada plan in CANADA_PLAN "${rawInput}". ` +
+      'Expected "annual-pay over time", "annual-pay now", or "monthly".'
+    );
+  }
+
+  const cardDisplay = subscriptionCard.includes('+') ? 'DAZN+' : 'DAZN';
+  const tierPlanDisplay = `${tier} -> ${cardDisplay} -> ${plan}`;
+  const sourceStr = process.env.SOURCE || 'myaccount';
+  const userStateStr = process.env.USER_STATE || 'freemium';
+  const flowDisplay = `${sourceStr} -> ${userStateStr} -> ${tierPlanDisplay}`;
+
+  const config: CanadaUFTConfig = {
+    tier,
+    subscriptionInput,
+    subscriptionCard,
+    plan,
+    rawPlanInput,
+    tierPlanDisplay,
+    flowDisplay,
+  };
+
+  console.log(`[Canada Config Parsed] Display: "${config.tierPlanDisplay}" | Flow: "${config.flowDisplay}"`);
+  return config;
+}
+
 function findConfig(dir: string, filename: string): string | null {
   if (!fs.existsSync(dir)) return null;
 

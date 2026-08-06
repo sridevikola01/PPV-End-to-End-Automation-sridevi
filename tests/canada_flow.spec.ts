@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { parseCanadaCommand } from '../flows/canadaSubscriptionFlow';
+import { parseCanadaCommand } from '../utils/configLoader';
 
 test.describe('Canada (CA) UFT Subscription Flow - Command Parser & Mapping', () => {
 

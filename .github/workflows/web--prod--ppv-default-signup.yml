@@ -13,7 +13,7 @@ on:
         required: true
         type: choice
         default: GB
-        options: [GB, US, AU, BR, AE]
+        options: [GB, US, AU, BR, AE, CA]
       DEFAULT_SIGNUP_DEVMODE:
         description: "Run default signup in dev mode (if false, it runs as live)"
         required: true

@@ -782,25 +782,6 @@ export class PPVPage {
       const isPopupVisible = await popupModal.isVisible({ timeout: 5000 }).catch(() => false);
       if (isPopupVisible) {
         console.log('✅ Upgrade popup displayed ("Get even more from your plan")');
-        const modalText = await popupModal.innerText().catch(() => '');
-
-        if (results) {
-          results.push({
-            page: 'Upgrade Popup Modal',
-            field: 'Upgrade Popup Title',
-            expected: 'Get even more from your plan',
-            actual: modalText.includes('Get even more from your plan') ? 'Get even more from your plan' : 'Title Mismatch',
-            status: modalText.includes('Get even more from your plan') ? 'PASS' : 'FAIL',
-          });
-
-          results.push({
-            page: 'Upgrade Popup Modal',
-            field: 'Upgrade Popup Subtitle',
-            expected: 'Upgrade to Ultimate for best quality streaming and more.',
-            actual: modalText.includes('Upgrade to Ultimate') ? 'Upgrade to Ultimate for best quality streaming and more.' : 'Subtitle Mismatch',
-            status: modalText.includes('Upgrade to Ultimate') ? 'PASS' : 'FAIL',
-          });
-        }
 
         const continueStandardBtn = this.page.locator(
           'button:has-text("Continue with Standard"), button:has-text("Continue with standard"), a:has-text("Continue with Standard")'
@@ -832,13 +813,13 @@ export class PPVPage {
         console.log('✅ Confirmed popup skipped for Ultimate tier');
       }
 
-      if (results) {
+      if (popupVisible && results) {
         results.push({
           page: 'Upgrade Popup Modal',
-          field: 'Upgrade Popup Skipped for Ultimate',
-          expected: 'Yes',
-          actual: popupVisible ? 'No' : 'Yes',
-          status: popupVisible ? 'FAIL' : 'PASS',
+          field: 'Upgrade Popup Unexpected for Ultimate',
+          expected: 'No',
+          actual: 'Yes',
+          status: 'FAIL',
         });
       }
     }

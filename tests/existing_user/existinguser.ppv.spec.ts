@@ -40,7 +40,7 @@ import {
 } from '../../utils/excelReader';
 import { detectVariant } from '../../flows/detectVariant';
 import { validateVariant, validateCtaAfterUltimateSelection } from '../../flows/validateVariant';
-import { executeCanadaSubscriptionFlow, executeCanadaPPVAddonPurchaseFlow, parseCanadaCommand } from '../../flows/canadaSubscriptionFlow';
+import { parseCanadaCommand } from '../../utils/configLoader';
 import { buildEventData } from '../../utils/buildEventData';
 import { displayResultsTable } from '../../utils/resultsDisplay';
 import { writeResults } from '../../utils/excelWriter';
@@ -60,6 +60,8 @@ import {
   handlePopupModal,
   assertCountryMatch,
   waitForHomePageAuthRedirect,
+  executeCanadaSubscriptionFlow,
+  executeCanadaPPVAddonPurchaseFlow,
 } from '../../utils/testHelpers';
 import { findNoPpvLink, handleNoPpvClick } from '../../utils/flowHelpers';
 import { AuthenticationManager } from '../../auth/AuthenticationManager';

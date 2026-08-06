@@ -36,7 +36,7 @@ import {
 } from '../../utils/excelReader';
 import { detectVariant } from '../../flows/detectVariant';
 import { validateVariant, validateCtaAfterUltimateSelection } from '../../flows/validateVariant';
-import { executeCanadaSubscriptionFlow, parseCanadaCommand } from '../../flows/canadaSubscriptionFlow';
+import { parseCanadaCommand } from '../../utils/configLoader';
 import { buildEventData } from '../../utils/buildEventData';
 import { detectPageType, handleNoPpvClick } from '../../utils/flowHelpers';
 import { displayResultsTable } from '../../utils/resultsDisplay';
@@ -58,6 +58,7 @@ import {
   handlePopupModal,
   assertCountryMatch,
   waitForHomePageAuthRedirect,
+  executeCanadaSubscriptionFlow,
 } from '../../utils/testHelpers';
 import { AuthenticationManager } from '../../auth/AuthenticationManager';
 import { validatePpvBannerImage } from '../../utils/geminiBannerValidator';

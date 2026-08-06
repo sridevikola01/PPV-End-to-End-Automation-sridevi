@@ -253,3 +253,146 @@ export function compare(
 
   return false;
 }
+
+type StrictDateParts = {
+  day: string;
+  month: string;
+  weekday: string;
+  minutes: number | null;
+  hasDate: boolean;
+  hasWeekday: boolean;
+  hasTime: boolean;
+};
+
+function cleanStrictDateText(value: string): string {
+  return String(value || '')
+    .replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u00A0]/g, ' ')
+    .replace(/a\.\s*m\.?/gi, 'am')
+    .replace(/p\.\s*m\.?/gi, 'pm')
+    .replace(/[,\u2028\u2029]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function parseStrictTime(value: string): number | null {
+  const match = cleanStrictDateText(value).match(/\b(\d{1,2}):(\d{2})\s*(am|pm)?\b/i);
+  if (!match) return null;
+
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const marker = (match[3] || '').toLowerCase();
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || minutes > 59) return null;
+  if (marker === 'pm' && hours < 12) hours += 12;
+  if (marker === 'am' && hours === 12) hours = 0;
+  if (hours < 0 || hours > 23) return null;
+
+  return hours * 60 + minutes;
+}
+
+function parseStrictDateParts(value: string): StrictDateParts {
+  const clean = cleanStrictDateText(value);
+  const weekdays: Array<[string, string]> = [
+    ['sun', 'sun(?:day)?'],
+    ['mon', 'mon(?:day)?'],
+    ['tue', 'tue(?:s(?:day)?)?'],
+    ['wed', 'wed(?:nesday)?'],
+    ['thu', 'thu(?:r(?:sday)?)?'],
+    ['fri', 'fri(?:day)?'],
+    ['sat', 'sat(?:urday)?'],
+  ];
+  const months: Array<[string, string]> = [
+    ['jan', 'jan(?:uary)?'],
+    ['feb', 'feb(?:ruary)?'],
+    ['mar', 'mar(?:ch)?'],
+    ['apr', 'apr(?:il)?'],
+    ['may', 'may'],
+    ['jun', 'jun(?:e)?'],
+    ['jul', 'jul(?:y)?'],
+    ['aug', 'aug(?:ust)?'],
+    ['sep', 'sep(?:t(?:ember)?)?'],
+    ['oct', 'oct(?:ober)?'],
+    ['nov', 'nov(?:ember)?'],
+    ['dec', 'dec(?:ember)?'],
+  ];
+
+  const weekday = weekdays.find(([, pattern]) => new RegExp(`\\b${pattern}\\b`, 'i').test(clean))?.[0] || '';
+  const monthMatch = months.find(([, pattern]) => new RegExp(`\\b${pattern}\\b`, 'i').test(clean));
+  const month = monthMatch?.[0] || '';
+  let day = '';
+
+  if (monthMatch) {
+    const monthPattern = monthMatch[1];
+    const dayBeforeMonth = clean.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${monthPattern}\\b`, 'i'));
+    const dayAfterMonth = clean.match(new RegExp(`\\b${monthPattern}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i'));
+    day = (dayBeforeMonth?.[1] || dayAfterMonth?.[1] || '').replace(/^0+/, '') || '';
+  }
+
+  const minutes = parseStrictTime(clean);
+
+  return {
+    day,
+    month,
+    weekday,
+    minutes,
+    hasDate: Boolean(day && month),
+    hasWeekday: Boolean(weekday),
+    hasTime: minutes !== null,
+  };
+}
+
+function compareSingleStrictDateText(actual: string, expected: string): boolean {
+  const actualClean = cleanStrictDateText(actual);
+  const expectedClean = cleanStrictDateText(expected);
+  if (!expectedClean) return !actualClean;
+  if (!actualClean) return false;
+  if (actualClean === expectedClean) return true;
+
+  const actualParts = parseStrictDateParts(actualClean);
+  const expectedParts = parseStrictDateParts(expectedClean);
+
+  if (actualParts.hasDate || expectedParts.hasDate) {
+    if (!actualParts.hasDate || !expectedParts.hasDate) return false;
+    if (actualParts.day !== expectedParts.day || actualParts.month !== expectedParts.month) return false;
+  }
+
+  if (actualParts.hasWeekday || expectedParts.hasWeekday) {
+    if (!actualParts.hasWeekday || !expectedParts.hasWeekday) return false;
+    if (actualParts.weekday !== expectedParts.weekday) return false;
+  }
+
+  if (actualParts.hasTime || expectedParts.hasTime) {
+    if (!actualParts.hasTime || !expectedParts.hasTime) return false;
+    if (actualParts.minutes !== expectedParts.minutes) return false;
+  }
+
+  return (actualParts.hasDate || actualParts.hasWeekday || actualParts.hasTime) &&
+    (expectedParts.hasDate || expectedParts.hasWeekday || expectedParts.hasTime);
+}
+
+export function getStrictPpvDateMatch(actual: string, expected: string): string {
+  const actualClean = cleanStrictDateText(actual);
+  const actualHasMeridiem = /\b(?:am|pm)\b/i.test(actualClean);
+  const options = String(expected || '')
+    .split('|')
+    .map(option => option.trim())
+    .filter(Boolean);
+  const matches = options.filter(option => compareSingleStrictDateText(actual, option));
+
+  if (!matches.length) return '';
+
+  return matches
+    .map(option => {
+      const optionClean = cleanStrictDateText(option);
+      const optionHasMeridiem = /\b(?:am|pm)\b/i.test(optionClean);
+      const exactScore = actualClean === optionClean ? 100 : 0;
+      const meridiemScore = actualHasMeridiem === optionHasMeridiem ? 25 : 0;
+      const lengthScore = -Math.abs(actualClean.length - optionClean.length);
+      return { option, score: exactScore + meridiemScore + lengthScore };
+    })
+    .sort((a, b) => b.score - a.score)[0].option;
+}
+
+export function compareStrictPpvDate(actual: string, expected: string): boolean {
+  return Boolean(getStrictPpvDateMatch(actual, expected));
+}

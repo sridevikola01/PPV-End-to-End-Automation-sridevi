@@ -170,7 +170,13 @@ export function formatRenewalDateUS(): string {
 }
 
 export function parseConfigDate(configStr: string, referenceDate: Date = getNowForRegion()): Date {
-  const clean = configStr.toLowerCase().replace(/\bat\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const clean = configStr
+    .toLowerCase()
+    .replace(/a\.\s*m\.?/g, 'am')
+    .replace(/p\.\s*m\.?/g, 'pm')
+    .replace(/\bat\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
   const fullMonths = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -442,7 +448,12 @@ export function getDynamicDateBadge(configStr: string, referenceDate: Date = get
  */
 export function getDynamicDateTimeBadge(configStr: string, referenceDate: Date = getNowForRegion()): string {
   if (!configStr) return '';
-  const allCandidates = configStr.split('|').map(part => getDynamicDateBadgeSingle(part, referenceDate)).join('|');
+  const hasExplicitTime = (value: string) =>
+    /\b\d{1,2}:\d{2}\s*(?:a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?\b/i.test(value);
+  const parts = configStr.split('|').map(part => part.trim()).filter(Boolean);
+  const dateTimeParts = parts.filter(hasExplicitTime);
+  const sourceParts = dateTimeParts.length ? dateTimeParts : parts;
+  const allCandidates = sourceParts.map(part => getDynamicDateBadgeSingle(part, referenceDate)).join('|');
   const timePattern = /\b\d{1,2}:\d{2}\b/;
   const withTime = allCandidates.split('|').filter(c => timePattern.test(c));
   // If no candidates have time (e.g. config has no time info), fall back to all candidates
@@ -652,4 +663,3 @@ export function calculateDynamicPpvBannerDate(
 
   return Array.from(candidates).join('|');
 }
-
