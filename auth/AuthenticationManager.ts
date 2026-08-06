@@ -87,6 +87,12 @@ export abstract class BaseLoginStrategy implements LoginStrategy {
   async verifyAuthenticatedSession(page: Page): Promise<boolean> {
     if (page.isClosed()) return false;
 
+    const currentUrl = page.url().toLowerCase();
+    if (currentUrl.includes('/account/addon') || currentUrl.includes('/account/purchase') || currentUrl.includes('/account/content') || currentUrl.includes('/myaccount') || currentUrl.includes('/account/myaccount')) {
+      console.log(`✅ [Auth] Login verified via authenticated account URL: ${page.url()}`);
+      return true;
+    }
+
     // DAZN's authenticated web header exposes the account control as a circular
     // button containing the member's initials (for example, "U" in the UAT
     // account).  It does not consistently expose "profile" or "avatar" in an

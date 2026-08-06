@@ -1,0 +1,46 @@
+{
+  "eventKey": "ufc_330",
+  "PPV_NAME": "UFC 330: Makhachev v Machado Garry",
+  "PPV_DISPLAY_NAME": "UFC 330: Makhachev v Machado Garry",
+  "PPV_FULL_NAME": "UFC 330 Makhachev vs Machado Garry",
+  "SPORT": "UFC",
+  "PPV_TYPE": "normal",
+  "PPV_ENTITLEMENT_ID": "ppv_t_ufc_330",
+  "PPV_PROMOTER": "UFC",
+  "HAS_BUNDLE": false,
+  "PPV_DEV_MODE": false,
+  "DEFAULT_SIGNUP_DEVMODE": false,
+  "HAS_DEFAULT_SIGNUP_PPV": false,
+  "global": {
+    "FREE_TRIAL_DAYS": 8,
+    "PPV_PROMOTER": "UFC",
+    "PPV_ENTITLEMENT_ID": "ppv_t_ufc_330",
+    "PPV_DESCRIPTION": "Makhachev defends vs Garry and Dern faces Robertson in a pair of title fights.",
+    "PPV_UTC_DATE": "2026-08-16T01:00:00Z",
+    "PPV_LOCATION": "Canada",
+    "BOXING_BANNER_SUBTITLE": "Makhachev defends vs Garry and Dern faces Robertson in a pair of title fights.",
+    "PPV_CARD_TITLE": "UFC 330: Makhachev v Machado Garry",
+    "PPV_CARD_DESCRIPTION": "Makhachev defends vs Garry and Dern faces Robertson in a pair of title fights.",
+    "BANNER_DESCRIPTION": "Makhachev defends vs Garry and Dern faces Robertson in a pair of title fights.",
+    "HOME_POPUP_DESCRIPTION": "Makhachev defends vs Garry and Dern faces Robertson in a pair of title fights."
+  },
+  "regions": {
+    "CA": {
+      "MOBILE_PPV_DATE": "15 AUG 9:00 PM",
+      "MOBILE_BANNER_TITLE": "UFC 330: Makhachev v Machado Garry",
+      "MOBILE_BANNER_DATE_TIME": "Sat 15th Aug at 21:00",
+      "MOBILE_BANNER_DAY": "Sat",
+      "MOBILE_BANNER_DATE": "15th",
+      "MOBILE_BANNER_MONTH": "August",
+      "MOBILE_BANNER_TIME": "9:00pm",
+      "MOBILE_BANNER_DESCRIPTION": "Makhachev defends vs Garry and Dern faces Robertson in a pair of title fights.",
+      "MOBILE_SEARCH_PPV_DATE": "Sat 15th August at 9:00 PM",
+      "MOBILE_SCHEDULE_DAY": "SAT",
+      "MOBILE_SCHEDULE_MONTH": "AUG",
+      "MOBILE_SCHEDULE_DATE": "15",
+      "MOBILE_SCHEDULE_TIME": "9:00 PM",
+      "PPV_PRICE": "$69.99",
+      "TODAY_YOU_PAY_PRICE": "$69.99"
+    }
+  }
+}

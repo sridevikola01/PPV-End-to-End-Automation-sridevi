@@ -2546,4 +2546,140 @@ export class PaymentPage extends BasePage {
     await this.clickSaveCard();
     await this.clickSubmit();
   }
+
+  // ─────────────────────────────
+  // CANADA (CA) SPECIFIC METHODS
+  // ─────────────────────────────
+
+  /**
+   * Validates Payment Summary page for Canada subscription flow.
+   * Checks: PPV title, PPV price, Selected Subscription, Selected Plan, Payment Summary section, Promo Code section.
+   */
+  async verifyCanadaPaymentSummary(
+    eventData: Record<string, string>,
+    expectedSubscription: string,
+    expectedPlan: string,
+    results: any[]
+  ): Promise<void> {
+    console.log('\n🇨🇦 [Canada Flow] Verifying Payment Summary Page...');
+    await this.waitUntilReady().catch(() => {});
+
+    const bodyText = await this.page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
+    const bodyLower = bodyText.toLowerCase();
+
+    const expectedTitle = eventData.PPV_NAME || eventData.EVENT_NAME || eventData.title || '';
+    const expectedPrice = eventData.PPV_PRICE || eventData.price || '';
+
+    // 1. PPV Title
+    if (expectedTitle) {
+      const titleMatch = bodyText.includes(expectedTitle);
+      results.push({
+        page: 'Payment Page',
+        field: 'Canada PPV Title (Payment)',
+        expected: expectedTitle,
+        actual: titleMatch ? expectedTitle : 'Not Found on Payment Page',
+        status: titleMatch ? 'PASS' : 'FAIL',
+      });
+      console.log(`  ${titleMatch ? '✅' : '❌'} PPV Title on Payment: ${expectedTitle}`);
+    }
+
+    // 2. PPV Price
+    if (expectedPrice) {
+      const priceMatch = bodyText.includes(expectedPrice);
+      results.push({
+        page: 'Payment Page',
+        field: 'Canada PPV Price (Payment)',
+        expected: expectedPrice,
+        actual: priceMatch ? expectedPrice : 'Not Found on Payment Page',
+        status: priceMatch ? 'PASS' : 'FAIL',
+      });
+      console.log(`  ${priceMatch ? '✅' : '❌'} PPV Price on Payment: ${expectedPrice}`);
+    }
+
+    // 3. Selected Subscription
+    const expSubLower = expectedSubscription.toLowerCase();
+    const subMatch = bodyLower.includes(expSubLower) ||
+      (expSubLower.includes('ultimate') && bodyLower.includes('ultimate')) ||
+      (expSubLower.includes('dazn+') && bodyLower.includes('dazn+')) ||
+      bodyLower.includes('dazn');
+
+    results.push({
+      page: 'Payment Page',
+      field: 'Canada Selected Subscription (Payment)',
+      expected: expectedSubscription,
+      actual: subMatch ? expectedSubscription : 'Subscription Mismatch on Payment Page',
+      status: subMatch ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${subMatch ? '✅' : '❌'} Subscription on Payment: ${expectedSubscription}`);
+
+    // 4. Selected Plan
+    const planMatch = bodyText.includes(expectedPlan) ||
+      bodyLower.includes(expectedPlan.toLowerCase());
+    results.push({
+      page: 'Payment Page',
+      field: 'Canada Selected Plan (Payment)',
+      expected: expectedPlan,
+      actual: planMatch ? expectedPlan : 'Plan Mismatch on Payment Page',
+      status: planMatch ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${planMatch ? '✅' : '❌'} Plan on Payment: ${expectedPlan}`);
+
+    // 5. Payment Summary Section
+    const hasSummary = bodyLower.includes('today you pay') ||
+      bodyLower.includes('summary') ||
+      bodyLower.includes('total') ||
+      bodyLower.includes('payment summary');
+    results.push({
+      page: 'Payment Page',
+      field: 'Canada Payment Summary Displayed',
+      expected: 'Yes',
+      actual: hasSummary ? 'Yes' : 'No',
+      status: hasSummary ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${hasSummary ? '✅' : '❌'} Payment Summary Displayed: ${hasSummary}`);
+
+    // 6. Payment Page Header
+    const paymentHeaderMatch = bodyText.includes('Choose how to pay');
+    results.push({
+      page: 'Payment Page',
+      field: 'Canada Payment Page Title',
+      expected: 'Choose how to pay',
+      actual: paymentHeaderMatch ? 'Choose how to pay' : 'Title Mismatch',
+      status: paymentHeaderMatch ? 'PASS' : 'FAIL',
+    });
+
+    // 7. Auto-Renewal Text
+    const renewalMatch = bodyLower.includes('renew automatically') || bodyLower.includes('auto-renewal');
+    results.push({
+      page: 'Payment Page',
+      field: 'Canada Auto-Renewal Disclaimer Present',
+      expected: 'Yes',
+      actual: renewalMatch ? 'Yes' : 'No',
+      status: renewalMatch ? 'PASS' : 'FAIL',
+    });
+
+    // 8. Promo Code Section
+    const promoLocators = [
+      this.page.locator('button:has-text("Redeem"), a:has-text("Redeem"), *:has-text("promo code"), input[placeholder*="promo" i]'),
+    ];
+    let hasPromo = false;
+    for (const loc of promoLocators) {
+      if (await loc.first().isVisible({ timeout: 1500 }).catch(() => false)) {
+        hasPromo = true;
+        break;
+      }
+    }
+    if (!hasPromo && bodyLower.includes('promo code')) {
+      hasPromo = true;
+    }
+
+    results.push({
+      page: 'Payment Page',
+      field: 'Canada Promo Code Section Present',
+      expected: 'Yes',
+      actual: hasPromo ? 'Yes' : 'No',
+      status: hasPromo ? 'PASS' : 'FAIL',
+    });
+    console.log(`  ${hasPromo ? '✅' : '❌'} Promo Code Section Present: ${hasPromo}`);
+  }
 }

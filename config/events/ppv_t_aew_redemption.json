@@ -115,6 +115,26 @@
       "UPSELL_PRICE_LENGTH": "/month for 12 months",
       "PPV1_UPSELL_TILE_DATE": "",
       "offers": []
+    },
+    "CA": {
+      "OFFER_TYPE": "7_day_trial",
+      "LANDING_PAGE_PPV_DATE": "26 July",
+      "PPV_DATE": "Mon 27th Jul",
+      "PPV_PAGE_DATE": "Sun 26th Jul at 20:00",
+      "PPV_TIME": "20:00",
+      "LANDING_BANNER_DATE": "SUN 26TH JUL AT 20:00",
+      "HOME_POPUP_DATE": "SUN 26TH JUL AT 20:00",
+      "PPV_POPUP_DATE": "26 JUL 8:00PM",
+      "SEARCH_PPV_DATE_TIME": "26 JUL 8:00PM",
+      "SCHEDULE_PPV_TIME": "8:00PM",
+      "HOME_BOXING_UPCOMING_TIME": "8:00PM",
+      "PPV_PRICE": "$39.99",
+      "TODAY_YOU_PAY_PRICE": "$39.99",
+      "UPSELL_PRICE": "",
+      "UPSELL_CROSSED_PRICE": "",
+      "UPSELL_PRICE_LENGTH": "/month for 12 months",
+      "PPV1_UPSELL_TILE_DATE": "",
+      "offers": []
     }
   },
   "variants": {

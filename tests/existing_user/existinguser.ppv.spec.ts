@@ -2,6 +2,7 @@ import { test } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { PaymentPage } from '../../pages/PaymentPage';
+import { PPVPage } from '../../pages/PPVPage';
 import { HomePage } from '../../pages/HomePage';
 import { MyAccountPage } from '../../pages/MyAccountPage';
 import { StandalonePPVPage } from '../../pages/StandalonePPVPage';
@@ -39,6 +40,7 @@ import {
 } from '../../utils/excelReader';
 import { detectVariant } from '../../flows/detectVariant';
 import { validateVariant, validateCtaAfterUltimateSelection } from '../../flows/validateVariant';
+import { executeCanadaSubscriptionFlow, executeCanadaPPVAddonPurchaseFlow, parseCanadaCommand } from '../../flows/canadaSubscriptionFlow';
 import { buildEventData } from '../../utils/buildEventData';
 import { displayResultsTable } from '../../utils/resultsDisplay';
 import { writeResults } from '../../utils/excelWriter';
@@ -64,7 +66,7 @@ import { AuthenticationManager } from '../../auth/AuthenticationManager';
 
 
 const REGION = process.env.DAZN_REGION || 'GB';
-const EVENT_CONFIG = process.env.PPV_CONFIG || 'ppv_t_joshua_prenga.json';
+const EVENT_CONFIG = process.env.PPV_CONFIG || process.env.PPV_EVENT || 'ppv_t_joshua_prenga.json';
 const SOURCE = process.env.SOURCE || 'my-account';
 const TV_HANDOFF_MODE = (process.env.TV_HANDOFF_MODE || '').toLowerCase() === 'true';
 
@@ -374,6 +376,7 @@ for (const stateKey of userStatesToRun) {
       return;
     }
     const PPV_TYPE = (process.env.PPV_TYPE || json.PPV_TYPE || 'normal').toLowerCase();
+    const specStartTime = new Date();
     configureExcelPathForEvent(json.eventKey || '');
     const eventData = buildEventData(json, REGION);
     eventData.USER_STATE = stateKey;
@@ -591,6 +594,11 @@ for (const stateKey of userStatesToRun) {
     eventData['PLAN_CTA_BUTTON'] = eventData.PLAN_CTA_BUTTON;
     eventData['DAZN_TIER'] = eventData.DAZN_TIER;
     eventData['CANCELLATION_TEXT'] = eventData.CANCELLATION_TEXT;
+    if (REGION === 'CA') {
+      const caConfig = parseCanadaCommand(process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN);
+      eventData.CANADA_TIER_PLAN_STR = caConfig.tierPlanDisplay;
+      eventData.CANADA_FLOW_STR = caConfig.flowDisplay;
+    }
 
     console.log(`\n🔀 Flow      : ${FLOW}`);
     console.log(`🌍 Region    : ${REGION}`);
@@ -613,6 +621,7 @@ for (const stateKey of userStatesToRun) {
       SA: { locale: 'en-SA', timezoneId: 'Asia/Riyadh' },
       AU: { locale: 'en-AU', timezoneId: 'Australia/Sydney' },
       BR: { locale: 'pt-BR', timezoneId: 'America/Sao_Paulo' },
+      CA: { locale: 'en-CA', timezoneId: 'America/Toronto' },
     };
     const { locale: regionLocale, timezoneId: regionTimezone } =
       regionLocaleMap[REGION] ?? { locale: 'en-GB', timezoneId: 'Europe/London' };
@@ -639,6 +648,7 @@ for (const stateKey of userStatesToRun) {
     const results: any[] = [];
     const tvPpvReportMetadata = TV_HANDOFF_MODE ? readTvPpvReportMetadata() : null;
     const tvPpvReportStartTime = parseReportStartTime(tvPpvReportMetadata?.startTime);
+    const runStartTime = tvPpvReportStartTime || specStartTime;
     appendTvPpvReportSteps(results, tvPpvReportMetadata);
     let capturedVideoPath: string | null = null;
 
@@ -655,19 +665,35 @@ for (const stateKey of userStatesToRun) {
         videoPath,
       });
 
+      const isCanada = REGION === 'CA';
+      const defaultUserStatus = userStatusOverride || ((TV_HANDOFF_MODE || isMyAccount) ? (process.env.USER_STATE || 'Freemium') : 'New User');
+      let finalTier = tier;
+      let finalRatePlan = ratePlan;
+      let flowName = `${SOURCE} → ${tier} → ${ratePlan}`;
+      let finalUserStatus = defaultUserStatus;
+
+      if (isCanada) {
+        const userState = userStatusOverride || process.env.USER_STATE || stateKey || 'freemium';
+        const caConfig = parseCanadaCommand(process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN);
+        finalTier = caConfig.tierPlanDisplay; // e.g. "standard -> dazn -> Annual-pay now"
+        finalRatePlan = '';
+        flowName = `${SOURCE} -> ${userState.toLowerCase()} -> ${caConfig.tierPlanDisplay}`; // e.g. "myaccount -> freemium -> standard -> dazn -> Annual-pay now"
+        finalUserStatus = userState;
+      }
+
       const { folderPath } = await generateReports(results, {
         event: eventData.PPV_NAME,
         region: REGION,
         source: SOURCE,
-        ratePlan,
-        tier,
+        ratePlan: finalRatePlan,
+        tier: finalTier,
         env: process.env.DAZN_ENV || 'prod',
-        flowName: `${SOURCE} → ${tier} → ${ratePlan}`,
-        startTime: tvPpvReportStartTime,
+        flowName,
+        startTime: runStartTime,
         endTime: new Date(),
         excelPath,
         videoPath,
-        userStatus: userStatusOverride || ((TV_HANDOFF_MODE || isMyAccount) ? (process.env.USER_STATE || 'Freemium') : 'New User'),
+        userStatus: finalUserStatus,
         userType: 'existing-user',
         platform: getReportPlatform(),
         paymentMethod: PAYMENT_METHOD === 'gpay' ? 'Google Pay' : 'Credit Card',
@@ -2046,6 +2072,23 @@ for (const stateKey of userStatesToRun) {
         if (accountFound) {
           console.log(`✅ Account content found: ${accountFound}`);
           await stabilisePage(page);
+    // Ultimate entitlement logic: active_ultimate on included PPVs is Purchased, otherwise Buy now.
+    // EXCEPTION: Canada (CA) ultimate users must purchase PPV explicitly — never "Purchased".
+    let ppvStatus = eventData.PPV_STATUS || 'Buy now';
+    if (isActiveUltimateState(userStateKey)) {
+      const ppvType = eventData.PPV_TYPE || json.PPV_TYPE;
+      const isCanada = (process.env.DAZN_REGION || '').toUpperCase() === 'CA';
+      if (isCanada) {
+        // CA ultimate users always buy PPV explicitly — force Buy now regardless of
+        // what userstatus.json set earlier.
+        ppvStatus = 'Buy now';
+      } else if (ppvType === 'included') {
+        ppvStatus = 'Purchased';
+      } else if (!eventData.PPV_STATUS) {
+        ppvStatus = 'Buy now';
+      }
+    }
+    eventData.PPV_STATUS = ppvStatus;
         } else {
           console.log('⚠️  Account content not found in time');
         }
@@ -2087,17 +2130,30 @@ for (const stateKey of userStatesToRun) {
           }
         }
 
-        // Temporarily override DAZN_TIER for My Account validation based on current user state
+        // Temporarily override DAZN_TIER for My Account validation based on current user state.
+        // For Canada, the subscription title depends on both the tier and the plan type (DAZN vs DAZN+):
+        //   Standard + DAZN     → "DAZN"
+        //   Standard + DAZN+    → "DAZN+ Standard"
+        //   Ultimate + DAZN     → "DAZN Ultimate"
+        //   Ultimate + DAZN+    → "DAZN+ Ultimate"
         const originalDaznTier = eventData.DAZN_TIER;
+        const isCanadaRegion = (process.env.DAZN_REGION || '').toUpperCase() === 'CA';
+        const canadaPlan = (process.env.CANADA_PLAN || '').toLowerCase();
+        const isCanadaDaznPlus = isCanadaRegion && canadaPlan.includes('dazn+');
+
         if (userStateKey === 'freemium' || userStateKey === 'frozen') {
           eventData.DAZN_TIER = 'DAZN Free';
           eventData['DAZN_TIER'] = 'DAZN Free';
         } else if (userStateKey.startsWith('active_standard')) {
-          eventData.DAZN_TIER = 'DAZN Standard';
-          eventData['DAZN_TIER'] = 'DAZN Standard';
+          // CA: "DAZN+ Standard" for DAZN+ plans, plain "DAZN" for standard DAZN plans
+          const caTier = isCanadaDaznPlus ? 'DAZN+ Standard' : (isCanadaRegion ? 'DAZN' : 'DAZN Standard');
+          eventData.DAZN_TIER = isCanadaRegion ? caTier : 'DAZN Standard';
+          eventData['DAZN_TIER'] = eventData.DAZN_TIER;
         } else if (userStateKey.startsWith('active_ultimate')) {
-          eventData.DAZN_TIER = 'DAZN Ultimate';
-          eventData['DAZN_TIER'] = 'DAZN Ultimate';
+          // CA: "DAZN+ Ultimate" for DAZN+ plans, "DAZN Ultimate" for standard DAZN plans
+          const caTier = isCanadaDaznPlus ? 'DAZN+ Ultimate' : 'DAZN Ultimate';
+          eventData.DAZN_TIER = isCanadaRegion ? caTier : 'DAZN Ultimate';
+          eventData['DAZN_TIER'] = eventData.DAZN_TIER;
         }
 
 
@@ -2120,15 +2176,19 @@ for (const stateKey of userStatesToRun) {
         }
 
         // Verify user state matches the expected state. If not, fail early with clear logging.
+        // For Canada, subscription title is plan-type dependent. Resolve once here.
+        const caStandardSub = isCanadaDaznPlus ? 'DAZN+ Standard' : (isCanadaRegion ? 'DAZN' : 'DAZN Standard');
+        const caUltimateSub = isCanadaDaznPlus ? 'DAZN+ Ultimate' : 'DAZN Ultimate';
+
         const expectedUserStates: Record<string, { subscription: string; status: string; label: string }> = {
           freemium: { subscription: 'DAZN Free', status: 'Upgrade now', label: 'freemium' },
           frozen: { subscription: 'DAZN Free', status: 'Resubscribe', label: 'frozen' },
-          active_standard: { subscription: 'DAZN Standard', status: 'Manage subscription', label: 'active standard' },
-          active_standard_monthly: { subscription: 'DAZN Standard', status: 'Manage subscription', label: 'active standard monthly' },
-          active_standard_apm: { subscription: 'DAZN Standard', status: 'Manage subscription', label: 'active standard APM' },
-          active_ultimate: { subscription: 'DAZN Ultimate', status: 'Manage subscription', label: 'active ultimate' },
-          active_ultimate_apm: { subscription: 'DAZN Ultimate', status: 'Manage subscription', label: 'active ultimate APM' },
-          active_ultimate_upfront: { subscription: 'DAZN Ultimate', status: 'Manage subscription', label: 'active ultimate upfront' }
+          active_standard: { subscription: isCanadaRegion ? caStandardSub : 'DAZN Standard', status: 'Manage subscription', label: 'active standard' },
+          active_standard_monthly: { subscription: isCanadaRegion ? caStandardSub : 'DAZN Standard', status: 'Manage subscription', label: 'active standard monthly' },
+          active_standard_apm: { subscription: isCanadaRegion ? caStandardSub : 'DAZN Standard', status: 'Manage subscription', label: 'active standard APM' },
+          active_ultimate: { subscription: isCanadaRegion ? caUltimateSub : 'DAZN Ultimate', status: 'Manage subscription', label: 'active ultimate' },
+          active_ultimate_apm: { subscription: isCanadaRegion ? caUltimateSub : 'DAZN Ultimate', status: 'Manage subscription', label: 'active ultimate APM' },
+          active_ultimate_upfront: { subscription: isCanadaRegion ? caUltimateSub : 'DAZN Ultimate', status: 'Manage subscription', label: 'active ultimate upfront' }
         };
 
         const expectedConfig = expectedUserStates[userStateKey];
@@ -2308,7 +2368,7 @@ for (const stateKey of userStatesToRun) {
             tier,
             env: process.env.DAZN_ENV || 'prod',
             flowName: `${SOURCE} → ${tier} → ${ratePlan}`,
-            startTime: tvPpvReportStartTime,
+            startTime: runStartTime,
             endTime: new Date(),
             excelPath,
             videoPath,
@@ -2332,10 +2392,46 @@ for (const stateKey of userStatesToRun) {
           return; // ← Exit early — no purchase flow needed
         }
 
+        // ── Canada Active Users: PPV is NOT included — user must buy explicitly ──
+        // This is checked INDEPENDENTLY of the PPV event tier because in Canada,
+        // all active subscribers (standard or ultimate) navigate to /account/addon/purchase
+        // when clicking "Buy now" on My Account.
+        if (isCanadaRegion && userStateKey.startsWith('active_')) {
+          console.log(`🇨🇦 [CA Active User: ${userStateKey}] PPV is not included. Routing to addon purchase flow...`);
+          await executeCanadaPPVAddonPurchaseFlow(page, myAccountPage, eventData, results);
+          reachedEndPage = true;
+          capturedVideoPath = (await page.video()?.path().catch(() => null)) ?? null;
+          await context.close().catch(() => {});
+          const { excelPath, videoPath } = await writeResults(results, capturedVideoPath);
+          displayResultsTable(results, tier, {
+            event: eventData.PPV_NAME,
+            region: REGION,
+            excelPath,
+            videoPath,
+          });
+          const { htmlPath: htmlPathCaAct, pdfPath: pdfPathCaAct, folderPath: folderPathCaAct } = await generateReports(results, {
+            event: eventData.PPV_NAME,
+            region: REGION,
+            source: SOURCE,
+            ratePlan,
+            tier,
+            env: process.env.DAZN_ENV || 'prod',
+            flowName: `${SOURCE} → CA Active User PPV Addon Purchase`,
+            startTime: runStartTime,
+            endTime: new Date(),
+            excelPath,
+            videoPath,
+            userStatus: process.env.USER_STATE || userStateKey,
+            userType: 'existing-user',
+            platform: getReportPlatform(),
+            paymentMethod: PAYMENT_METHOD === 'gpay' ? 'Google Pay' : 'Credit Card',
+          });
+          if (folderPathCaAct) console.log(`\n📂 Report folder: ${folderPathCaAct}`);
+          return;
+        }
+
         if (tier === 'ultimate' && isActiveUltimateState(userStateKey)) {
           console.log('\n💎 Ultimate tier — checking PPV status...');
-
-          await myAccountPage.scrollToPPVSection();
 
           const ppvStatus = await myAccountPage.isPPVPurchased(eventData.PPV_NAME);
           console.log(`✅ PPV Status: "${ppvStatus}"`);
@@ -2444,7 +2540,7 @@ for (const stateKey of userStatesToRun) {
             tier,
             env: process.env.DAZN_ENV || 'prod',
             flowName: `${SOURCE} → ${tier} → ${ratePlan}`,
-            startTime: tvPpvReportStartTime,
+            startTime: runStartTime,
             endTime: new Date(),
             excelPath,
             videoPath,
@@ -3723,6 +3819,24 @@ for (const stateKey of userStatesToRun) {
             console.log('👉 PPV page');
             stuckCount = 0;
 
+            // ── Canada (CA) Region Branching ─────────────────────────────
+            const currentRegion = (eventData.REGION || eventData.region || process.env.DAZN_REGION || 'GB').toUpperCase();
+            if (currentRegion === 'CA') {
+              console.log(`🇨🇦 [Region ${currentRegion} Detected] Executing Canada UFT Subscription Flow...`);
+              const ppvPageObj = new PPVPage(page);
+              const paymentPageObj = new PaymentPage(page);
+              await executeCanadaSubscriptionFlow(
+                page,
+                ppvPageObj,
+                paymentPageObj,
+                eventData,
+                results,
+                process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN
+              );
+              reachedEndPage = true;
+              break;
+            }
+
             // ── Subscribe Without PPV opt-out ──────────────────────────────
             if (noPpvClick) {
               console.log('🔗 [noPpvClick] Triggering subscribe-without-pay-per-view flow...');
@@ -3808,6 +3922,24 @@ for (const stateKey of userStatesToRun) {
           if (pageType === 'plan') {
             console.log(`👉 DAZN Plan page`);
             stuckCount = 0;
+
+            // ── Canada (CA) Region Branching ─────────────────────────────
+            const currentRegion = (eventData.REGION || eventData.region || process.env.DAZN_REGION || 'GB').toUpperCase();
+            if (currentRegion === 'CA') {
+              console.log(`🇨🇦 [Region ${currentRegion} Detected] Executing Canada UFT Subscription Flow...`);
+              const ppvPageObj = new PPVPage(page);
+              const paymentPageObj = new PaymentPage(page);
+              await executeCanadaSubscriptionFlow(
+                page,
+                ppvPageObj,
+                paymentPageObj,
+                eventData,
+                results,
+                process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN
+              );
+              reachedEndPage = true;
+              break;
+            }
 
             // ── subscribe-without-pay-per-view: endPage=plan → stop on TierPlans ──
             if (page.url().toLowerCase().includes('page=tierplans') && srcEndPage === 'plan') {
@@ -4488,15 +4620,27 @@ for (const stateKey of userStatesToRun) {
       });
 
       // Generate HTML + PDF run report (country, surfacing point, rate plan, per-page pass/fail, totals)
+      const isCanadaReport = REGION === 'CA';
+      let reportTier = tier;
+      let reportRatePlan = ratePlan;
+      let reportFlowName = `${SOURCE} → ${stateKey} → ${tier} → ${ratePlan}`;
+      if (isCanadaReport) {
+        const caConfig = parseCanadaCommand(process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN);
+        const reportUserState = (process.env.USER_STATE || stateKey || 'freemium').toLowerCase();
+        reportTier = caConfig.tierPlanDisplay;
+        reportRatePlan = '';
+        reportFlowName = `${SOURCE} -> ${reportUserState} -> ${caConfig.tierPlanDisplay}`;
+      }
+
       const { htmlPath, pdfPath, folderPath } = await generateReports(results, {
         event: eventData.PPV_NAME,
         region: REGION,
         source: SOURCE,
-        ratePlan,
-        tier,
+        ratePlan: reportRatePlan,
+        tier: reportTier,
         env: process.env.DAZN_ENV || 'prod',
-        flowName: `${SOURCE} → ${stateKey} → ${tier} → ${ratePlan}`,
-        startTime: tvPpvReportStartTime,
+        flowName: reportFlowName,
+        startTime: runStartTime,
         endTime: new Date(),
         excelPath,
         videoPath,

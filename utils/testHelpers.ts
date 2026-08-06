@@ -329,6 +329,8 @@ export function assertCountryMatch(page: any, region: string): void {
   let matches = false;
   if (regionLower === 'gb') {
     matches = url.toLowerCase().includes('-gb') || url.toLowerCase().includes('-uk') || url.toLowerCase().includes('-gg') || url.toLowerCase().includes('-je');
+  } else if (regionLower === 'ca') {
+    matches = url.toLowerCase().includes('-ca');
   } else {
     matches = url.toLowerCase().includes(`-${regionLower}`);
   }

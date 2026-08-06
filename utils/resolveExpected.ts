@@ -59,6 +59,12 @@ export function resolveExpected(
   rule: any,
   eventData: Record<string, string>
 ): string {
+  if (typeof rule === 'string') {
+    return replacePlaceholders(rule, eventData);
+  }
+  if (!rule || typeof rule !== 'object') {
+    return String(rule || '');
+  }
   const rawField = rule.Field || rule.field || '';
   const field = rawField.trim().toLowerCase();
   const rawTier = rule.Tier || rule.tier || '';

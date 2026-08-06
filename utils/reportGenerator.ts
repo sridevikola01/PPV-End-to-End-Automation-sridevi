@@ -135,12 +135,62 @@ function prettyPlan(ratePlan: string): string {
   return ratePlan || '';
 }
 
+function prettyCanadaPlan(ratePlan: string): string {
+  const rp = (ratePlan || '').toLowerCase();
+  if (rp === 'monthly' || (rp.includes('month') && !rp.includes('annual'))) return 'Monthly';
+  if (rp.includes('over time') || rp.includes('pay over time')) return 'Annual - Pay Over Time';
+  if (rp.includes('pay now') || rp.includes('upfront') || rp.includes('season')) return 'Annual - Pay Now';
+  if (rp.includes('annual')) return 'Annual - Pay Monthly';
+  return ratePlan || '';
+}
+
 function prettyTier(tier: string): string {
-  const t = (tier || '').toLowerCase();
+  const t = (tier || '').toLowerCase().trim();
+  if (t === 'dazn') return 'DAZN';
+  if (t === 'dazn+') return 'DAZN+';
+  if (t === 'dazn ultimate' || t === 'dazn_ultimate') return 'DAZN Ultimate';
+  if (t === 'dazn+ ultimate' || t === 'dazn+_ultimate') return 'DAZN+ Ultimate';
   if (t === 'standard') return 'DAZN Standard';
   if (t === 'ultimate') return 'DAZN Ultimate';
   if (t === 'freemium') return 'DAZN Free';
-  return tier.charAt(0).toUpperCase() + tier.slice(1);
+  return tier ? (tier.charAt(0).toUpperCase() + tier.slice(1)) : '';
+}
+
+function isCanadaReport(meta: ReportMeta): boolean {
+  const region = (meta.region || '').toUpperCase();
+  return region === 'CA';
+}
+
+function prettyCanadaTierPlan(value: string): string {
+  const parts = (value || '').split(/\s*(?:->|→)\s*/).map(part => part.trim()).filter(Boolean);
+  if (parts.length < 3) return '';
+
+  const tier = parts[0].toLowerCase() === 'standard' ? 'Standard' :
+    parts[0].toLowerCase() === 'ultimate' ? 'Ultimate' : prettyTier(parts[0]);
+  const card = parts[1].toLowerCase().includes('dazn+') ? 'DAZN+' : 'DAZN';
+  const plan = prettyCanadaPlan(parts.slice(2).join(' '));
+  return `${tier} -> ${card} -> ${plan}`;
+}
+
+function buildTierRatePlanText(meta: ReportMeta): string {
+  if (isCanadaReport(meta)) {
+    const canadaDisplay = prettyCanadaTierPlan(meta.tier);
+    if (canadaDisplay) return canadaDisplay;
+
+    const fromFlow = prettyCanadaTierPlan(meta.flowName);
+    if (fromFlow) return fromFlow;
+  }
+
+  return `${prettyTier(meta.tier)}${meta.ratePlan ? ` · ${prettyPlan(meta.ratePlan)}` : ''}`;
+}
+
+function buildFlowText(meta: ReportMeta): string {
+  if (isCanadaReport(meta)) {
+    const parts = (meta.flowName || '').split(/\s*(?:->|→)\s*/).map(part => part.trim()).filter(Boolean);
+    const tierPlan = buildTierRatePlanText(meta);
+    if (parts.length >= 2 && tierPlan) return `${parts[0]} -> ${parts[1]} -> ${tierPlan}`;
+  }
+  return meta.flowName || '';
 }
 
 function fmtDuration(ms: number): string {
@@ -153,7 +203,12 @@ function fmtDuration(ms: number): string {
 
 function buildFolderName(meta: ReportMeta): string {
   const src = prettySource(meta.source).replace(/\s+/g, '-');
-  const tierPlan = `${prettyTier(meta.tier).replace(/\s+/g, '-')}_${prettyPlan(meta.ratePlan).replace(/[\s–]/g, '-').replace(/-+/g, '-')}`;
+  const tierPlan = isCanadaReport(meta)
+    ? buildTierRatePlanText(meta)
+      .replace(/\s*->\s*/g, '_')
+      .replace(/[\s-]/g, '-')
+      .replace(/-+/g, '-')
+    : `${prettyTier(meta.tier).replace(/\s+/g, '-')}_${prettyPlan(meta.ratePlan).replace(/[\s-]/g, '-').replace(/-+/g, '-')}`;
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return `${meta.region}_${src}_${tierPlan}_${stamp}`;
 }
@@ -174,7 +229,13 @@ function buildHtml(results: ReportResult[], meta: ReportMeta, hasGeminiEvidence 
   const passPct = total ? Math.round((totalPass / total) * 100) : 0;
 
   const now = meta.endTime || new Date();
+  const effectiveStartTime = meta.startTime || now;
   const dur = meta.startTime ? now.getTime() - meta.startTime.getTime() : 0;
+  const tierRatePlanText = buildTierRatePlanText(meta);
+  const flowText = buildFlowText(meta);
+  const tierRatePlanValue = isCanadaReport(meta)
+    ? `💎 ${esc(tierRatePlanText)}`
+    : `💎 ${esc(prettyTier(meta.tier))} &middot; 💳 ${esc(prettyPlan(meta.ratePlan))}`;
 
   const userStatus = meta.userStatus || (meta.userType === 'existing-user' ? 'Existing User' : 'New User');
   const platform = meta.platform || ((meta.flowName || '').toLowerCase().includes('handoff') ? 'Android' : 'Web');
@@ -257,18 +318,19 @@ function buildHtml(results: ReportResult[], meta: ReportMeta, hasGeminiEvidence 
   }).join('');
 
   const fmtTime = (d?: Date) => d ? d.toLocaleString('en-GB') : '—';
+  const reportEventName = String(meta.event || '').split('|')[0].trim();
 
   // ── Build meta items (conditionally include userStatus and paymentMethod) ──
   const metaItems = `
-      <div class="meta-item"><div class="k">PPV Name</div><div class="v">🥊 ${esc(meta.event)}</div></div>
+      <div class="meta-item"><div class="k">PPV Name</div><div class="v">🥊 ${esc(reportEventName)}</div></div>
       <div class="meta-item"><div class="k">Platform</div><div class="v">📱 ${esc(platform)}</div></div>
       <div class="meta-item"><div class="k">Environment</div><div class="v">🧭 ${esc((meta.env || '').toUpperCase())}</div></div>
       <div class="meta-item"><div class="k">Country / Region</div><div class="v">🌍 ${esc(meta.region)}</div></div>
       ${meta.userType === 'existing-user' ? `<div class="meta-item"><div class="k">User Status</div><div class="v">👤 ${esc(userStatus)}</div></div>` : ''}
       <div class="meta-item"><div class="k">Surfacing Point</div><div class="v">📍 ${esc(prettySource(meta.source))}</div></div>
-      <div class="meta-item"><div class="k">Tier & Rate Plan</div><div class="v">💎 ${esc(prettyTier(meta.tier))} &middot; 💳 ${esc(prettyPlan(meta.ratePlan))}</div></div>
+      <div class="meta-item"><div class="k">Tier & Rate Plan</div><div class="v">${tierRatePlanValue}</div></div>
       ${(meta.env || '').toLowerCase() === 'stag' ? `<div class="meta-item"><div class="k">Payment Method</div><div class="v">💳 ${esc(meta.paymentMethod || 'N/A')}</div></div>` : ''}
-      <div class="meta-item"><div class="k">Flow</div><div class="v">🔀 ${esc(meta.flowName)}</div></div>`;
+      <div class="meta-item"><div class="k">Flow</div><div class="v">🔀 ${esc(flowText)}</div></div>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -356,7 +418,7 @@ function buildHtml(results: ReportResult[], meta: ReportMeta, hasGeminiEvidence 
   <div class="wrap">
     <h1>DAZN PPV ${(meta.userType === 'existing-user') ? 'Existing-User' : 'New-User'} Run Report</h1>
     <div class="sub">
-      Generated: ${fmtTime(now)} &nbsp;|&nbsp; Start: ${fmtTime(meta.startTime)} &nbsp;|&nbsp; Duration: ${fmtDuration(dur)} &nbsp;|&nbsp; ${overallBadge}
+      Generated: ${fmtTime(now)} &nbsp;|&nbsp; Start: ${fmtTime(effectiveStartTime)} &nbsp;|&nbsp; Duration: ${fmtDuration(dur)} &nbsp;|&nbsp; ${overallBadge}
     </div>
 
     <h2>Execution Summary</h2>

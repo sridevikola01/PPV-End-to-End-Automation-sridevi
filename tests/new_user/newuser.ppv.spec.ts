@@ -2,6 +2,7 @@ import { test, Page, BrowserContext } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { LandingPage } from '../../pages/LandingPage';
+import { PPVPage } from '../../pages/PPVPage';
 import { BoxingPage } from '../../pages/BoxingPage';
 import { BoxingHomePage } from '../../pages/BoxingHomePage';
 import { HomePage } from '../../pages/HomePage';
@@ -35,6 +36,7 @@ import {
 } from '../../utils/excelReader';
 import { detectVariant } from '../../flows/detectVariant';
 import { validateVariant, validateCtaAfterUltimateSelection } from '../../flows/validateVariant';
+import { executeCanadaSubscriptionFlow, parseCanadaCommand } from '../../flows/canadaSubscriptionFlow';
 import { buildEventData } from '../../utils/buildEventData';
 import { detectPageType, handleNoPpvClick } from '../../utils/flowHelpers';
 import { displayResultsTable } from '../../utils/resultsDisplay';
@@ -1010,6 +1012,26 @@ async function runFlow(
       await handleCookies(page, step === 0 ? 5000 : 500);
       await stabilisePage(page);
       await dismissMarketingPopup(page);
+
+      // ── Canada (CA) Region Branching ─────────────────────────────
+      const currentRegion = (eventData.REGION || eventData.region || process.env.DAZN_REGION || region || 'GB').toUpperCase();
+      if (currentRegion === 'CA') {
+        console.log(`🇨🇦 [Region ${currentRegion} Detected] Executing Canada UFT Subscription Flow...`);
+        const ppvPageObj = new PPVPage(page);
+        const paymentPageObj = new PaymentPage(page);
+        await executeCanadaSubscriptionFlow(
+          page,
+          ppvPageObj,
+          paymentPageObj,
+          eventData,
+          results,
+          process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN,
+          user
+        );
+        reachedEndPage = true;
+        break;
+      }
+
       // ── PPV Removal validation check ──
       if (process.env.PPV_REMOVAL === 'true') {
         const url = page.url().toLowerCase();
@@ -1907,6 +1929,24 @@ async function runFlow(
         stuckCount = 0;
         planClickCount++;
 
+        // ── Canada (CA) Region Branching ─────────────────────────────
+        const currentRegion = (eventData.REGION || eventData.region || process.env.DAZN_REGION || 'GB').toUpperCase();
+        if (currentRegion === 'CA') {
+          console.log(`🇨🇦 [Region ${currentRegion} Detected] Executing Canada UFT Subscription Flow...`);
+          const ppvPageObj = new PPVPage(page);
+          const paymentPageObj = new PaymentPage(page);
+          await executeCanadaSubscriptionFlow(
+            page,
+            ppvPageObj,
+            paymentPageObj,
+            eventData,
+            results,
+            process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN
+          );
+          reachedEndPage = true;
+          break;
+        }
+
         // Handle TierPlans selection first if on TierPlans page
         if (page.url().toLowerCase().includes('page=tierplans')) {
           // ── subscribe-without-pay-per-view: endPage=plan → stop here ──
@@ -2253,9 +2293,12 @@ async function runFlow(
 // ═══════════════════════════════════════════════════════════════
 // TEST DEFINITION — Dynamically defines tests for parallel runs
 // ═══════════════════════════════════════════════════════════════
-const plansToRun = (process.env.PLAN || 'standard_monthly,standard_apm,ultimate_upfront,ultimate_apm')
-  .split(',')
-  .map(p => p.trim());
+const isCanadaRun = REGION === 'CA' || !!process.env.CANADA_PLAN || !!process.env.UFT_PLAN;
+const plansToRun = isCanadaRun
+  ? ['standard_monthly']
+  : (process.env.PLAN || 'standard_monthly,standard_apm,ultimate_upfront,ultimate_apm')
+      .split(',')
+      .map(p => p.trim());
 
 // Configure tests to run in parallel using configured workers
 test.describe.configure({ mode: 'parallel' });
@@ -2353,15 +2396,27 @@ for (const planKey of plansToRun) {
         videoPath,
       });
 
+      const isCanada = REGION === 'CA';
+      let finalTier = flowConfig.tier;
+      let finalRatePlan = flowConfig.ratePlan;
+      let flowName = flowConfig.name;
+
+      if (isCanada) {
+        const caConfig = parseCanadaCommand(process.env.CANADA_PLAN || process.env.UFT_PLAN || process.env.PLAN);
+        finalTier = caConfig.tierPlanDisplay; // e.g. "standard -> dazn -> Annual-pay now"
+        finalRatePlan = '';
+        flowName = `${flowConfig.source} -> new-user -> ${caConfig.tierPlanDisplay}`;
+      }
+
       // Generate HTML + PDF run report (country, surfacing point, rate plan, per-page pass/fail, totals)
       const { htmlPath, pdfPath, folderPath } = await generateReports(results, {
         event: json.PPV_NAME,
         region: REGION,
         source: flowConfig.source,
-        ratePlan: flowConfig.ratePlan,
-        tier: flowConfig.tier,
+        ratePlan: finalRatePlan,
+        tier: finalTier,
         env: process.env.DAZN_ENV || 'prod',
-        flowName: flowConfig.name,
+        flowName,
         startTime: runStart,
         endTime: new Date(),
         excelPath,

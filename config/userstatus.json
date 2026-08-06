@@ -58,6 +58,14 @@
             "USER_PASSWORD": "Dazn@123"
           }
         }
+      },
+      "CA": {
+        "environments": {
+          "prod": {
+            "USER_EMAIL": "sri001@yopmail.com",
+            "USER_PASSWORD": "Dazn@123"
+          }
+        }
       }
     }
   },
@@ -118,6 +126,14 @@
           "prod": {
             "USER_EMAIL": "safrozenppv@yopmail.com",
             "USER_PASSWORD": "Dazn@123"
+          }
+        }
+      },
+      "CA": {
+        "environments": {
+          "prod": {
+            "USER_EMAIL": "taruncaprod@t.dazn.com",
+            "USER_PASSWORD": "Test@123"
           }
         }
       }
@@ -182,6 +198,14 @@
             "USER_PASSWORD": "Dazn@123"
           }
         }
+      },
+      "CA": {
+        "environments": {
+          "prod": {
+            "USER_EMAIL": "autoca@yopmail.com",
+            "USER_PASSWORD": "Dazn123"
+          }
+        }
       }
     }
   },
@@ -236,6 +260,14 @@
             "USER_PASSWORD": "Test1!"
           }
         }
+      },
+      "CA": {
+        "environments": {
+          "prod": {
+            "USER_EMAIL": "TODO_ADD_CA_STANDARD_APM_ACCOUNT",
+            "USER_PASSWORD": "TODO_ADD_PASSWORD"
+          }
+        }
       }
     }
   },
@@ -283,6 +315,14 @@
         "environments": {
           "prod": {
             "USER_EMAIL": "saultimatemonthlyppv@yopmail.com",
+            "USER_PASSWORD": "Dazn@123"
+          }
+        }
+      },
+      "CA": {
+        "environments": {
+          "prod": {
+            "USER_EMAIL": "sri001@yopmail.com",
             "USER_PASSWORD": "Dazn@123"
           }
         }
@@ -334,6 +374,14 @@
           "prod": {
             "USER_EMAIL": "saultimateupfrontppv@yopmail.com",
             "USER_PASSWORD": "Dazn@123"
+          }
+        }
+      },
+      "CA": {
+        "environments": {
+          "prod": {
+            "USER_EMAIL": "taruncaprod2@t.dazn.com",
+            "USER_PASSWORD": "Test@123"
           }
         }
       }

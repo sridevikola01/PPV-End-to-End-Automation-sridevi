@@ -7099,9 +7099,14 @@ export async function getActualValue(
         if (exact !== 'N/A') return exact;
       }
 
+      // CA shows different titles depending on the plan type (DAZN vs DAZN+) and tier:
+      //   Standard + DAZN     → "DAZN"
+      //   Standard + DAZN+    → "DAZN+ Standard"
+      //   Ultimate + DAZN     → "DAZN Ultimate"
+      //   Ultimate + DAZN+    → "DAZN+ Ultimate"
       return snapFind(n =>
         n.childCount === 0 &&
-        /^DAZN (Free|Standard|Ultimate|VIP)$/i.test(n.text) &&
+        /^(DAZN\+? ?(Free|Standard|Ultimate|VIP)?|DAZN\+ (Standard|Ultimate))$/i.test(n.text.trim()) &&
         n.text.length < 30
       );
     }

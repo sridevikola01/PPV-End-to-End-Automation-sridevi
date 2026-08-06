@@ -1039,10 +1039,11 @@ export class AndroidValidationPage extends AndroidBasePage {
       await pushResult('PPV Image', 'Yes', hasImg, hasImg === 'Yes');
 
       // 2. PPV Title
-      const isTitlePresent = texts.some(
+      const titleMatch = texts.find(
         t => cleanStr(t).includes(cleanStr(titleExpected)) || cleanStr(titleExpected).includes(cleanStr(t))
-      ) || cleanStr(pageSource).includes(cleanStr(titleExpected));
-      await pushResult('PPV Title', titleExpected, isTitlePresent ? titleExpected : 'Not found', isTitlePresent);
+      );
+      const isTitlePresent = !!titleMatch || cleanStr(pageSource).includes(cleanStr(titleExpected));
+      await pushResult('PPV Title', titleExpected, titleMatch ? titleMatch.trim() : (isTitlePresent ? titleExpected : 'Not found'), isTitlePresent);
 
       // 3. Date and Time
       const { calculateDynamicPpvBannerDate } = require('../../../utils/dateUtils');
@@ -1060,11 +1061,12 @@ export class AndroidValidationPage extends AndroidBasePage {
       // 4. Description
       const expectedDesc = eventData.MOBILE_BANNER_DESCRIPTION || eventData.BANNER_DESCRIPTION || '';
       const cleanExpectedDesc = cleanStr(expectedDesc).replace(/\.\.\.$/, '').trim();
-      const isDescPresent = texts.some(t => {
+      const descMatch = texts.find(t => {
         const ct = cleanStr(t);
         return ct.includes(cleanExpectedDesc) || cleanExpectedDesc.includes(ct);
-      }) || cleanStr(pageSource).includes(cleanExpectedDesc);
-      await pushResult('Description', expectedDesc, isDescPresent ? expectedDesc : 'Not found', isDescPresent);
+      });
+      const isDescPresent = !!descMatch || cleanStr(pageSource).includes(cleanExpectedDesc);
+      await pushResult('Description', expectedDesc, descMatch ? descMatch.trim() : (isDescPresent ? expectedDesc : 'Not found'), isDescPresent);
 
       // 5. Fight Card Button
       const isLandingPage = String(source || '').trim().toLowerCase() === 'landing-page-banner';

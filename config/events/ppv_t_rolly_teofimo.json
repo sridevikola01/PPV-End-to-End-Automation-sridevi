@@ -123,6 +123,25 @@
       "UPSELL_PRICE_LENGTH": "/month for 12 months",
       "PPV1_UPSELL_TILE_DATE": "",
       "offers": []
+    },
+    "CA": {
+      "LANDING_PAGE_PPV_DATE": "23 August|22 August",
+      "PPV_DATE": "Sun 23rd Aug at 4:00 a.m.|Sun 23rd Aug at 04:00|23 Aug at 4:00 a.m.|Sun 23rd Aug at 4:00|Sat 22nd Aug at 6:30|Sat 22nd Aug at 6:30 p.m.|Sat 22nd Aug at 18:30|22 Aug at 6:30 p.m.|22 Aug at 6:30",
+      "PPV_PAGE_DATE": "Sun 23rd Aug at 4:00 a.m.|Sat 22nd Aug at 6:30 p.m.|Sat 22nd Aug at 11:30 p.m.|Sat 22nd Aug at 11:30",
+      "PPV_TIME": "04:00",
+      "LANDING_BANNER_DATE": "SUN 23RD AUG AT 04:00|SAT 22ND AUG AT 18:30|SAT 22ND AUG AT 6:30 P.M.|SAT 22ND AUG AT 11:30|SAT 22ND AUG",
+      "HOME_POPUP_DATE": "SUN 23RD AUG AT 04:00",
+      "PPV_POPUP_DATE": "23 AUG 4:00AM",
+      "SEARCH_PPV_DATE_TIME": "23 AUG 4:00AM",
+      "SCHEDULE_PPV_TIME": "4:00AM",
+      "HOME_BOXING_UPCOMING_TIME": "4:00AM",
+      "PPV_PRICE": "$34.99",
+      "TODAY_YOU_PAY_PRICE": "$34.99",
+      "UPSELL_PRICE": "",
+      "UPSELL_CROSSED_PRICE": "",
+      "UPSELL_PRICE_LENGTH": "/month for 12 months",
+      "PPV1_UPSELL_TILE_DATE": "",
+      "offers": []
     }
   },
   "variants": {

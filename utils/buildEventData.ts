@@ -103,6 +103,9 @@ function replaceTrialDayPlaceholders(value: unknown, trialDays: number): unknown
     : value;
 }
 
+function normalizeRegionKey(region: string): string {
+  return (region || 'GB').toUpperCase();
+}
 
 const GLOBAL_DEFAULTS: Record<string, string> = {
   PPV_CTA_TEXT: "Continue with pay-per-view",
@@ -158,11 +161,12 @@ export function buildEventData(
 
   const merged = json;
   const regionalBase = {};
+  const regionKey = normalizeRegionKey(region);
 
-  let eventRegional = json.regions?.[region];
+  let eventRegional = json.regions?.[regionKey];
   if (!eventRegional) {
     // Backward-compat: if region is GB but config only has UK
-    if (region === 'GB') {
+    if (regionKey === 'GB') {
       eventRegional = json.regions?.UK;
     }
   }
@@ -273,7 +277,7 @@ export function buildEventData(
       FR: 'fr-FR',
       JP: 'ja-JP',
     };
-    const locale = regionLocaleMap[region.toUpperCase()] || `en-${region.toUpperCase()}`;
+    const locale = regionLocaleMap[regionKey] || `en-${regionKey}`;
     base.BASE_URL = `https://${domain}/${locale}`;
     console.log(`💡 Derived BASE_URL: https://${domain}/${locale} (region="${region}", env="${env}")`);
   }
@@ -338,7 +342,7 @@ export function buildEventData(
 
   const planKey = json.planKey || 'standard_monthly';
   const planData = plans[planKey];
-  const planRegionalOffers = planData?.regions?.[region.toUpperCase()]?.offers || [];
+  const planRegionalOffers = planData?.regions?.[regionKey]?.offers || [];
   const eventRegionalOffers = eventRegional?.offers || [];
 
   // Combine offers: event-level offers override plan-level offers by name
@@ -359,7 +363,7 @@ export function buildEventData(
 
     // Match region (backward compat)
     if (offer.target_region && offer.target_region.length > 0) {
-      const matchedRegion = offer.target_region.some((r: string) => r.toUpperCase() === region.toUpperCase());
+      const matchedRegion = offer.target_region.some((r: string) => normalizeRegionKey(r) === regionKey);
       if (!matchedRegion) return false;
     }
 
@@ -529,10 +533,10 @@ export function buildEventData(
     }
 
     // Apply regional overrides from user state config
-    let userStateRegional = userStateConfig.regions?.[region];
+    let userStateRegional = userStateConfig.regions?.[regionKey];
     if (!userStateRegional) {
       // Backward-compat: if region is GB but config only has UK
-      if (region === 'GB') {
+      if (regionKey === 'GB') {
         userStateRegional = userStateConfig.regions?.UK;
       }
     }
@@ -551,16 +555,24 @@ export function buildEventData(
     }
 
     // Ultimate entitlement logic: active_ultimate on included PPVs is Purchased, otherwise Buy now.
+    // EXCEPTION: Canada (CA) ultimate users must purchase PPV explicitly — never "Purchased".
+    // Note: base.PPV_STATUS may already be "Purchased" from userstatus.json, so we
+    // must force override it for CA — not rely on !base.PPV_STATUS being falsy.
     let ppvStatus = base.PPV_STATUS || 'Buy now';
     if (isActiveUltimate) {
       const ppvType = merged.PPV_TYPE || json.PPV_TYPE;
-      if (ppvType === 'included') {
+      const isCanada = (process.env.DAZN_REGION || '').toUpperCase() === 'CA';
+      if (isCanada) {
+        // CA ultimate users always buy PPV explicitly — force Buy now
+        ppvStatus = 'Buy now';
+      } else if (ppvType === 'included') {
         ppvStatus = 'Purchased';
       } else if (!base.PPV_STATUS) {
         ppvStatus = 'Buy now';
       }
     }
     base.PPV_STATUS = ppvStatus;
+
 
   } // end if (userStateKey)
 
@@ -791,7 +803,7 @@ export function buildEventData(
   if (!base.UPSELL_PRICE) {
     try {
       const ultimateApmPlan = plans.ultimate_apm;
-      const ultimateApmRegion = ultimateApmPlan?.regions?.[region.toUpperCase()] || {};
+      const ultimateApmRegion = ultimateApmPlan?.regions?.[regionKey] || {};
       const ultimatePlanOffers = ultimateApmRegion.offers || [];
 
       // Merge with event-level overrides

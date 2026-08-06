@@ -33,6 +33,10 @@ function alignRegions(data: any) {
   }
 }
 
+function normalizeRegionKey(region: string): string {
+  return (region || 'GB').toUpperCase();
+}
+
 function findConfig(dir: string, filename: string): string | null {
   if (!fs.existsSync(dir)) return null;
 
@@ -142,9 +146,10 @@ export function loadEventConfig(eventConfigOrKey?: string, planKeyOverride?: str
 
   // Validate that the selected plan supports the target region
   const region = process.env.DAZN_REGION || 'GB';
+  const regionKey = normalizeRegionKey(region);
   if (planData.regions && Object.keys(planData.regions).length > 0) {
     const planRegions = Object.keys(planData.regions);
-    if (!planRegions.includes(region)) {
+    if (!planRegions.includes(regionKey)) {
       const planDisplayName = `${planData.TIER || 'unknown'} ${planData.RATE_PLAN || planKey}`.trim();
       throw new Error(
         `❌ No "${planDisplayName}" plan available for region "${region}".\n` +

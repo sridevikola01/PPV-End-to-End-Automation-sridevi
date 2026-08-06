@@ -20,11 +20,17 @@ export class SignupPage extends BasePage {
     super(page);
   }
 
+  private getEmailLocator(): Locator {
+    return this.page.locator(
+      'input[type="email"], input[name*="email" i], input[data-test-id*="EMAIL" i], input[id*="email" i], input[autocomplete="email"]'
+    ).first();
+  }
+
   // ─────────────────────────────
   // FIND EMAIL INPUT
   // ─────────────────────────────
   async findEmailInput(): Promise<Locator | null> {
-    const input = this.page.locator('input[type="email"]').first();
+    const input = this.getEmailLocator();
     try {
       await input.waitFor({ state: 'visible', timeout: 15000 });
       return input;
@@ -37,7 +43,7 @@ export class SignupPage extends BasePage {
   // ENTER EMAIL
   // ─────────────────────────────
   async enterEmail(emailValue: string) {
-    const input = this.page.locator('input[type="email"]').first();
+    const input = this.getEmailLocator();
 
     // Single clean wait — no double waitFor
     await input.waitFor({ state: 'visible', timeout: 10000 });
@@ -74,7 +80,7 @@ export class SignupPage extends BasePage {
   // CLICK CONTINUE (EMAIL STEP)
   // ─────────────────────────────
   async clickContinue() {
-    const btn = this.page.locator('button:has-text("Continue")').first();
+    const btn = this.page.locator('button:has-text("Continue"), button:has-text("Next"), button[type="submit"], input[type="submit"]').first();
 
     await btn.waitFor({ state: 'visible', timeout: 8000 });
     await btn.scrollIntoViewIfNeeded().catch(() => {});
@@ -265,7 +271,8 @@ export class SignupPage extends BasePage {
       // us back to the PPV/plan page), throw so the caller's navigation loop
       // can catch it and re-enter from the current URL — re-executing upsell,
       // plan selection and personal details in the correct order.
-      if (!this.page.url().toLowerCase().includes('personaldetails')) {
+      const currentUrl = this.page.url().toLowerCase();
+      if (!currentUrl.includes('personaldetails') && !currentUrl.includes('emaildetails') && !currentUrl.includes('register')) {
         console.warn(`⚠️  [SignupPage] Recovery (${label}) returned to ${this.page.url()}; signalling caller to re-enter navigation loop.`);
         throw new PersonalDetailsRedirectError(this.page.url());
       }
