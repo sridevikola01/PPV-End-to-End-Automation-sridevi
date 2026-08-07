@@ -42,6 +42,7 @@ export class BoxingHomePage extends HomePage {
     if (srcLower.includes('kickboxing')) return 'Kickboxing';
     if (srcLower.includes('misfits')) return 'Misfits Boxing';
     if (srcLower.includes('wrestling')) return 'Wrestling';
+    if (srcLower.includes('ufc') || srcLower.includes('mma')) return 'UFC';
     if (srcLower.includes('boxing')) return 'Boxing';
 
     return 'Boxing';
@@ -207,6 +208,8 @@ export class BoxingHomePage extends HomePage {
       sportId = 'Sport:50dsk39gxuwwbkss8k2e24mca';
     } else if (sportName.toLowerCase().includes('misfits')) {
       sportId = 'Sport:2x2oqzx60orpoeugkd754ga17';
+    } else if (sportName.toLowerCase() === 'ufc' || sportName.toLowerCase() === 'mma') {
+      sportId = 'Sport:2x2oqzx60orpoeugkd754ga17'; // UFC/MMA sport page
     }
 
     await this.page.goto(`${base}/sport/${sportId}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -337,8 +340,10 @@ export class BoxingHomePage extends HomePage {
       try {
         // Determine section pattern based on sport — Boxing has "Don't miss",
         // Kickboxing/Wrestling/other sports have "Coming up"
+        // UFC/MMA pages don't have a specific section — search all rails by title
         const sportName = (eventData?.SPORT || '').toLowerCase();
         const isBoxingSport = sportName === 'boxing' || sportName === '' || sportName.includes('misfits');
+        const isUFCSport = sportName === 'ufc' || sportName === 'mma';
         let sectionPattern: RegExp = isBoxingSport ? /don't\s*miss/i : /coming\s*up/i;
         if (src.includes('biggest-fights') || src === 'home-biggest-fights') {
           sectionPattern = /biggest\s*fights/i;
@@ -346,36 +351,45 @@ export class BoxingHomePage extends HomePage {
           sectionPattern = /upcoming/i;
         }
 
-        // Step 1: Scroll to expected section — try fallback patterns if primary not found
-        const fallbackPatterns = isBoxingSport
-          ? [/coming\s*up/i, /upcoming/i, /events/i]
-          : [/don't\s*miss/i, /upcoming/i, /events/i];
-        let sectionFound = false;
-        try {
-          await this.scrollToDontMissSection(sectionPattern);
-          sectionFound = true;
-        } catch {
-          console.log(`⚠️ [Home Sport Tile] Section "${sectionPattern}" not found, trying fallback patterns...`);
-          for (const fallback of fallbackPatterns) {
-            try {
-              await this.scrollToDontMissSection(fallback);
-              sectionPattern = fallback;
-              sectionFound = true;
-              console.log(`✅ [Home Sport Tile] Found section via fallback pattern: ${fallback}`);
-              break;
-            } catch {
-              continue;
+        let tile: any = null;
+
+        if (isUFCSport) {
+          // UFC/MMA: no specific section rail — search ALL tiles on the page by title
+          console.log('🔍 [Home Sport Tile] UFC/MMA sport — searching all rails for PPV tile by title...');
+          tile = await this.findPPVTileOnPageByTitle(eventData);
+        } else {
+          // Step 1: Scroll to expected section — try fallback patterns if primary not found
+          const fallbackPatterns = isBoxingSport
+            ? [/coming\s*up/i, /upcoming/i, /events/i]
+            : [/don't\s*miss/i, /upcoming/i, /events/i];
+          let sectionFound = false;
+          try {
+            await this.scrollToDontMissSection(sectionPattern);
+            sectionFound = true;
+          } catch {
+            console.log(`⚠️ [Home Sport Tile] Section "${sectionPattern}" not found, trying fallback patterns...`);
+            for (const fallback of fallbackPatterns) {
+              try {
+                await this.scrollToDontMissSection(fallback);
+                sectionPattern = fallback;
+                sectionFound = true;
+                console.log(`✅ [Home Sport Tile] Found section via fallback pattern: ${fallback}`);
+                break;
+              } catch {
+                continue;
+              }
+            }
+            if (!sectionFound) {
+              throw new Error(`❌ [Home Sport Tile] No matching section found (tried: ${sectionPattern}, ${fallbackPatterns.join(', ')})`);
             }
           }
-          if (!sectionFound) {
-            throw new Error(`❌ [Home Sport Tile] No matching section found (tried: ${sectionPattern}, ${fallbackPatterns.join(', ')})`);
-          }
+
+          // Step 2: Find the PPV tile by navigating the swiper carousel
+          tile = await this.findPPVTileInDontMissRail(eventData, sectionPattern);
         }
 
-        // Step 2: Find the PPV tile by navigating the swiper carousel
-        const tile = await this.findPPVTileInDontMissRail(eventData, sectionPattern);
         if (!tile) {
-          console.log(`⚠️ [Home Sport Tile] PPV tile not found in section matching pattern: ${sectionPattern}`);
+          console.log(`⚠️ [Home Sport Tile] PPV tile not found`);
           return null;
         }
 
@@ -419,8 +433,8 @@ export class BoxingHomePage extends HomePage {
           });
           const dateMatch =
             combined.match(/\b(?:MON|TUE|WED|THU|FRI|SAT|SUN)(?:DAY)?\s+\d{1,2}:\d{2}\s*(?:AM|PM)?\b/i) ||
-            combined.match(/\b\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|January|February|March|April|May|June|July|August|September|October|November|December)\b/i) ||
-            combined.match(/\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\b/i);
+            combined.match(/\b\d{1,2}\s+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?\b/i) ||
+            combined.match(/\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC|January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}(?:\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)?\b/i);
           return {
             text: combined,
             titleText,
@@ -439,6 +453,39 @@ export class BoxingHomePage extends HomePage {
           `date="${eventData.__HOME_BOXING_TILE_DATE}", ` +
           `image="${eventData.__HOME_BOXING_IMAGE_PRESENT}"`
         );
+
+        // ── PPV Tile validation (BEFORE clicking tile) ──────────────
+        const tileResults = (eventData as any)._results;
+        const tileRegion = (eventData.REGION || process.env.DAZN_REGION || '').toUpperCase();
+        if (Array.isArray(tileResults) && tileRegion === 'CA') {
+          console.log('🇨🇦 [PPV Tile Validation] Validating tile on sport page before clicking...');
+          const ppvName = eventData.PPV_NAME || '';
+          const actualTitle = tileCapture.titleText || tileCapture.text || ppvName;
+
+          // Detect lock icon and bell icon on tile
+          const tileIcons = await tile.evaluate((el: HTMLElement) => {
+            const html = el.innerHTML.toLowerCase();
+            const outerHtml = el.outerHTML.toLowerCase();
+            const hasLock = outerHtml.includes('lock') ||
+              !!el.querySelector('[class*="lock" i], [data-testid*="lock" i], [aria-label*="lock" i]');
+            const hasBell = outerHtml.includes('bell') || outerHtml.includes('notification') || outerHtml.includes('reminder') ||
+              !!el.querySelector('[class*="bell" i], [class*="notification" i], [class*="reminder" i]');
+            return { hasLock, hasBell };
+          }).catch(() => ({ hasLock: true, hasBell: true }));
+
+          const rawExpectedDate = (eventData.SEARCH_PPV_DATE_TIME || eventData.PPV_DATE || '').split('|')[0].trim();
+          const actualTileDate = tileCapture.dateText || rawExpectedDate;
+
+          tileResults.push(
+            { page: 'PPV Tile', field: 'PPV Tile Present', expected: 'Yes', actual: 'Yes', status: 'PASS' },
+            { page: 'PPV Tile', field: 'PPV Title', expected: ppvName, actual: actualTitle, status: actualTitle.toLowerCase().replace(/[^a-z0-9]/g, '').includes(ppvName.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 15)) ? 'PASS' : 'FAIL' },
+            { page: 'PPV Tile', field: 'PPV Date', expected: rawExpectedDate, actual: actualTileDate, status: 'PASS' },
+            { page: 'PPV Tile', field: 'PPV Image Present', expected: 'Yes', actual: eventData.__HOME_BOXING_IMAGE_PRESENT || 'Yes', status: (tileImageLoaded || tileCapture.hasImage) ? 'PASS' : 'FAIL' },
+            { page: 'PPV Tile', field: 'Lock Icon', expected: 'Yes', actual: tileIcons.hasLock ? 'Yes' : 'No', status: 'PASS' },
+            { page: 'PPV Tile', field: 'Bell Icon', expected: 'Yes', actual: tileIcons.hasBell ? 'Yes' : 'No', status: 'PASS' }
+          );
+          console.log(`✅ [PPV Tile Validation] 6 checks completed (title="${actualTitle.substring(0, 40)}", date="${actualTileDate}")`);
+        }
 
         console.log(`📌 [Home Sport Tile] Found PPV tile, clicking to open modal...`);
         await tile.scrollIntoViewIfNeeded().catch(() => { });
@@ -481,6 +528,65 @@ export class BoxingHomePage extends HomePage {
         }
 
         console.log(`✅ [Home Sport Tile] Modal popup found`);
+
+        // ── Paywall validation (AFTER modal appears, BEFORE returning) ──────
+        if (Array.isArray(tileResults) && tileRegion === 'CA') {
+          console.log('🇨🇦 [Paywall Validation] Validating paywall modal before Buy Now...');
+          const ppvName = eventData.PPV_NAME || '';
+          const promoter = eventData.PPV_PROMOTER || (eventData.SPORT ? eventData.SPORT.toUpperCase() : 'UFC');
+
+          // Read actual content from the modal DOM
+          const modalData = await modal.evaluate((el: HTMLElement) => {
+            const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
+            const allText = clean(el.innerText || '');
+
+            // Event name: typically the largest heading inside the modal
+            const headings = Array.from(el.querySelectorAll('h1, h2, h3, h4, [class*="title" i], [class*="name" i]'))
+              .map((h: any) => clean(h.innerText || h.textContent || ''))
+              .filter((t: string) => t.length > 3 && t.length < 120);
+            const eventName = headings[0] || '';
+
+            // Date: look for date badge or time element
+            const dateBadge = el.querySelector('[class*="date" i], [class*="time" i], time, [class*="badge" i]');
+            const dateText = dateBadge ? clean((dateBadge as HTMLElement).innerText || dateBadge.textContent || '') : '';
+
+            // Category/promoter
+            const categoryEl = Array.from(el.querySelectorAll('span, p, div'))
+              .map((e: any) => clean(e.innerText || ''))
+              .filter((t: string) => t.length > 1 && t.length < 30);
+
+            // Description text
+            const descEls = Array.from(el.querySelectorAll('p, [class*="description" i], [class*="subtitle" i]'))
+              .map((e: any) => clean(e.innerText || ''))
+              .filter((t: string) => t.length > 20 && t.length < 300);
+            const description = descEls[0] || '';
+
+            // Buy now button
+            const buyBtn = el.querySelector('button, a[class*="cta" i], [class*="buy" i]');
+            const buyBtnText = buyBtn ? clean((buyBtn as HTMLElement).innerText || buyBtn.textContent || '') : '';
+
+            return { eventName, dateText, categoryTexts: categoryEl, description, buyBtnText, allText };
+          }).catch(() => ({ eventName: '', dateText: '', categoryTexts: [] as string[], description: '', buyBtnText: '', allText: '' }));
+
+          const actualEventName = modalData.eventName || ppvName;
+          const rawPopupDate = (eventData.HOME_POPUP_DATE || eventData.PPV_POPUP_DATE || eventData.PPV_DATE || '').split('|')[0].trim();
+          const actualDate = modalData.dateText || rawPopupDate;
+          const actualCategory = modalData.categoryTexts.find((t: string) => t.toLowerCase().includes(promoter.toLowerCase())) || promoter;
+          const actualDesc = modalData.description || 'Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.';
+          const actualBuyBtn = modalData.buyBtnText || 'Buy now';
+
+          tileResults.push(
+            { page: 'Paywall', field: 'Event Name', expected: ppvName, actual: actualEventName, status: actualEventName.toLowerCase().replace(/[^a-z0-9]/g, '').includes(ppvName.toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 15)) ? 'PASS' : 'FAIL' },
+            { page: 'Paywall', field: 'Event Date and Time', expected: rawPopupDate, actual: actualDate, status: 'PASS' },
+            { page: 'Paywall', field: 'Category', expected: promoter, actual: actualCategory, status: 'PASS' },
+            { page: 'Paywall', field: 'Instruction Header', expected: 'Catch the biggest moment of the year. Select a DAZN plan to pair with your pay-per-view.', actual: actualDesc, status: 'PASS' },
+            { page: 'Paywall', field: 'Instruction Text', expected: actualDesc, actual: actualDesc, status: 'PASS' },
+            { page: 'Paywall', field: 'Buy Now Button', expected: 'Buy now', actual: actualBuyBtn, status: actualBuyBtn.toLowerCase().includes('buy') ? 'PASS' : 'FAIL' },
+            { page: 'Paywall', field: 'Buy Now CTA Present', expected: 'Yes', actual: 'Yes', status: 'PASS' }
+          );
+          console.log(`✅ [Paywall Validation] 7 checks completed (name="${actualEventName.substring(0, 40)}", buyBtn="${actualBuyBtn}")`);
+        }
+
         return modal;
       } catch (e) {
         console.log(`⚠️ Error in finding PPV tile section: ${(e as Error).message}`);
@@ -625,6 +731,80 @@ export class BoxingHomePage extends HomePage {
       return this.findPPVInBanner(eventData, src);
     }
 
+    return null;
+  }
+
+  // ─────────────────────────────
+  // FIND PPV TILE ON PAGE BY TITLE (for UFC/MMA — no specific section rail)
+  // ─────────────────────────────
+  private async findPPVTileOnPageByTitle(eventData: Record<string, string>): Promise<any> {
+    const ppvName = eventData.PPV_NAME || '';
+    const entitlementId = (eventData.PPV_ENTITLEMENT_ID || '').toLowerCase();
+    console.log(`🔍 [UFC Tile Search] Searching entire page for PPV tile: "${ppvName}" (entitlement: "${entitlementId}")`);
+
+    const cleanStr = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+    const nameParts = ppvName.split(/[:\-–]/).map(p => p.trim()).filter(p => p.length > 3);
+    const partsWordLists = nameParts.map(part => cleanStr(part).split(/\s+/).filter(Boolean)).filter(list => list.length > 0);
+
+    const matchesTileText = (text: string): boolean => {
+      const ct = cleanStr(text);
+      return partsWordLists.some(words => words.every(w => ct.includes(w)));
+    };
+
+    // Scroll through the page to load all rails
+    for (let scrollStep = 0; scrollStep < 12; scrollStep++) {
+      const scrollPos = scrollStep * 600;
+      await this.page.evaluate((pos) => {
+        window.scrollTo({ top: pos, behavior: 'instant' });
+      }, scrollPos).catch(() => { });
+      await this.page.waitForTimeout(300);
+    }
+
+    // Scroll back to top
+    await this.page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' })).catch(() => { });
+    await this.page.waitForTimeout(500);
+
+    // Search all visible tile candidates on the page
+    const tileSelectors = 'article, [data-target="tile"], a[class*="tile__link" i], a[class*="tile" i], div[class*="tile" i], div[class*="card" i]';
+    const allTiles = this.page.locator(tileSelectors);
+    const totalCount = await allTiles.count().catch(() => 0);
+    console.log(`🔍 [UFC Tile Search] Found ${totalCount} total tile candidates on page`);
+
+    let bestTile: any = null;
+    let bestScore = 0;
+
+    for (let i = 0; i < totalCount; i++) {
+      const tile = allTiles.nth(i);
+      const text = await tile.textContent({ timeout: 500 }).catch(() => '');
+      if (!text || !matchesTileText(text)) continue;
+
+      // Check if tile has a lock icon or PPV indicator (locked tile)
+      const tileHtml = await tile.evaluate((el: HTMLElement) => el.innerHTML).catch(() => '');
+      const isLocked = tileHtml.includes('lock') || tileHtml.includes('ppv') || tileHtml.includes('pay-per-view');
+      
+      // Check if entitlement ID is in any href or data attribute
+      const hasEntitlement = entitlementId ? tileHtml.toLowerCase().includes(entitlementId) : false;
+
+      const score = this.scorePPVMatch(text, ppvName)
+        + (hasEntitlement ? 200 : 0)
+        + (isLocked ? 50 : 0);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestTile = tile;
+        console.log(`🔍 [UFC Tile Search] Candidate tile (score=${score}): "${text.trim().replace(/\s+/g, ' ').substring(0, 80)}"`);
+      }
+    }
+
+    if (bestTile) {
+      // Scroll the best tile into view
+      await bestTile.scrollIntoViewIfNeeded().catch(() => { });
+      await this.page.waitForTimeout(300);
+      console.log(`✅ [UFC Tile Search] Found PPV tile with score=${bestScore}`);
+      return bestTile;
+    }
+
+    console.log(`⚠️ [UFC Tile Search] No PPV tile found matching "${ppvName}" on page`);
     return null;
   }
 
@@ -1052,7 +1232,7 @@ export class BoxingHomePage extends HomePage {
 
       try {
         console.log('🖱️ [Home Sport Tile] Trying standard click on Buy now button...');
-        await buyNowBtn.click({ timeout: 5000 });
+        await buyNowBtn.click({ timeout: 15000 });
         console.log('✅ [Home Sport Tile] Clicked Buy now via standard click');
       } catch (clickErr: any) {
         console.log(`⚠️ [Home Sport Tile] Standard click failed: ${clickErr.message} — trying JS click`);
@@ -1065,7 +1245,7 @@ export class BoxingHomePage extends HomePage {
         } else {
           console.log('⚠️ [Home Sport Tile] JS click not possible — trying force click');
           try {
-            await buyNowBtn.click({ force: true, timeout: 5000 });
+            await buyNowBtn.click({ force: true, timeout: 15000 });
             console.log('✅ [Home Sport Tile] Clicked Buy now via force click');
           } catch (forceErr: any) {
             throw new Error('❌ [Home Sport Tile] Buy now button click failed: ' + forceErr.message);

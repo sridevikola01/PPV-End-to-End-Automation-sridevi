@@ -322,8 +322,8 @@
       "CA": {
         "environments": {
           "prod": {
-            "USER_EMAIL": "sri001@yopmail.com",
-            "USER_PASSWORD": "Dazn@123"
+            "USER_EMAIL": "taruncaprod2@t.dazn.com",
+            "USER_PASSWORD": "Test@123"
           }
         }
       }
@@ -380,8 +380,8 @@
       "CA": {
         "environments": {
           "prod": {
-            "USER_EMAIL": "taruncaprod2@t.dazn.com",
-            "USER_PASSWORD": "Test@123"
+            "USER_EMAIL": "TODO_ADD_AU_ULTIMATE_UPFRONT_ACCOUNT",
+            "USER_PASSWORD": "TODO_ADD_PASSWORD"
           }
         }
       }

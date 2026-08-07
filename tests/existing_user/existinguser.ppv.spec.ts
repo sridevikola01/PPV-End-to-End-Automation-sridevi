@@ -62,6 +62,7 @@ import {
   waitForHomePageAuthRedirect,
   executeCanadaSubscriptionFlow,
   executeCanadaPPVAddonPurchaseFlow,
+  validateCanadaPPVAddonPurchasePage,
 } from '../../utils/testHelpers';
 import { findNoPpvLink, handleNoPpvClick } from '../../utils/flowHelpers';
 import { AuthenticationManager } from '../../auth/AuthenticationManager';
@@ -327,6 +328,12 @@ function throwLogged(error: Error): never {
 }
 
 function isActiveUltimateState(userStateKey: string): boolean {
+  const isCanadaRegion = (process.env.DAZN_REGION || '').toUpperCase() === 'CA';
+  if (isCanadaRegion) {
+    // In Canada (CA), PPVs are NOT included in Ultimate subscriptions.
+    // Active Ultimate users must buy PPVs explicitly, behaving like Active Standard users.
+    return false;
+  }
   return userStateKey.toLowerCase().startsWith('active_ultimate');
 }
 
@@ -1526,6 +1533,8 @@ for (const stateKey of userStatesToRun) {
             await subscribeCta.click({ force: true });
             console.log('✅ [DAZN Tile] Subscription modal Subscribe CTA clicked');
           } else {
+            // Pass results array so BoxingHomePage can push PPV Tile / Paywall validations
+            (eventData as any)._results = results;
             container = await landing.findPPVContainer(eventData, containerSource);
 
             // Stop intercepting after findPPVContainer completes
@@ -1617,8 +1626,10 @@ for (const stateKey of userStatesToRun) {
             try {
               const isStandalone = eventData.PPV_TYPE === 'standalone';
               const onOnboarding = page.url().includes('signup') || page.url().includes('PlanDetails') || page.url().includes('payment') || page.url().includes('checkout');
-              if ((sheetName === 'Home of Boxing' || sheetName === 'Home of Sport' || sheetName === 'Home page') && (isStandalone || onOnboarding)) {
-                console.log('ℹ️ Standalone flow or direct navigation — skipping popup modal validations');
+              const currentRegion = (eventData.REGION || eventData.region || process.env.DAZN_REGION || 'GB').toUpperCase();
+              const isCaOrTileValidated = currentRegion === 'CA' || results.some(r => r.page === 'PPV Tile' || r.page === 'Paywall');
+              if (isCaOrTileValidated || ((sheetName === 'Home of Boxing' || sheetName === 'Home of Sport' || sheetName === 'Home page') && (isStandalone || onOnboarding))) {
+                console.log('ℹ️ Canada flow / PPV Tile & Paywall validated — skipping legacy sheet validations');
               } else {
                 let landingData = sheetName === 'Home page'
                   ? getHomePageData(flowParam)
@@ -3465,13 +3476,17 @@ for (const stateKey of userStatesToRun) {
             stuckCount = 0;
 
             const savedCardPage = new PPVUpsellPaymentPage(page);
-
-            // Validate the addon purchase page
-            try {
-              const ppvPaymentData = getPPVPaymentData();
-              await savedCardPage.validateSavedCardPayment(ppvPaymentData, results, eventData, 'PPV Payment (Saved Card)');
-            } catch (err: any) {
-              console.warn(`⚠️ Saved Card PPV Payment validation error: ${err.message}`);
+            const currentRegion = (eventData.REGION || eventData.region || process.env.DAZN_REGION || 'GB').toUpperCase();
+            if (currentRegion === 'CA') {
+              console.log(`🇨🇦 [Region ${currentRegion} Detected] Executing Canada PPV Addon Purchase Validation...`);
+              await validateCanadaPPVAddonPurchasePage(page, eventData, results);
+            } else {
+              try {
+                const ppvPaymentData = getPPVPaymentData();
+                await savedCardPage.validateSavedCardPayment(ppvPaymentData, results, eventData, 'PPV Payment (Saved Card)');
+              } catch (err: any) {
+                console.warn(`⚠️ Saved Card PPV Payment validation error: ${err.message}`);
+              }
             }
 
             reachedEndPage = true;
@@ -4646,7 +4661,9 @@ for (const stateKey of userStatesToRun) {
         endTime: new Date(),
         excelPath,
         videoPath,
-        userStatus: (TV_HANDOFF_MODE || isMyAccount) ? (process.env.USER_STATE || 'Freemium') : 'New User',
+        userStatus: isCanadaReport
+          ? (process.env.USER_STATE || stateKey || 'Freemium')
+          : ((TV_HANDOFF_MODE || isMyAccount) ? (process.env.USER_STATE || 'Freemium') : 'New User'),
         userType: 'existing-user',
         platform: getReportPlatform(),
         paymentMethod: PAYMENT_METHOD === 'gpay' ? 'Google Pay' : 'Credit Card',

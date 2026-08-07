@@ -1,4 +1,5 @@
 name: Run generic PPV journey
+description: Runs a PPV end-to-end journey (new-user or existing-user) using Playwright on Chromium.
 inputs:
   journey:
     required: true
@@ -22,6 +23,7 @@ runs:
             ultimate_apm)       plan="ultimate-dazn_ultimate-annual-pay over time" ;;
             ultimate_upfront)   plan="ultimate-dazn_ultimate-annual-pay now" ;;
           esac
+          echo "CANADA_PLAN=$plan" >> "$GITHUB_ENV"
         fi
         echo "PLAN=$plan" >> "$GITHUB_ENV"
     - shell: bash

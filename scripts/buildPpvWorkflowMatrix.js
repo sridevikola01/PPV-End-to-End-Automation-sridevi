@@ -46,6 +46,26 @@ const standardPlans = requestedPlans.filter((plan) => planConfig[plan]?.regions?
 if (standardPlans.length === 0) {
   throw new Error(`No supported plans are configured for ${country} in DaznPlan.json.`);
 }
+const isUFC = ['ufc', 'mma'].includes(String(event.SPORT || '').trim().toLowerCase());
+
+// Canada UFC has 4 subscription cards × 3 plan types = 12 combinations
+const canadaPlans = [
+  'standard-dazn-annual-pay over time',
+  'standard-dazn-annual-pay now',
+  'standard-dazn-monthly',
+  'standard-dazn+-annual-pay over time',
+  'standard-dazn+-annual-pay now',
+  'standard-dazn+-monthly',
+  'ultimate-dazn_ultimate-annual-pay over time',
+  'ultimate-dazn_ultimate-annual-pay now',
+  'ultimate-dazn_ultimate-monthly',
+  'ultimate-dazn+_ultimate-annual-pay over time',
+  'ultimate-dazn+_ultimate-annual-pay now',
+  'ultimate-dazn+_ultimate-monthly',
+];
+const isCanada = country === 'CA' && isUFC;
+const activePlans = isCanada ? canadaPlans : standardPlans;
+
 const regularProfiles = [
   'freemium/standard_monthly', 'freemium/standard_apm', 'freemium/ultimate_apm', 'freemium/ultimate_upfront',
   'frozen/standard_monthly', 'frozen/standard_apm', 'frozen/ultimate_apm', 'frozen/ultimate_upfront',
@@ -53,6 +73,21 @@ const regularProfiles = [
   'active_standard_apm/standard_apm', 'active_standard_apm/ultimate_apm',
   'active_ultimate_apm/ultimate_apm', 'active_ultimate_upfront/ultimate_upfront',
 ].filter((profile) => standardPlans.includes(profile.split('/')[1]));
+
+const canadaActiveProfiles = [
+  'active_standard_monthly/standard-dazn-monthly',
+  'active_standard_apm/standard-dazn-annual-pay over time',
+  'active_ultimate_apm/ultimate-dazn_ultimate-annual-pay over time',
+  'active_ultimate_upfront/ultimate-dazn_ultimate-annual-pay now',
+];
+
+// Canada profiles: freemium, frozen, and active users
+const canadaProfiles = [
+  ...canadaPlans.map((plan) => `freemium/${plan}`),
+  ...canadaPlans.map((plan) => `frozen/${plan}`),
+  ...canadaActiveProfiles,
+];
+const activeProfiles = isCanada ? canadaProfiles : regularProfiles;
 const ultimateOnly = new Set(['boxing-banner-ultimate', 'boxing-ultimate-subscription', 'boxing-join-the-club']);
 const validUltimateProfiles = new Set(['active_standard_monthly/ultimate_apm', 'active_standard_monthly/ultimate_upfront', 'active_standard_apm/ultimate_apm']);
 // Boxing PPVs are surfaced through the complete set of boxing-specific entry
@@ -60,16 +95,20 @@ const validUltimateProfiles = new Set(['active_standard_monthly/ultimate_apm', '
 // Search, Schedule, and (for authenticated users) My Account.
 // `home-boxing-tile` is the legacy source key for the sport tile; the page
 // object resolves the actual destination from event.SPORT.
+const nonBoxingSources = (extra = []) => isUFC
+  ? ['home-boxing-tile', 'schedule', 'search', ...extra]
+  : ['home-boxing-tile', 'home-page-dont-miss', 'schedule', 'search', ...extra];
+
 const liveSources = {
   new: isBoxing
     ? ['boxing-banner-ultimate', 'boxing-join-the-club', 'boxing-page-banner', 'boxing-page-bundle', 'boxing-standard-subscription', 'boxing-upcoming-fights', 'boxing-ultimate-subscription', 'home-biggest-fights', 'home-boxing-banner', 'home-boxing-tile', 'home-boxing-upcoming', 'home-kickboxing-tile', 'home-page-banner', 'home-page-dazntile', 'home-page-dont-miss', 'home-page-get-started', 'landing-page-banner', 'landing-page-dont-miss-live', 'schedule', 'search']
-    : ['home-boxing-tile', 'home-page-dont-miss', 'schedule', 'search'],
+    : nonBoxingSources(),
   existing: isBoxing
     ? ['landing-page-banner', 'home-page-banner', 'home-page-dont-miss', 'home-biggest-fights', 'home-page-dazntile', 'home-boxing-banner', 'home-boxing-tile', 'home-boxing-upcoming', 'home-kickboxing-tile', 'boxing-page-banner', 'boxing-page-bundle', 'boxing-upcoming-fights', 'boxing-banner-ultimate', 'boxing-ultimate-subscription', 'boxing-standard-subscription', 'boxing-join-the-club', 'search', 'schedule', 'myaccount']
-    : ['home-boxing-tile', 'home-page-dont-miss', 'schedule', 'search', 'myaccount'],
+    : nonBoxingSources(['myaccount']),
   signed: isBoxing
     ? ['home-page-banner', 'home-page-dont-miss', 'home-biggest-fights', 'home-page-dazntile', 'home-boxing-banner', 'home-boxing-tile', 'home-boxing-upcoming', 'home-kickboxing-tile', 'boxing-page-banner', 'boxing-page-bundle', 'boxing-upcoming-fights', 'boxing-banner-ultimate', 'boxing-ultimate-subscription', 'boxing-standard-subscription', 'boxing-join-the-club', 'search', 'schedule', 'myaccount']
-    : ['home-boxing-tile', 'home-page-dont-miss', 'schedule', 'search', 'myaccount'],
+    : nonBoxingSources(['myaccount']),
 };
 let androidNewSources = ['landing-page-banner', 'home-page-banner', 'home-page-dont-miss', 'home-boxing-banner', 'home-boxing-upcoming', 'home-boxing-tile', 'schedule', 'search'];
 let androidExistingSources = androidNewSources.filter(source => source !== 'landing-page-banner');
@@ -107,21 +146,29 @@ let matrix;
 switch (mode) {
   case 'dev-account':
     if (event.PPV_DEV_MODE !== true) throw new Error(`${configName} requires PPV_DEV_MODE: true for this workflow.`);
-    matrix = [
-      ...standardPlans.map((plan) => ({ source: 'myaccount', profile: `freemium/${plan}` })),
-      ...standardPlans.map((plan) => ({ source: 'myaccount', profile: `frozen/${plan}` })),
-      { source: 'myaccount', profile: 'active_standard_monthly/standard_monthly' },
-      { source: 'myaccount', profile: 'active_standard_monthly/ultimate_apm' },
-      { source: 'myaccount', profile: 'active_standard_monthly/ultimate_upfront' },
-      { source: 'myaccount', profile: 'active_standard_apm/standard_apm' },
-      { source: 'myaccount', profile: 'active_standard_apm/ultimate_apm' },
-      { source: 'myaccount', profile: 'active_ultimate_apm/ultimate_apm' },
-      { source: 'myaccount', profile: 'active_ultimate_upfront/ultimate_upfront' },
-    ];
+    if (isCanada) {
+      matrix = [
+        ...canadaPlans.map((plan) => ({ source: 'myaccount', profile: `freemium/${plan}` })),
+        ...canadaPlans.map((plan) => ({ source: 'myaccount', profile: `frozen/${plan}` })),
+        ...canadaActiveProfiles.map((profile) => ({ source: 'myaccount', profile })),
+      ];
+    } else {
+      matrix = [
+        ...standardPlans.map((plan) => ({ source: 'myaccount', profile: `freemium/${plan}` })),
+        ...standardPlans.map((plan) => ({ source: 'myaccount', profile: `frozen/${plan}` })),
+        { source: 'myaccount', profile: 'active_standard_monthly/standard_monthly' },
+        { source: 'myaccount', profile: 'active_standard_monthly/ultimate_apm' },
+        { source: 'myaccount', profile: 'active_standard_monthly/ultimate_upfront' },
+        { source: 'myaccount', profile: 'active_standard_apm/standard_apm' },
+        { source: 'myaccount', profile: 'active_standard_apm/ultimate_apm' },
+        { source: 'myaccount', profile: 'active_ultimate_apm/ultimate_apm' },
+        { source: 'myaccount', profile: 'active_ultimate_upfront/ultimate_upfront' },
+      ];
+    }
     break;
   case 'live-new': {
     const sources = applicable(liveSources.new, false);
-    matrix = sources.flatMap((source) => standardPlans.filter((plan) => !ultimateOnly.has(source) || plan.startsWith('ultimate_')).map((plan) => ({ source, plan })));
+    matrix = sources.flatMap((source) => activePlans.filter((plan) => !ultimateOnly.has(source) || plan.startsWith('ultimate')).map((plan) => ({ source, plan })));
     if (isBoxing) {
       matrix.push({ source: 'landing-page-dont-miss-live-switch', plan: 'standard_monthly', switch: 'true' }, { source: 'landing-page-dont-miss-live-switch', plan: 'standard_apm', switch: 'true' });
     }
@@ -129,7 +176,7 @@ switch (mode) {
   }
   case 'live-existing': {
     const sources = applicable(liveSources.existing, false);
-    matrix = sources.flatMap((source) => regularProfiles.filter((profile) => !ultimateOnly.has(source) || validUltimateProfiles.has(profile)).map((profile) => ({ source, profile })));
+    matrix = sources.flatMap((source) => activeProfiles.filter((profile) => !ultimateOnly.has(source) || validUltimateProfiles.has(profile)).map((profile) => ({ source, profile })));
     if (isBoxing) {
       matrix.push({ source: 'landing-page-dont-miss-live-switch', profile: 'freemium/standard_monthly', switch: 'true' }, { source: 'landing-page-dont-miss-live-switch', profile: 'freemium/standard_apm', switch: 'true' });
     }
@@ -137,7 +184,7 @@ switch (mode) {
   }
   case 'live-signed': {
     const sources = applicable(liveSources.signed, false);
-    matrix = sources.flatMap((source) => regularProfiles.filter((profile) => !ultimateOnly.has(source) || validUltimateProfiles.has(profile)).map((profile) => ({ source, profile })));
+    matrix = sources.flatMap((source) => activeProfiles.filter((profile) => !ultimateOnly.has(source) || validUltimateProfiles.has(profile)).map((profile) => ({ source, profile })));
     break;
   }
   case 'android-full-new': matrix = assignAndroidDevices(androidNewSources.flatMap(source => standardPlans.map(plan => ({ source, plan })))); break;
@@ -181,7 +228,7 @@ switch (mode) {
 // the last segment of `profile` (for example, freemium/standard_apm).
 matrix = matrix.filter((entry) => {
   const plan = entry.plan || entry.profile?.split('/').pop();
-  return standardPlans.includes(plan);
+  return isCanada ? canadaPlans.includes(plan) : standardPlans.includes(plan);
 });
 
 if (country === 'SA') {

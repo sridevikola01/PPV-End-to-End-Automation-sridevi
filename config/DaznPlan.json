@@ -253,79 +253,6 @@
               "HD Video Quality",
               "Standard Audio"
             ]
-          },
-          "dazn_ultimate": {
-            "title": "DAZN Ultimate",
-            "starting_price": "From $29.99 /month",
-            "badge": "Recommended",
-            "description": "Get every NFL game from every team, UEFA Champions League, boxing and more.",
-            "payment_description": "Includes NFL Game Pass, UEFA Champions League & Europa League, Rugby Union, over 150 fights a year and many more sports live and on demand. 3 Streams 2 IP locations Multiview Downloads 20% discount on NFL shop",
-            "cta": "Get started",
-            "plans": {
-              "annual_pay_over_time": {
-                "title": "Annual - pay over time",
-                "badge": "Recommended",
-                "contract_text": "12 month contract. Annual subscription.",
-                "price": "$29.99 /month",
-                "monthly_amount": "29.99"
-              },
-              "annual_pay_now": {
-                "title": "Annual - pay now",
-                "description": "One upfront cost for 12 months of content.",
-                "price": "$269.99 /season",
-                "total_amount": "269.99"
-              },
-              "monthly": {
-                "title": "Monthly",
-                "description": "Monthly subscription. Cancel with 30 days' notice",
-                "price": "$39.99 /month",
-                "monthly_amount": "39.99"
-              }
-            },
-            "features": [
-              "3 concurrent streams",
-              "2 IP locations",
-              "No pre-roll ads",
-              "Download for offline viewing",
-              "Multiview experience",
-              "20% discount on NFL shop"
-            ]
-          },
-          "dazn+_ultimate": {
-            "title": "DAZN+ Ultimate",
-            "starting_price": "From $49.99 /month",
-            "description": "The complete sports package including: NFL Game Pass, the best European soccer, boxing, rugby and much more.",
-            "payment_description": "Every sport on DAZN in one place: NFL Game Pass, the best European soccer including English Premier League & Serie A on Fubo Sports, boxing, rugby and much more 3 Streams 2 IP locations Multiview Downloads 20% discount on NFL shop",
-            "cta": "Get started",
-            "plans": {
-              "annual_pay_over_time": {
-                "title": "Annual - pay over time",
-                "contract_text": "12 month contract. Annual subscription.",
-                "price": "$49.99 /month",
-                "monthly_amount": "49.99"
-              },
-              "annual_pay_now": {
-                "title": "Annual - pay now",
-                "description": "One upfront cost for 12 months of content.",
-                "price": "$469.99 /season",
-                "total_amount": "469.99"
-              },
-              "monthly": {
-                "title": "Monthly",
-                "badge": "Recommended",
-                "description": "Monthly subscription. Cancel with 30 days' notice",
-                "price": "$59.99 /month",
-                "monthly_amount": "59.99"
-              }
-            },
-            "features": [
-              "3 concurrent streams",
-              "2 IP locations",
-              "No pre-roll ads",
-              "Download for offline viewing",
-              "Multiview experience",
-              "20% discount on NFL shop"
-            ]
           }
         },
         "upgrade_popup": {
@@ -580,6 +507,95 @@
         "CANCELLATION_TEXT_ULTIMATE_APM": "Your Annual (pay over time) plan will renew automatically on {{RENEWAL_DATE}}. Manage or cancel your annual renewal anytime in My Account. 12-month minimum term",
         "CANCELLATION_TEXT_ULTIMATE_APU": "You can cancel the renewal to this subscription in My Account. You will still have full access to DAZN until the end of your annual cycle.",
         "ANNUAL_PAY_MONTHLY_CONTRACT_TEXT": "Annual contract. Auto renews.",
+        "offers": []
+      },
+      "CA": {
+        "BASE_URL": "https://www.dazn.com/en-CA",
+        "CURRENCY": "$",
+        "DAZN_TIER": "DAZN Ultimate",
+        "OFFER_TYPE": "7_day_trial",
+        "MONTHLY_PRICE": "34.99",
+        "ANNUAL_PRICE": "269.99",
+        "ANNUAL_PAY_MONTHLY_PRICE": "29.99",
+        "ANNUAL_UPFRONT_PRICE": "269.99",
+        "ANNUAL_MONTHS": "12",
+        "NEXT_PAYMENT_PRICE": "$29.99",
+        "TRIAL_MONTHLY_PRICE": "$29.99",
+        "subscriptions": {
+          "dazn_ultimate": {
+            "title": "DAZN Ultimate",
+            "starting_price": "From $29.99 /month",
+            "badge": "Recommended",
+            "description": "Get every NFL game from every team, UEFA Champions League, boxing and more.",
+            "payment_description": "Includes NFL Game Pass, UEFA Champions League & Europa League, Rugby Union, over 150 fights a year and many more sports live and on demand. 3 Streams 2 IP locations Multiview Downloads 20% discount on NFL shop",
+            "cta": "Get started",
+            "plans": {
+              "annual_pay_over_time": {
+                "title": "Annual - pay over time",
+                "badge": "Recommended",
+                "contract_text": "12 month contract. Annual subscription.",
+                "price": "$29.99 /month",
+                "monthly_amount": "29.99"
+              },
+              "annual_pay_now": {
+                "title": "Annual - pay now",
+                "description": "One upfront cost for 12 months of content.",
+                "price": "$269.99 /season",
+                "total_amount": "269.99"
+              },
+              "monthly": {
+                "title": "Monthly",
+                "description": "Monthly subscription. Cancel with 30 days' notice",
+                "price": "$39.99 /month",
+                "monthly_amount": "39.99"
+              }
+            },
+            "features": [
+              "3 concurrent streams",
+              "2 IP locations",
+              "No pre-roll ads",
+              "Download for offline viewing",
+              "Multiview experience",
+              "20% discount on NFL shop"
+            ]
+          },
+          "dazn+_ultimate": {
+            "title": "DAZN+ Ultimate",
+            "starting_price": "From $49.99 /month",
+            "description": "The complete sports package including: NFL Game Pass, the best European soccer, boxing, rugby and much more.",
+            "payment_description": "Every sport on DAZN in one place: NFL Game Pass, the best European soccer including English Premier League & Serie A on Fubo Sports, boxing, rugby and much more 3 Streams 2 IP locations Multiview Downloads 20% discount on NFL shop",
+            "cta": "Get started",
+            "plans": {
+              "annual_pay_over_time": {
+                "title": "Annual - pay over time",
+                "contract_text": "12 month contract. Annual subscription.",
+                "price": "$49.99 /month",
+                "monthly_amount": "49.99"
+              },
+              "annual_pay_now": {
+                "title": "Annual - pay now",
+                "description": "One upfront cost for 12 months of content.",
+                "price": "$469.99 /season",
+                "total_amount": "469.99"
+              },
+              "monthly": {
+                "title": "Monthly",
+                "badge": "Recommended",
+                "description": "Monthly subscription. Cancel with 30 days' notice",
+                "price": "$59.99 /month",
+                "monthly_amount": "59.99"
+              }
+            },
+            "features": [
+              "3 concurrent streams",
+              "2 IP locations",
+              "No pre-roll ads",
+              "Download for offline viewing",
+              "Multiview experience",
+              "20% discount on NFL shop"
+            ]
+          }
+        },
         "offers": []
       }
     }

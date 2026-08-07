@@ -650,8 +650,9 @@ export function buildEventData(
     base.ULTIMATE_FEATURE_3 = 'HDR and Dolby 5.1 surround sound on select events.';
   }
 
-  // Active standard user: CTA must be set AFTER directFields to avoid being clobbered
-  if (isActiveStandard) {
+  // Active standard / CA active ultimate user: CTA must be set AFTER directFields to avoid being clobbered
+  const isCanadaRegion = (process.env.DAZN_REGION || '').toUpperCase() === 'CA';
+  if (isActiveStandard || (isActiveUltimate && isCanadaRegion)) {
     base.PPV_CTA_TEXT = `Continue with ${base.PPV_NAME} only|Continue with pay-per-view`;
   }
 
