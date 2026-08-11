@@ -32,6 +32,7 @@ export function compare(
       .replace(/&/gi, '&')
       .replace(/[\u2018\u2019\u201A\u201B\u2032\u0060\u00B4"'\u201C\u201D\u201E\u201F\u2033]/g, "'")
       .replace(/\bppv\b/gi, '')
+      .replace(/\bvs\.?(?=\s|$)/gi, 'vs')
       .replace(/[\-–—\u2014\u2013:]/g, ' ')
       .replace(/\s*\/\s*/g, ' / ')
       .replace(/[•·]/g, ' ').replace(/\s+/g, ' ')
