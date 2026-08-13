@@ -18,7 +18,7 @@ runs:
       run: npm ci
     - shell: bash
       run: cd appium && npm ci
-    - name: Verify assigned Android device
+    - name: Verify assigned Android device and ADB setup
       shell: bash
       run: |
         set -euo pipefail

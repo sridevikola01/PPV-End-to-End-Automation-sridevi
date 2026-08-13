@@ -268,6 +268,7 @@ export const config = {
       'appium:autoLaunch':               false,   // do NOT auto-launch at session creation
       'appium:forceAppLaunch':           false,   // do NOT force-restart if already running
       'appium:autoGrantPermissions':     true,
+      'appium:ignoreHiddenApiPolicyError': true,
       'appium:unicodeKeyboard':          false,
       'appium:resetKeyboard':            false,
       'appium:chromeOptions':            { androidPackage: 'com.android.chrome' },
