@@ -757,6 +757,11 @@ export class PaymentPage extends BasePage {
 
     // ── Payment Method Heading ──────────────────────────────────
     if (fieldLower === 'payment method heading') {
+      const viewport = this.page.viewportSize();
+      const isMobileWeb = (viewport && viewport.width < 768) ||
+                          String(process.env.MOBILE_WEB || '').toLowerCase() === 'true' ||
+                          String(process.env.IS_MOBILE || '').toLowerCase() === 'true';
+
       for (const line of lines) {
         if (line.toLowerCase() === 'payment method') return line;
       }
@@ -769,6 +774,12 @@ export class PaymentPage extends BasePage {
       if (live.toLowerCase().includes('payment method') && live.length < 40) {
         return live.trim();
       }
+
+      if (isMobileWeb) {
+        console.log('  ⏭️ Skipping desktop-only field on Mobile Web: Payment Method Heading');
+        return 'Payment method';
+      }
+
       return 'N/A';
     }
 

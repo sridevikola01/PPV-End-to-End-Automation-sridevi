@@ -300,22 +300,19 @@ export class AndroidMyAccountPage extends AndroidBasePage {
       } else {
         let setValueSuccess = false;
         try {
-          // `setValue` sends text directly to UiAutomator and is reliable for
-          // symbols such as @ and !. It also avoids keyboard focus being lost
-          // between individual driver.keys calls.
           await passwordInput.setValue(credentials.password);
           setValueSuccess = true;
+          console.log('  ✓ Password entered via setValue');
         } catch (err: any) {
           console.warn(`  setValue failed with error: ${err.message}. Falling back to driver.keys...`);
         }
 
-        let enteredPassword = await readPassword();
-        if (!setValueSuccess || (isPlaceholderOrEmpty(enteredPassword) && !hasBullets(enteredPassword))) {
-          console.log('  Password input did not retain value from setValue. Falling back to driver.keys...');
+        if (!setValueSuccess) {
+          console.log('  Falling back to driver.keys for password entry...');
           await focusPasswordInput();
           await this.driver.keys([...credentials.password]);
 
-          enteredPassword = await readPassword();
+          const enteredPassword = await readPassword();
           if (isPlaceholderOrEmpty(enteredPassword) && !hasBullets(enteredPassword)) {
             await tryAdbFallback();
           }
@@ -349,14 +346,17 @@ export class AndroidMyAccountPage extends AndroidBasePage {
             break;
           }
         } catch {}
-        }
+      }
     }
 
     await this.driver.pause(2000);
-    
-    // Only navigate to Home if requested (skip for myaccount flow which navigates directly to My Account)
+
+    // 1. Check & click Notification Accept / Permission Allow popup after navigation from login screen
+    await this.handleNotificationPermissionPopup(8000);
+
+    // 2. Only navigate to Home if requested (skip for myaccount flow which navigates directly to My Account)
     if (credentials.navigateToHomeAfterLogin !== false) {
-      console.log('Ensuring navigation to Home page after login...');
+      console.log('⏳ Finding Home tab and navigating to Home page after login...');
       const homeSelectorsAfterLogin = [
         'android=new UiSelector().text("Home")',
         'android=new UiSelector().descriptionContains("Home")',
@@ -365,30 +365,75 @@ export class AndroidMyAccountPage extends AndroidBasePage {
       ];
 
       let homeFound = false;
-      for (const selector of homeSelectorsAfterLogin) {
-        try {
-          const homeEl = await this.driver.$(selector);
-          if (await homeEl.isDisplayed()) {
-            console.log('  Found Home tab, tapping to navigate home...');
-            await homeEl.click();
-            await this.driver.pause(2000);
-            homeFound = true;
-            break;
-          }
-        } catch {}
+      const startTime = Date.now();
+      const maxWaitMs = 15000;
+
+      while (Date.now() - startTime < maxWaitMs) {
+        // Re-check notification popup if it appears late during page render
+        await this.handleNotificationPermissionPopup(1500);
+
+        for (const selector of homeSelectorsAfterLogin) {
+          try {
+            const homeEl = await this.driver.$(selector);
+            if (await homeEl.isDisplayed().catch(() => false)) {
+              console.log('  ✓ Home tab found on screen. Tapping Home tab...');
+              await homeEl.click();
+              await this.driver.pause(2500);
+              homeFound = true;
+              break;
+            }
+          } catch {}
+        }
+        if (homeFound) break;
+        console.log('  Waiting for Home screen tab to appear...');
+        await this.driver.pause(1500);
       }
 
       if (!homeFound) {
-        console.log('  Home tab not found via selectors, trying coordinate tap...');
-        const screenSize = getScreenSize();
-        adbTap(Math.round(screenSize.width * 0.125), Math.round(screenSize.height * 0.95));
-        await this.driver.pause(2000);
+        console.log('  Checking if already on Home screen...');
+        await this.tapByText('Home', 2000).catch(() => false);
       }
       
       console.log('Post-login navigation to Home completed\n');
     } else {
       console.log('Skipping Home navigation (myaccount flow)\n');
     }
+  }
+
+  async handleNotificationPermissionPopup(timeoutMs = 8000): Promise<boolean> {
+    console.log('🔔 Checking for post-login Notification / Permission Accept popup...');
+    const acceptSelectors = [
+      'android=new UiSelector().resourceId("com.android.permissioncontroller:id/permission_allow_button")',
+      'android=new UiSelector().text("Allow")',
+      'android=new UiSelector().text("ALLOW")',
+      'android=new UiSelector().text("Accept")',
+      'android=new UiSelector().text("ACCEPT")',
+      'android=new UiSelector().text("Turn on")',
+      'android=new UiSelector().text("Enable")',
+      'android=new UiSelector().text("OK")',
+      'android=new UiSelector().textContains("Allow")',
+      'android=new UiSelector().textContains("Turn on")',
+      'android=new UiSelector().textContains("Accept")',
+      '//android.widget.Button[contains(@text, "Allow") or contains(@text, "Accept") or contains(@text, "Turn on") or contains(@text, "OK")]',
+    ];
+
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      for (const selector of acceptSelectors) {
+        try {
+          const btn = await this.driver.$(selector);
+          if (await btn.isDisplayed().catch(() => false)) {
+            console.log(`  ✓ Notification / Permission Accept popup detected. Tapping Accept / Allow...`);
+            await btn.click();
+            await this.driver.pause(2000);
+            return true;
+          }
+        } catch {}
+      }
+      await this.driver.pause(1000);
+    }
+    console.log('  ℹ️ No notification popup detected within timeout.');
+    return false;
   }
 
   async navigateToMyAccount(): Promise<void> {

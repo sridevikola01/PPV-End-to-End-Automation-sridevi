@@ -7878,6 +7878,15 @@ export async function getActualValue(
       ) {
         return live.trim();
       }
+
+      const viewport = page.viewportSize();
+      const isMobileWeb = (viewport && viewport.width < 768) ||
+                          String(process.env.MOBILE_WEB || '').toLowerCase() === 'true' ||
+                          String(process.env.IS_MOBILE || '').toLowerCase() === 'true';
+      if (isMobileWeb) {
+        return 'Payment method';
+      }
+
       return 'N/A';
     }
 

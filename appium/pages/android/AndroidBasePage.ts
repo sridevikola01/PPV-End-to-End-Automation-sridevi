@@ -115,6 +115,41 @@ export class AndroidBasePage {
     }
   }
 
+  async ensureOnHome(): Promise<void> {
+    console.log('  Ensuring navigation to Home tab...');
+    const homeSelectors = [
+      'android=new UiSelector().text("Home")',
+      'android=new UiSelector().descriptionContains("Home")',
+      '//android.widget.ImageView[contains(@content-desc, "Home")]',
+      '//android.widget.TextView[contains(@text, "Home")]',
+    ];
+
+    const startTime = Date.now();
+    const maxWaitMs = 12000;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      for (const selector of homeSelectors) {
+        try {
+          const homeEl = await this.driver.$(selector);
+          if (await homeEl.isDisplayed().catch(() => false)) {
+            console.log('  ✓ Home tab verified as visible on screen. Tapping Home tab...');
+            await homeEl.click();
+            await this.driver.pause(2500);
+            return;
+          }
+        } catch { }
+      }
+      console.log('  Waiting for page transition and Home tab to become visible...');
+      await this.driver.pause(1500);
+    }
+
+    const homeClicked = await this.tapByText('Home', 3000);
+    if (homeClicked) {
+      await this.driver.pause(2500);
+      return;
+    }
+  }
+
   /**
    * For Ultimate users logged in app: after tapping a PPV tile, a PIN Protection modal may appear.
    * Clicks the "WATCH NOW" button to proceed to the fixture page.

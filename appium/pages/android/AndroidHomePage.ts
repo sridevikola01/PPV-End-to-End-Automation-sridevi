@@ -83,14 +83,42 @@ export class AndroidHomePage extends AndroidLandingPage {
   }
 
   async ensureOnHome(): Promise<void> {
-    console.log('  Navigating to Home tab...');
-    const screen = getScreenSize();
-    const homeClicked = await this.tapByText('Home', 2000);
-    if (!homeClicked) {
-      adbTap(Math.round(screen.width * 0.15), Math.round(screen.height * 0.92));
+    console.log('  Ensuring navigation to Home tab...');
+    const homeSelectors = [
+      'android=new UiSelector().text("Home")',
+      'android=new UiSelector().descriptionContains("Home")',
+      '//android.widget.ImageView[contains(@content-desc, "Home")]',
+      '//android.widget.TextView[contains(@text, "Home")]',
+    ];
+
+    const startTime = Date.now();
+    const maxWaitMs = 12000;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      for (const selector of homeSelectors) {
+        try {
+          const homeEl = await this.driver.$(selector);
+          if (await homeEl.isDisplayed().catch(() => false)) {
+            console.log('  ✓ Home tab verified as visible on screen. Tapping Home tab...');
+            await homeEl.click();
+            await this.driver.pause(2500);
+            await this.waitForContentRailsToLoad();
+            return;
+          }
+        } catch { }
+      }
+      console.log('  Waiting for page transition and Home tab to become visible...');
+      await this.driver.pause(1500);
     }
-    console.log('  ✓ Tapped Home tab. Waiting 3.5s for Home page feed to initialize...');
-    await this.driver.pause(3500);
+
+    const homeClicked = await this.tapByText('Home', 3000);
+    if (homeClicked) {
+      await this.driver.pause(2500);
+      await this.waitForContentRailsToLoad();
+      return;
+    }
+
+    console.log('  ✓ Page transition finished. Checking content feed readiness...');
     await this.waitForContentRailsToLoad();
   }
 
