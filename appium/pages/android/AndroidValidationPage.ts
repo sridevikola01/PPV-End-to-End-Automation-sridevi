@@ -1400,29 +1400,35 @@ export class AndroidValidationPage extends AndroidBasePage {
           fieldName.startsWith('Tile - ')
         ) {
           const effectiveField = fieldName.startsWith('Tile - ') ? fieldName.replace('Tile - ', '') : fieldName;
-          let expectedPart = expectedValue;
-          try {
-            const refDateStr = eventData.HOME_BOXING_UPCOMING_DATE || eventData.LANDING_PAGE_PPV_DATE || eventData.PPV_DATE || '';
-            const refTimeStr = eventData.HOME_BOXING_UPCOMING_TIME || eventData.PPV_TIME || '';
-            if (refDateStr) {
-              const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-              const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-              const cleanRefStr = refDateStr.toUpperCase().replace(/,/g, '');
-              const tokens = cleanRefStr.split(/\s+/);
-              let parsedDay = '', parsedMonth = '', parsedDate = '';
-              for (const token of tokens) {
-                const ct = token.replace(/[^A-Z0-9]/g, '');
-                if (days.includes(ct.substring(0, 3))) parsedDay = ct.substring(0, 3);
-                else if (months.includes(ct.substring(0, 3))) parsedMonth = ct.substring(0, 3);
-                else if (/^\d+$/.test(ct.replace(/\D/g, ''))) parsedDate = ct.replace(/\D/g, '');
+          if (!expectedPart || expectedPart.includes('{{')) {
+            try {
+              const isScheduleFlow = source === 'schedule' || sheetName.includes('Schedule');
+              const refDateStr = isScheduleFlow
+                ? (eventData.MOBILE_SCHEDULE_DAY_DATE || eventData.PPV_DATE || '')
+                : (eventData.HOME_BOXING_UPCOMING_DATE || eventData.LANDING_PAGE_PPV_DATE || eventData.PPV_DATE || '');
+              const refTimeStr = isScheduleFlow
+                ? (eventData.MOBILE_SCHEDULE_TIME || eventData.PPV_TIME || '')
+                : (eventData.HOME_BOXING_UPCOMING_TIME || eventData.PPV_TIME || '');
+              if (refDateStr) {
+                const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+                const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+                const cleanRefStr = refDateStr.toUpperCase().replace(/,/g, '');
+                const tokens = cleanRefStr.split(/\s+/);
+                let parsedDay = '', parsedMonth = '', parsedDate = '';
+                for (const token of tokens) {
+                  const ct = token.replace(/[^A-Z0-9]/g, '');
+                  if (days.includes(ct.substring(0, 3))) parsedDay = ct.substring(0, 3);
+                  else if (months.includes(ct.substring(0, 3))) parsedMonth = ct.substring(0, 3);
+                  else if (/^\d+$/.test(ct.replace(/\D/g, ''))) parsedDate = ct.replace(/\D/g, '');
+                }
+                if (effectiveField === 'Day') expectedPart = isScheduleFlow ? (eventData.MOBILE_SCHEDULE_DAY || parsedDay) : parsedDay;
+                if (effectiveField === 'Month') expectedPart = isScheduleFlow ? (eventData.MOBILE_SCHEDULE_MONTH || parsedMonth) : parsedMonth;
+                if (effectiveField === 'Date') expectedPart = isScheduleFlow ? (eventData.MOBILE_SCHEDULE_DATE || parsedDate) : parsedDate;
               }
-              if (effectiveField === 'Day' && parsedDay) expectedPart = parsedDay;
-              if (effectiveField === 'Month' && parsedMonth) expectedPart = parsedMonth;
-              if (effectiveField === 'Date' && parsedDate) expectedPart = parsedDate;
+              if (effectiveField === 'Time') expectedPart = isScheduleFlow ? (eventData.MOBILE_SCHEDULE_TIME || refTimeStr) : (eventData.HOME_BOXING_UPCOMING_TIME || refTimeStr);
+            } catch (e: any) {
+              console.warn('⚠️ General date parsing failed, falling back to rule expected:', e.message);
             }
-            if (effectiveField === 'Time' && refTimeStr) expectedPart = refTimeStr;
-          } catch (e: any) {
-            console.warn('⚠️ General date parsing failed, falling back to rule expected:', e.message);
           }
 
           let extractedVal = '';

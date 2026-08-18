@@ -322,9 +322,8 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       const planTier = (planData.TIER || 'standard').toLowerCase();
       const ratePlan = (planData.RATE_PLAN || 'monthly').toLowerCase();
 
-      const eventData = buildEventData(json, REGION, planTier, ratePlan.replace(/-/g, ' '), SOURCE);
-
       // Merge mobile overrides
+      let mobileRegional: any = {};
       try {
         let mobileConfigPath = path.resolve(__dirname, '../../config/events', EVENT_CONFIG);
         if (!fs.existsSync(mobileConfigPath) && json.eventKey) {
@@ -332,8 +331,9 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
         }
         if (fs.existsSync(mobileConfigPath)) {
           const mobileJson = JSON.parse(fs.readFileSync(mobileConfigPath, 'utf8'));
-          const mobileRegional = mobileJson.regions?.[REGION] || {};
-          Object.assign(eventData, mobileRegional);
+          mobileRegional = mobileJson.regions?.[REGION] || {};
+          json.regions = json.regions || {};
+          json.regions[REGION] = { ...json.regions[REGION], ...mobileRegional };
           console.log(`📱 Loaded mobile-specific overrides from ${mobileConfigPath}`);
         } else {
           console.warn(`⚠️ Mobile config override file not found: ${EVENT_CONFIG} (nor ${json.eventKey}.json)`);
@@ -341,6 +341,9 @@ async function generateAndroidAvailabilityFailureReport(errorMessage: string): P
       } catch (e: any) {
         console.warn(`⚠️ Failed to load mobile overrides: ${e.message}`);
       }
+
+      const eventData = buildEventData(json, REGION, planTier, ratePlan.replace(/-/g, ' '), SOURCE);
+      Object.assign(eventData, mobileRegional);
 
       // ── validateMobilePaywall: delegated to AndroidValidationPage ───────────
       async function validateMobilePaywall() {

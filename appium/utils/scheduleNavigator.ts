@@ -703,7 +703,14 @@ export async function verifyNavigation(
       `android=new UiSelector().textContains("${firstSignificantWord}")`
     ).isDisplayed().catch(() => false);
 
-    // 3. Paywall CTA present?
+    const userStateStr = String(process.env.USER_STATE || '').toLowerCase().trim().replace('-', '_');
+    const isUltimate = ['active_ultimate_upfront', 'active_ultimate_apm'].includes(userStateStr);
+    if (isUltimate && (ppvVisible || !scheduleStillVisible)) {
+      console.log(`✅ Phase 6: Ultimate user navigation verified (navigated away from schedule to fixture screen for "${ppvName}").`);
+      return true;
+    }
+
+    // 3. Paywall CTA present? (For standard/non-ultimate users)
     const ctaSelectors = [
       'android=new UiSelector().textContains("Buy")',
       'android=new UiSelector().textContains("Get")',
